@@ -136,6 +136,23 @@ def screening_summary(area: str, risk_score: int) -> tuple[str, str, str]:
     return ("PRIORITY CLINICAL REVIEW", "Please arrange clinical review soon", "Your reported symptom details indicate a need for timely RMP review. This tool cannot determine a diagnosis or urgency on its own.")
 
 
+def clinician_first_care_plan(risk_score: int) -> dict:
+    """Return safe next steps; never a diagnosis, prescription, or treatment plan."""
+    if risk_score >= 65:
+        timing = "Arrange a dermatologist or registered medical practitioner consultation as soon as possible."
+    elif risk_score >= 40:
+        timing = "Arrange a dermatologist or registered medical practitioner consultation before starting a new care routine."
+    else:
+        timing = "Book a routine clinician consultation if the concern persists, changes, or worries you."
+    return {
+        "heading": "Clinician-first care recommendation",
+        "next_step": timing,
+        "routine_guardrail": "Do not start medicines, self-treatment, or a condition-specific care routine based only on this app.",
+        "product_guardrail": "Discuss any recommended personal-care product with a pharmacist or registered medical practitioner before using it, especially with allergies, pregnancy, broken skin, or ongoing treatment.",
+        "diagnosis_notice": "AI output is a possible pattern for clinician discussion—not a verified diagnosis.",
+    }
+
+
 def personal_care_catalog(area: str, risk_score: int) -> list[dict]:
     """Generic non-medicinal categories; no brands, prescription drugs or doses."""
     if risk_score >= 65:
@@ -231,7 +248,7 @@ def products():
     except ValueError:
         return jsonify({"error": "Invalid risk score."}), 400
     items = personal_care_catalog(area, risk_score)
-    return jsonify({"items": items, "eligible": bool(items), "policy": "No prescription medicine, diagnosis-specific treatment, dosage, or paid ranking is provided by this prototype.", "pharmacy_notice": "For any medicine or persistent symptom, consult an RMP and use a licensed pharmacy."})
+    return jsonify({"items": items, "eligible": bool(items), "consultation_required": True, "policy": "No prescription medicine, diagnosis-specific treatment, dosage, or paid ranking is provided by this prototype.", "pharmacy_notice": "Before using a suggested product or routine, consult an RMP or pharmacist and use a licensed pharmacy."})
 
 
 @app.post("/api/assessments")
@@ -280,7 +297,7 @@ def create_assessment():
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "label": "Good" if quality >= 80 else "Needs clearer image"}, "risk": {"score": risk_score, "level": risk_level}, "screening": {"title": title, "summary": summary},
         "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "lesion_segmentation": "visual prototype overlay", "classification": "HAM10000 research classifier" if research_classifier else "not run: requires explicit dermatoscopic lesion image selection", "explainability": "Grad-CAM integration point"},
-        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "awaiting_rmp_review", "commerce_eligibility": "personal_care_only" if risk_score < 65 else "blocked_pending_clinical_review",
+        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "awaiting_rmp_review", "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if risk_score < 65 else "blocked_pending_clinical_review",
     })
 
 

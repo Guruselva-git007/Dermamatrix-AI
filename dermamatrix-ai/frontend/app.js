@@ -32,7 +32,7 @@ function renderProducts(items, eligible) {
     grid.innerHTML = '<article class="product-empty"><span>✚</span><h3>Clinical review comes first</h3><p>This assessment is not eligible for product discovery. Please arrange review by a registered medical practitioner before considering treatment.</p></article>';
     return;
   }
-  grid.innerHTML = items.map(item => `<article class="product-card"><span class="product-type">${item.category}</span><h3>${item.name}</h3><p>${item.purpose}</p><p class="guardrail">${item.guardrail}</p><button class="text-button" data-toast="Product selection must be checked with a pharmacist or registered medical practitioner.">Ask a pharmacist →</button></article>`).join('');
+  grid.innerHTML = items.map(item => `<article class="product-card"><span class="product-type">${item.category}</span><span class="consult-gate">CONSULT RMP BEFORE USE</span><h3>${item.name}</h3><p>${item.purpose}</p><p class="guardrail">${item.guardrail}</p><button class="text-button" data-toast="Consult a registered medical practitioner or pharmacist before starting any product or care routine.">Discuss before use →</button></article>`).join('');
   $$('#productGrid [data-toast]').forEach(button => button.addEventListener('click', () => showToast(button.dataset.toast)));
 }
 
@@ -68,6 +68,12 @@ async function analyze() {
     $('#researchPrediction').textContent = `${top.label} · research confidence ${Math.round(top.probability * 100)}%. This output is only valid for dermatoscopic lesion images, never face photos.`;
     researchBox.hidden = false;
   } else { researchBox.hidden = true; }
+  let careBox = $('#careRecommendation');
+  if (!careBox) {
+    careBox = document.createElement('div'); careBox.id = 'careRecommendation'; careBox.className = 'care-recommendation';
+    $('#researchResult').insertAdjacentElement('afterend', careBox);
+  }
+  careBox.innerHTML = `<span>✚</span><p><strong>${result.care_plan.heading}</strong><br />${result.care_plan.next_step}<br /><em>${result.care_plan.routine_guardrail}</em></p>`;
   $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false'); $('#stepCount').textContent = 'STEP 3 OF 3';
   $('#riskScore').textContent = score;
   $('#riskMessage').textContent = score < 40 ? 'Your current profile looks stable. Keep up your healthy routine.' : score < 65 ? 'A few factors need attention. Consider a clinician review if this persists.' : 'Your answers indicate a higher need for a professional assessment.';
