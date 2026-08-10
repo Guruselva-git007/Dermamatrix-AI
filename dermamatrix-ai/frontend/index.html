@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#075e63" />
+    <title>DermaMatrix AI | Integumentary Health</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="compliance.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <a class="brand" href="#overview" aria-label="DermaMatrix AI home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Derma<span>Matrix</span><small>AI HEALTH</small></span>
+        </a>
+        <nav class="nav-links">
+          <a class="active" href="#overview"><span>⌂</span> Overview</a>
+          <a href="#assess"><span>◈</span> New assessment</a>
+          <a href="#history"><span>◷</span> Health timeline</a>
+          <a href="#models"><span>✦</span> AI insights</a>
+          <a href="#products"><span>□</span> Care marketplace</a>
+          <a href="#care"><span>♡</span> Care plan</a>
+        </nav>
+        <div class="sidebar-care">
+          <span class="care-icon">✚</span>
+          <strong>Need clinical care?</strong>
+          <p>Find a dermatologist for an in-person review.</p>
+          <button class="text-button" data-toast="Clinician finder will be connected to Google Maps in the backend.">Find care →</button>
+        </div>
+        <button class="profile" id="profileButton" aria-label="Create or view your health profile">
+          <div class="avatar">GS</div>
+          <div><strong id="profileName">Guest profile</strong><small id="profileMeta">Create secure profile</small></div>
+          <span aria-hidden="true">•••</span>
+        </button>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <button class="menu-button" aria-label="Open navigation">☰</button>
+          <div class="crumb"><span>Personal health</span><b>/</b><strong>Overview</strong></div>
+          <div class="top-actions">
+            <button class="icon-button" aria-label="Notifications" data-toast="You are all caught up.">♧<i></i></button>
+            <button class="help-button" data-toast="This prototype is for education and screening support—not a diagnosis.">?</button>
+          </div>
+        </header>
+
+        <section id="overview" class="page-section hero-section">
+          <div class="hero-copy">
+            <p class="eyebrow">INTEGUMENTARY HEALTH INTELLIGENCE</p>
+            <h1>See your skin health<br /><em>with more clarity.</em></h1>
+            <p class="hero-text">A thoughtful place to document concerns, understand AI-supported image findings, and prepare for a clinician conversation.</p>
+            <div class="hero-actions">
+              <a class="button primary" href="#assess">Start an assessment <span>→</span></a>
+              <button class="button quiet" data-toast="Your assessment history is stored locally in this frontend prototype.">How it works <span>↗</span></button>
+            </div>
+            <p class="safety-inline"><span>✓</span> Private-by-design prototype · Not a clinical diagnosis</p>
+          </div>
+          <div class="hero-visual" aria-label="Illustration showing clinical image analysis">
+            <div class="orb orb-one"></div><div class="orb orb-two"></div>
+            <div class="scan-card">
+              <div class="scan-image"><div class="lesion one"></div><div class="lesion two"></div><div class="scan-grid"></div><span class="scan-ring"></span></div>
+              <div class="scan-caption"><span class="pulse"></span><span>AI image analysis</span><b>LIVE</b></div>
+            </div>
+            <div class="float-card confidence"><span>Model confidence</span><strong>92.4%</strong><small>High quality image</small></div>
+            <div class="float-card explain"><span class="spark">✦</span><div><strong>Explainable</strong><small>Visual attention map</small></div></div>
+          </div>
+        </section>
+
+        <section class="quick-section" aria-labelledby="quick-title">
+          <div class="section-heading"><div><p class="eyebrow">YOUR HEALTH SPACE</p><h2 id="quick-title">What would you like to assess?</h2></div><a href="#assess">View all <span>→</span></a></div>
+          <div class="assessment-grid">
+            <button class="assessment-card teal" data-area="Skin"><span class="card-icon">◌</span><strong>Skin concern</strong><small>Lesions, rashes &amp; texture</small><span class="card-arrow">→</span></button>
+            <button class="assessment-card blue" data-area="Hair"><span class="card-icon">〰</span><strong>Hair &amp; scalp</strong><small>Loss, scalp &amp; density</small><span class="card-arrow">→</span></button>
+            <button class="assessment-card lavender" data-area="Nails"><span class="card-icon">▣</span><strong>Nail health</strong><small>Colour, shape &amp; texture</small><span class="card-arrow">→</span></button>
+            <button class="assessment-card amber" data-area="Sweat glands"><span class="card-icon">◒</span><strong>Sweat glands</strong><small>Symptoms &amp; risk profile</small><span class="card-arrow">→</span></button>
+          </div>
+        </section>
+
+        <section class="overview-grid">
+          <article class="risk-card">
+            <div class="card-top"><div><p class="eyebrow">PERSONALIZED RISK SCORE</p><h2>Integumentary risk</h2></div><button class="more" data-toast="PIRS combines image findings, symptom details, history, and lifestyle inputs.">•••</button></div>
+            <div class="risk-content"><div class="risk-dial"><svg viewBox="0 0 120 120" aria-label="Risk score 28 out of 100"><circle cx="60" cy="60" r="49"/><circle class="progress" cx="60" cy="60" r="49"/></svg><div><strong id="riskScore">28</strong><span>/100</span></div></div><div><span class="risk-label low">LOW RISK</span><p id="riskMessage">Your current profile looks stable. Keep up your healthy routine.</p><a href="#assess">Update your score <span>→</span></a></div></div>
+            <div class="risk-scale"><span>Low</span><i></i><span>Moderate</span><i></i><span>High</span></div>
+          </article>
+          <article class="timeline-card" id="history">
+            <div class="card-top"><div><p class="eyebrow">HEALTH TIMELINE</p><h2>Recent activity</h2></div><a href="#history">View history →</a></div>
+            <div class="timeline" id="timeline"><div class="timeline-item"><span class="timeline-dot today"></span><div><strong>Welcome to DermaMatrix</strong><p>Begin a guided assessment when you are ready.</p></div><time>Today</time></div><div class="timeline-item"><span class="timeline-dot"></span><div><strong>Complete your profile</strong><p>Add your health history for a more personalized risk score.</p></div><time>Next</time></div></div>
+          </article>
+        </section>
+
+        <section id="assess" class="assessment-workspace" aria-labelledby="assessment-title">
+          <div class="workspace-heading"><div><p class="eyebrow">GUIDED ASSESSMENT</p><h2 id="assessment-title">Bring a concern into focus.</h2><p>Upload a well-lit photo and add a few details. The AI workflow will help organize possible findings for clinical follow-up.</p></div><span class="step-count" id="stepCount">STEP 1 OF 3</span></div>
+          <div class="stepper"><span class="active">1. Select area</span><i></i><span>2. Add image</span><i></i><span>3. Review insight</span></div>
+          <div class="assessment-panel" id="assessmentPanel">
+            <div class="area-choice" id="areaChoices">
+              <button class="selected" data-area="Skin"><span>◌</span><strong>Skin</strong><small>Lesion or rash</small></button>
+              <button data-area="Hair"><span>〰</span><strong>Hair</strong><small>Scalp concern</small></button>
+              <button data-area="Nails"><span>▣</span><strong>Nails</strong><small>Nail change</small></button>
+              <button data-area="Sweat glands"><span>◒</span><strong>Sweat glands</strong><small>Symptom check</small></button>
+            </div>
+            <div class="upload-layout">
+              <label class="drop-zone" id="dropZone" for="imageInput"><input id="imageInput" type="file" accept="image/*" /><span class="upload-icon">↥</span><strong>Drop a clear photo here</strong><small>or choose a file from your device</small><span class="file-button">Choose image</span><em>JPG, PNG or WEBP · maximum 10 MB</em></label>
+              <div class="image-guidance"><span class="guidance-icon">☼</span><div><strong>For the clearest result</strong><p>Use natural light, keep the camera steady, and include the affected area without filters.</p><ul><li>One concern per image</li><li>Avoid shadows and flash glare</li><li>Remove identifying background details</li></ul></div></div>
+            </div>
+            <div class="symptom-form"><label>How long has this been present?<select id="duration"><option value="0">Less than 1 week</option><option value="4">1–4 weeks</option><option value="10">1–3 months</option><option value="18">More than 3 months</option></select></label><label>Any discomfort?<select id="discomfort"><option value="0">None</option><option value="6">Mild</option><option value="14">Moderate</option><option value="25">Severe / worsening</option></select></label><label>Has it changed recently?<select id="change"><option value="0">No noticeable change</option><option value="8">Slight change</option><option value="18">Rapid change</option></select></label></div>
+            <div class="panel-actions"><p><span>⌁</span> Your image is processed only by this local demo and is not saved.</p><button class="button primary" id="analyzeButton" disabled>Analyze image <span>→</span></button></div>
+          </div>
+        </section>
+
+        <section id="models" class="models-section">
+          <div class="section-heading"><div><p class="eyebrow">TRANSPARENT BY DESIGN</p><h2>AI that shows its work.</h2></div></div>
+          <div class="model-grid"><article><span class="model-number">01</span><h3>Quality gate</h3><p>Checks lighting, focus and framing before any model processes an image.</p></article><article><span class="model-number">02</span><h3>Lesion segmentation</h3><p>U-Net integration point identifies the relevant image region for review.</p></article><article><span class="model-number">03</span><h3>Explainable insight</h3><p>Grad-CAM integration point highlights visual signals that informed a classification.</p></article><article><span class="model-number">04</span><h3>Personalized PIRS</h3><p>Combines image, symptoms and context into a clinically reviewable risk score.</p></article></div>
+        </section>
+
+        <section id="products" class="products-section" aria-labelledby="products-title">
+          <div class="section-heading"><div><p class="eyebrow">CAREFUL PRODUCT DISCOVERY</p><h2 id="products-title">Personal care, never a prescription.</h2><p class="products-intro">After an assessment, we can show non-prescription skin-care categories. Recommendations are never paid rankings, cannot confirm a disease, and are blocked when an in-person review is needed.</p></div><span class="compliance-chip">RMP REVIEW GATE</span></div>
+          <div class="product-notice"><span>✚</span><p><strong>Pharmacy safety rule</strong><br />DermaMatrix does not recommend prescription drugs, doses, or disease-specific treatment. Discuss any medicine with a registered medical practitioner; buy only from a licensed pharmacy.</p></div>
+          <div class="product-grid" id="productGrid"><article class="product-empty"><span>□</span><h3>Assess first</h3><p>Complete a screening to see eligible personal-care categories, or use a clinician’s advice when choosing a pharmacy product.</p></article></div>
+        </section>
+
+        <section id="care" class="care-banner"><div><p class="eyebrow">THOUGHTFUL NEXT STEPS</p><h2>AI can guide the conversation.<br />A clinician makes the diagnosis.</h2><p>If a concern is new, changing, painful, bleeding, or worrying you, arrange an in-person medical assessment.</p></div><button class="button light" data-toast="Please contact a qualified dermatologist or local health service for medical advice.">Find a dermatologist <span>→</span></button></section>
+      </main>
+    </div>
+    <div class="result-modal" id="resultModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="resultTitle"><div class="modal-backdrop" data-close-modal></div><div class="modal-card"><button class="modal-close" aria-label="Close assessment result" data-close-modal>×</button><p class="eyebrow">AI SCREENING SUMMARY · AWAITING RMP REVIEW</p><h2 id="resultTitle">Your image insight is ready.</h2><p class="modal-disclaimer">This automated screen is informational only. It does not provide a verified diagnosis, counselling, prescription, or replacement for a registered medical practitioner.</p><div class="result-layout"><div class="segmentation-stage"><img id="resultImage" alt="Uploaded concern preview" /><span class="segmentation-mask"></span><span class="heat heat-one"></span><span class="heat heat-two"></span><span class="image-label">AI focus region</span></div><div class="findings"><span class="risk-label moderate" id="resultRisk">MODERATE REVIEW</span><h3 id="findingTitle">Clinical review recommended</h3><p id="findingText">The prototype detected a visual pattern worth discussing with a dermatologist, especially if this is new or changing.</p><div class="confidence-row"><span>Image quality</span><strong id="qualityScore">92% · Good</strong></div><div class="confidence-row"><span>Screening model</span><strong id="modelStatus">Loading model signal</strong></div><div class="confidence-row"><span>Clinical status</span><strong id="clinicalStatus">Awaiting RMP review</strong></div><div class="xai-callout"><span>✦</span><p><strong>Explainable AI</strong><br />The overlay marks the region that a future Grad-CAM model would prioritize for review.</p></div></div></div><div class="modal-actions"><button class="button quiet" data-close-modal>Save for later</button><button class="button primary" id="requestReviewButton">Request RMP review <span>→</span></button></div></div></div>
+    <div class="profile-modal" id="profileModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="profileTitle"><div class="modal-backdrop" data-close-profile></div><div class="profile-card"><button class="modal-close" aria-label="Close profile form" data-close-profile>×</button><p class="eyebrow">CONSENT-BASED LOCAL PROFILE</p><h2 id="profileTitle">Create your health profile.</h2><p class="profile-copy">We ask for these details only to personalise your screening support and clinical handoff. In this college prototype, data is stored in a local database on this computer—not sent to a pharmacy or advertiser.</p><form id="profileForm"><div class="profile-fields"><label>Full name<input name="full_name" required autocomplete="name" placeholder="Your full name" /></label><label>Phone number<input name="phone_number" required autocomplete="tel" inputmode="tel" placeholder="10-digit mobile number" /></label><label>Email address<input name="email_address" required type="email" autocomplete="email" placeholder="you@example.com" /></label><label>Patient ID<span class="id-note">Generated by DermaMatrix after consent</span></label></div><label class="history-field">Past medical history<textarea name="past_history" required placeholder="Allergies, prior skin/hair/nail conditions, medicines, relevant diagnoses, etc."></textarea></label><label class="history-field">Current health concerns<textarea name="current_history" required placeholder="Current symptoms, ongoing care, and changes you want a clinician to know."></textarea></label><label class="consent-row"><input type="checkbox" name="health_data_consent" required /><span>I consent to the local collection of my name, contact details, and health history for this screening-support prototype. I understand I can request deletion from the project operator.</span></label><div class="profile-actions"><button type="button" class="button quiet" data-close-profile>Continue as guest</button><button class="button primary" type="submit">Save local profile <span>→</span></button></div></form></div></div>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
