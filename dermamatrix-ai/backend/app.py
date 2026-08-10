@@ -18,6 +18,7 @@ from PIL import Image, ImageStat
 from werkzeug.utils import secure_filename
 
 from model_service import run_screening_model
+from lesion_classifier import classify_dermoscopic_lesion
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -254,6 +255,10 @@ def create_assessment():
         return jsonify({"error": "Invalid assessment details."}), 400
 
     model_output = run_screening_model(duration, discomfort, change, quality, image_features)
+    image_context = request.form.get("image_context", "general_photo").strip()
+    research_classifier = None
+    if area == "Skin" and image_context == "dermoscopic_lesion":
+        research_classifier = classify_dermoscopic_lesion(image_bytes)
     risk_score = model_output["risk_score"]
     risk_level, title, summary = screening_summary(area, risk_score)
     assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
@@ -274,7 +279,7 @@ def create_assessment():
     return jsonify({
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "label": "Good" if quality >= 80 else "Needs clearer image"}, "risk": {"score": risk_score, "level": risk_level}, "screening": {"title": title, "summary": summary},
-        "model": model_output, "model_pipeline": {"image_quality_gate": "completed", "lesion_segmentation": "visual prototype overlay", "classification": "not clinically trained in this prototype", "explainability": "Grad-CAM integration point"},
+        "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "lesion_segmentation": "visual prototype overlay", "classification": "HAM10000 research classifier" if research_classifier else "not run: requires explicit dermatoscopic lesion image selection", "explainability": "Grad-CAM integration point"},
         "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "awaiting_rmp_review", "commerce_eligibility": "personal_care_only" if risk_score < 65 else "blocked_pending_clinical_review",
     })
 

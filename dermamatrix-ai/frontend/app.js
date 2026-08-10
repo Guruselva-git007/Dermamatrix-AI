@@ -49,7 +49,7 @@ async function analyze() {
   if (!state.imageUrl) return;
   const button = $('#analyzeButton'); button.disabled = true; button.innerHTML = 'Preparing secure screen <span>…</span>';
   const form = new FormData();
-  form.append('image', state.file); form.append('area', state.area); form.append('duration', $('#duration').value); form.append('discomfort', $('#discomfort').value); form.append('change', $('#change').value); form.append('patient_id', state.profile?.patient_id || '');
+  form.append('image', state.file); form.append('area', state.area); form.append('duration', $('#duration').value); form.append('discomfort', $('#discomfort').value); form.append('change', $('#change').value); form.append('image_context', $('#imageContext').value); form.append('patient_id', state.profile?.patient_id || '');
   let result;
   try {
     const response = await fetch('/api/assessments', { method: 'POST', body: form }); result = await response.json();
@@ -62,6 +62,12 @@ async function analyze() {
   $('#resultRisk').className = `risk-label ${score < 40 ? 'low' : 'moderate'}`;
   $('#findingTitle').textContent = result.screening.title; $('#findingText').textContent = result.screening.summary;
   $('#qualityScore').textContent = `${result.quality.score}% · ${result.quality.label}`; $('#modelStatus').textContent = `${Math.round(result.model.confidence * 100)}% · ${result.model.version}`; $('#clinicalStatus').textContent = 'Awaiting RMP review';
+  const researchBox = $('#researchResult');
+  if (result.research_classifier?.available) {
+    const top = result.research_classifier.top_predictions[0];
+    $('#researchPrediction').textContent = `${top.label} · research confidence ${Math.round(top.probability * 100)}%. This output is only valid for dermatoscopic lesion images, never face photos.`;
+    researchBox.hidden = false;
+  } else { researchBox.hidden = true; }
   $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false'); $('#stepCount').textContent = 'STEP 3 OF 3';
   $('#riskScore').textContent = score;
   $('#riskMessage').textContent = score < 40 ? 'Your current profile looks stable. Keep up your healthy routine.' : score < 65 ? 'A few factors need attention. Consider a clinician review if this persists.' : 'Your answers indicate a higher need for a professional assessment.';

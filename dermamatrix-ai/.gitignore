@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 dermamatrix.db
 .env
+.ml-venv/
+backend/models/*.ptw
