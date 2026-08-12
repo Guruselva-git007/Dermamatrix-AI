@@ -6,3 +6,4 @@ dermamatrix.db
 .env
 .ml-venv/
 backend/models/*.ptw
+backend/.local-mysql/

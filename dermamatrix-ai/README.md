@@ -13,16 +13,19 @@ The India-aligned guardrails and production requirements are documented in `docs
 
 See [the model card](docs/model-card.md) and [research-data protocol](docs/research-data-protocol.md) before any model training or evaluation.
 
-## Run the complete app (MySQL required)
+## Run the complete app (local MySQL included)
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
-mysql -u root -e "CREATE DATABASE IF NOT EXISTS dermamatrix_ai CHARACTER SET utf8mb4"
-MYSQL_SOCKET=/tmp/mysql.sock MYSQL_USER=root .venv/bin/python backend/app.py
+# Create backend/.env from backend/.env.example, then set a local MYSQL_PASSWORD.
+bash backend/scripts/run_local_mysql.sh
+.venv/bin/python backend/app.py
 ```
 
 Open `http://127.0.0.1:8000`.
+
+`run_local_mysql.sh` starts an isolated MySQL 8 instance on port `3307`, creates the `dermamatrix_ai` database, and grants only the app's local database privileges. It does not modify a separately installed system MySQL service.
 
 ## Project layout
 

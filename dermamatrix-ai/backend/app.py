@@ -236,14 +236,14 @@ def health():
                 connected = cursor.fetchone()["connected"] == 1
         finally:
             connection.close()
-        return jsonify({"status": "ok", "service": "dermamatrix-api", "mode": "educational-prototype", "database": "mysql-connected" if connected else "unavailable", "model": "screening-triage-v1"})
+        return jsonify({"status": "ok", "service": "dermamatrix-api", "mode": "educational-prototype", "database": "mysql-connected" if connected else "unavailable", "model": "screening-triage-v1.1-demo"})
     except pymysql.MySQLError:
         return jsonify({
             "status": "ok",
             "service": "dermamatrix-api",
             "mode": "educational-prototype",
             "database": "mysql-unavailable-no-persistence",
-            "model": "screening-triage-v1",
+            "model": "screening-triage-v1.1-demo",
             "notice": "Screening demo is active. Configure MYSQL_USER and MYSQL_PASSWORD to enable profile and assessment persistence.",
         })
 
