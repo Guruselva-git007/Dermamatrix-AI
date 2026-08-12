@@ -1,4 +1,4 @@
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all' };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all', routines: [], checkins: [] };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -26,27 +26,13 @@ function openProfile() { $('#profileModal').classList.add('show'); $('#profileMo
 function closeProfile() { $('#profileModal').classList.remove('show'); $('#profileModal').setAttribute('aria-hidden', 'true'); }
 function closeResult() { $('#resultModal').classList.remove('show'); $('#resultModal').setAttribute('aria-hidden', 'true'); }
 
-function renderProducts(items, eligible, disclosure) {
-  const grid = $('#productGrid');
-  if (!eligible) {
-    grid.innerHTML = '<article class="product-empty"><span>✚</span><h3>Keep your routine simple</h3><p>Browse the general care shelf above. Avoid adding new products to a painful, rapidly changing, or broken-skin concern without professional advice.</p></article>';
-    return;
-  }
-  const cards = items.map(item => {
-    const partner = item.affiliate_url ? `<a class="partner-link" href="${item.affiliate_url}" target="_blank" rel="sponsored noopener noreferrer">View partner product ↗</a>` : '<button class="text-button" data-product>Discuss before use →</button>';
-    return `<article class="product-card"><span class="product-type">${item.category}</span><span class="consult-gate">CONSULT RMP FIRST</span><h3>${item.name}</h3><p>${item.purpose}</p><p class="guardrail">${item.guardrail}</p>${partner}</article>`;
-  }).join('');
-  grid.innerHTML = `<p class="affiliate-disclosure">${disclosure}</p>${cards}`;
-  $$('[data-product]').forEach(button => { button.onclick = () => toast('Consult an RMP or pharmacist before starting any product or routine.'); });
-}
-
-async function loadProducts(area, score) {
-  try {
-    const response = await fetch(`/api/products?area=${encodeURIComponent(area)}&risk_score=${score}`);
-    const data = await response.json();
-    if (!response.ok) throw Error();
-    renderProducts(data.items, data.eligible, data.affiliate_disclosure);
-  } catch { toast('Product guidance is unavailable right now.'); }
+function showPage(page) {
+  const allowed = ['home', 'products', 'progress', 'settings'];
+  const target = allowed.includes(page) ? page : 'home';
+  $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
+  $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
+  if (target === 'progress') loadProgress();
+  window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
 
 function showCarePlan(plan) {
@@ -99,7 +85,7 @@ async function analyze() {
     if (data.quality.issues?.length) toast(data.quality.issues[0]);
     if (data.urgent_notice) toast(data.urgent_notice);
     $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
-    $('#stepCount').textContent = 'STEP 3 OF 3'; loadProducts(data.area, score);
+    $('#stepCount').textContent = 'STEP 3 OF 3';
   } catch (error) { toast(error.message || 'Unable to review this image.'); }
   button.disabled = false; button.innerHTML = 'Review image <span>→</span>';
 }
@@ -116,7 +102,7 @@ function saveProgress() {
 
 function viewCare() {
   closeResult();
-  $('#care').scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
+  showPage('products');
 }
 
 function searchDoctors(event) {
@@ -135,8 +121,8 @@ async function saveProfile(event) {
   try {
     const response = await fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await response.json(); if (!response.ok) throw Error(data.error);
-    state.profile = data; localStorage.setItem('dermamatrix_profile', JSON.stringify(data));
-    $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; closeProfile(); toast('Local profile saved.');
+    state.profile = { ...data, past_history: payload.past_history, current_history: payload.current_history }; localStorage.setItem('dermamatrix_profile', JSON.stringify(state.profile));
+    $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; closeProfile(); await loadProgress(); toast('Local profile saved.');
   } catch (error) { toast(error.message || 'Unable to save profile.'); }
   button.disabled = false;
 }
@@ -181,7 +167,86 @@ function restoreSettings() {
 function clearLocalProfile() {
   localStorage.removeItem('dermamatrix_profile'); state.profile = null;
   $('#profileName').textContent = 'Guest profile'; $('#profileMeta').textContent = 'Save health details';
+  state.routines = []; state.checkins = []; renderProgress();
   toast('Your local profile has been cleared from this browser.');
+}
+
+const escapeHTML = value => String(value || '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+
+function currentDate() { return new Date().toISOString().slice(0, 10); }
+
+function resetRoutineForm() {
+  $('#routineForm').reset(); $('#editingRoutineId').value = ''; $('#routineStartDate').value = currentDate();
+  $('#routineFormTitle').textContent = 'Add a routine'; $('#cancelRoutineEdit').hidden = true;
+}
+
+function renderProgress() {
+  const hasProfile = Boolean(state.profile?.patient_id);
+  const routines = state.routines || []; const checkins = state.checkins || [];
+  const latest = checkins[0];
+  $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.length}</strong><small>active routines</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(latest.reported_trend) : '—'}</strong><small>latest self-reported trend</small></article><article><span>◌</span><strong>${latest ? `${latest.priority_score}/100` : '—'}</strong><small>reported-concern priority</small></article>`;
+  $('#openProfileFromProgress').textContent = hasProfile ? 'Profile connected' : 'Set up profile';
+  $('#routineList').innerHTML = !hasProfile ? '<p class="empty-state">Set up a profile to store routines and progress securely in this local app.</p>' : !routines.length ? '<p class="empty-state">No routines yet. Add a clinician-recorded condition and its routine.</p>' : routines.map(routine => `<article class="routine-item"><div><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>Started ${escapeHTML(routine.start_date)} · ${routine.checkin_count || 0} check-in${Number(routine.checkin_count) === 1 ? '' : 's'}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">Delete</button></div></article>`).join('');
+  $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
+  const medicalHistory = hasProfile && (state.profile.past_history || state.profile.current_history) ? `<div class="medical-history-summary"><strong>Profile medical history</strong>${state.profile.past_history ? `<p>Past: ${escapeHTML(state.profile.past_history)}</p>` : ''}${state.profile.current_history ? `<p>Current: ${escapeHTML(state.profile.current_history)}</p>` : ''}</div>` : '';
+  const timeline = !hasProfile ? '<p class="empty-state">Your progress timeline is available after profile setup.</p>' : !checkins.length ? '<p class="empty-state">Save your first check-in to create a timeline.</p>' : checkins.map(item => `<article class="history-item"><div><strong>${escapeHTML(item.reported_trend)} · ${item.priority_score}/100</strong><p>${escapeHTML(item.condition_label)} · ${escapeHTML(item.routine_name)}</p>${item.note ? `<small>${escapeHTML(item.note)}</small>` : ''}</div><time>${escapeHTML(item.checkin_date)}</time></article>`).join('');
+  $('#progressHistory').innerHTML = medicalHistory + timeline;
+  $$('[data-edit-routine]').forEach(button => { button.onclick = () => editRoutine(button.dataset.editRoutine); });
+  $$('[data-delete-routine]').forEach(button => { button.onclick = () => deleteRoutine(button.dataset.deleteRoutine); });
+}
+
+async function loadProgress() {
+  if (!state.profile?.patient_id) { renderProgress(); return; }
+  try {
+    const patientId = encodeURIComponent(state.profile.patient_id);
+    const [routineResponse, checkinResponse] = await Promise.all([fetch(`/api/routines?patient_id=${patientId}`), fetch(`/api/progress-checkins?patient_id=${patientId}`)]);
+    const routineData = await routineResponse.json(); const checkinData = await checkinResponse.json();
+    if (!routineResponse.ok || !checkinResponse.ok) throw Error(routineData.error || checkinData.error);
+    state.routines = routineData.routines; state.checkins = checkinData.checkins; renderProgress();
+  } catch (error) { toast(error.message || 'Progress data is unavailable right now.'); }
+}
+
+function editRoutine(routineId) {
+  const routine = state.routines.find(item => item.routine_id === routineId);
+  if (!routine) return;
+  $('#editingRoutineId').value = routine.routine_id; $('#conditionLabel').value = routine.condition_label; $('#routineName').value = routine.routine_name;
+  $('#routineStartDate').value = routine.start_date; $('#routineNotes').value = routine.notes || '';
+  $('#routineFormTitle').textContent = 'Edit routine'; $('#cancelRoutineEdit').hidden = false;
+  $('#routineForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function saveRoutine(event) {
+  event.preventDefault();
+  if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving routines.'); }
+  const payload = { patient_id: state.profile.patient_id, condition_label: $('#conditionLabel').value, routine_name: $('#routineName').value, start_date: $('#routineStartDate').value, notes: $('#routineNotes').value };
+  const editingId = $('#editingRoutineId').value;
+  try {
+    const response = await fetch(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await response.json(); if (!response.ok) throw Error(data.error);
+    resetRoutineForm(); await loadProgress(); toast(editingId ? 'Routine updated.' : 'Routine added.');
+  } catch (error) { toast(error.message || 'Could not save this routine.'); }
+}
+
+async function deleteRoutine(routineId) {
+  if (!window.confirm('Delete this routine and its progress history?')) return;
+  try {
+    const response = await fetch(`/api/routines/${routineId}?patient_id=${encodeURIComponent(state.profile.patient_id)}`, { method: 'DELETE' });
+    const data = await response.json(); if (!response.ok) throw Error(data.error);
+    await loadProgress(); toast('Routine deleted.');
+  } catch (error) { toast(error.message || 'Could not delete this routine.'); }
+}
+
+async function saveCheckin(event) {
+  event.preventDefault();
+  if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving check-ins.'); }
+  const file = $('#checkinImage').files[0];
+  const payload = { patient_id: state.profile.patient_id, routine_id: $('#checkinRoutine').value, checkin_date: $('#checkinDate').value, reported_trend: $('#checkinTrend').value, discomfort: $('#checkinDiscomfort').value, change: $('#checkinChange').value, note: $('#checkinNote').value };
+  try {
+    const response = await fetch('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await response.json(); if (!response.ok) throw Error(data.error);
+    event.currentTarget.reset(); $('#checkinDate').value = currentDate(); await loadProgress();
+    toast(file ? `${data.progress_label}. The comparison image was not stored.` : `${data.progress_label}. Check-in saved.`);
+  } catch (error) { toast(error.message || 'Could not save this check-in.'); }
 }
 
 function updateImageContext() {
@@ -192,6 +257,7 @@ function updateImageContext() {
 }
 
 $$('.area-choice button').forEach(button => { button.onclick = () => selectArea(button.dataset.area); });
+$$('[data-page-nav]').forEach(link => { link.onclick = event => { event.preventDefault(); showPage(link.dataset.pageNav); }; });
 $('#imageInput').onchange = event => setImage(event.target.files[0]);
 $('#imageContext').onchange = updateImageContext;
 const drop = $('#dropZone');
@@ -199,7 +265,7 @@ const drop = $('#dropZone');
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
 drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
 $('#analyzeButton').onclick = analyze; $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
-$('#doctorSearchForm').onsubmit = searchDoctors; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
+$('#doctorSearchForm').onsubmit = searchDoctors; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => $('.sidebar').classList.toggle('open');
@@ -210,7 +276,12 @@ $('#notificationsToggle').onchange = event => { localStorage.setItem('dermamatri
 $('#motionToggle').onchange = event => { localStorage.setItem('dermamatrix_reduced_motion', String(event.target.checked)); document.body.classList.toggle('reduce-motion', event.target.checked); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
 $('#clearProfileButton').onclick = clearLocalProfile;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
+$('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin;
 restoreProfile();
 restoreSettings();
 renderDiscoveryCatalog();
 updateImageContext();
+resetRoutineForm();
+$('#checkinDate').value = currentDate();
+loadProgress();
+showPage(location.hash.replace('#', '') || 'home');

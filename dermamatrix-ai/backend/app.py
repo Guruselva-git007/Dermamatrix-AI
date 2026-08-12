@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import os
+import uuid
 from datetime import datetime, timezone
 
 import pymysql
@@ -115,6 +116,36 @@ def initialise_database() -> None:
             requested_at DATETIME NOT NULL,
             INDEX idx_review_assessment (assessment_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        """CREATE TABLE IF NOT EXISTS care_routines (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            routine_id VARCHAR(50) UNIQUE NOT NULL,
+            user_id BIGINT NOT NULL,
+            condition_label VARCHAR(180) NOT NULL,
+            routine_name VARCHAR(180) NOT NULL,
+            start_date DATE NOT NULL,
+            notes TEXT NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            CONSTRAINT fk_routine_user FOREIGN KEY (user_id) REFERENCES users(id),
+            INDEX idx_routine_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        """CREATE TABLE IF NOT EXISTS progress_checkins (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            checkin_id VARCHAR(50) UNIQUE NOT NULL,
+            user_id BIGINT NOT NULL,
+            routine_id VARCHAR(50) NOT NULL,
+            checkin_date DATE NOT NULL,
+            reported_trend VARCHAR(30) NOT NULL,
+            discomfort_score INT NOT NULL,
+            change_score INT NOT NULL,
+            priority_score INT NOT NULL,
+            note TEXT NOT NULL,
+            image_stored BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at DATETIME NOT NULL,
+            CONSTRAINT fk_checkin_user FOREIGN KEY (user_id) REFERENCES users(id),
+            INDEX idx_checkin_routine (routine_id),
+            INDEX idx_checkin_user_date (user_id, checkin_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     ]
     global DATABASE_BOOT_ERROR
     try:
@@ -137,6 +168,29 @@ def initialise_database() -> None:
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def user_for_patient(connection: pymysql.Connection, patient_id: str) -> dict | None:
+    """Resolve a local demo profile; real deployment requires authenticated sessions."""
+    if not patient_id:
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id, patient_id, full_name FROM users WHERE patient_id = %s", (patient_id,))
+        return cursor.fetchone()
+
+
+def routine_payload(payload: dict) -> tuple[str, str, str, str] | None:
+    condition_label = str(payload.get("condition_label", "")).strip()[:180]
+    routine_name = str(payload.get("routine_name", "")).strip()[:180]
+    start_date = str(payload.get("start_date", "")).strip()[:10]
+    notes = str(payload.get("notes", "")).strip()[:2000]
+    if not condition_label or not routine_name or len(start_date) != 10:
+        return None
+    try:
+        datetime.strptime(start_date, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return condition_label, routine_name, start_date, notes
 
 
 def image_quality(image_bytes: bytes) -> tuple[int, dict]:
@@ -274,6 +328,165 @@ def create_profile():
     finally:
         connection.close()
     return jsonify({"patient_id": patient_id, "full_name": payload["full_name"].strip(), "stored_in": "mysql", "consent_recorded": True}), 201
+
+
+@app.get("/api/routines")
+def list_routines():
+    patient_id = request.args.get("patient_id", "").strip()
+    connection = database()
+    try:
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Create or open a local profile before viewing progress."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT r.routine_id, r.condition_label, r.routine_name, DATE_FORMAT(r.start_date, '%%Y-%%m-%%d') AS start_date, r.notes,
+                   DATE_FORMAT(r.updated_at, '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
+                   COUNT(c.id) AS checkin_count, MAX(c.checkin_date) AS latest_checkin_date
+                   FROM care_routines r LEFT JOIN progress_checkins c ON c.routine_id = r.routine_id
+                   WHERE r.user_id = %s GROUP BY r.id ORDER BY r.updated_at DESC""",
+                (user["id"],),
+            )
+            routines = cursor.fetchall()
+        return jsonify({"routines": routines, "image_policy": "Uploaded comparison photos are not stored."})
+    finally:
+        connection.close()
+
+
+@app.post("/api/routines")
+def create_routine():
+    payload = request.get_json(silent=True) or {}
+    values = routine_payload(payload)
+    if not values:
+        return jsonify({"error": "Provide a clinician-recorded condition, routine name, and valid start date."}), 400
+    connection = database()
+    try:
+        user = user_for_patient(connection, str(payload.get("patient_id", "")).strip())
+        if not user:
+            return jsonify({"error": "Create a local profile before adding routines."}), 401
+        routine_id = f"routine-{uuid.uuid4().hex[:12]}"
+        timestamp = now()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO care_routines (routine_id, user_id, condition_label, routine_name, start_date, notes, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (routine_id, user["id"], *values, timestamp, timestamp),
+            )
+        connection.commit()
+        return jsonify({"routine_id": routine_id, "message": "Routine saved. The app does not verify diagnoses; record only clinician-confirmed information."}), 201
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.patch("/api/routines/<routine_id>")
+def update_routine(routine_id: str):
+    payload = request.get_json(silent=True) or {}
+    values = routine_payload(payload)
+    if not values:
+        return jsonify({"error": "Provide a clinician-recorded condition, routine name, and valid start date."}), 400
+    connection = database()
+    try:
+        user = user_for_patient(connection, str(payload.get("patient_id", "")).strip())
+        if not user:
+            return jsonify({"error": "Create a local profile before editing routines."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE care_routines SET condition_label=%s, routine_name=%s, start_date=%s, notes=%s, updated_at=%s WHERE routine_id=%s AND user_id=%s", (*values, now(), routine_id, user["id"]))
+            if cursor.rowcount != 1:
+                return jsonify({"error": "Routine not found."}), 404
+        connection.commit()
+        return jsonify({"routine_id": routine_id, "message": "Routine updated."})
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.delete("/api/routines/<routine_id>")
+def delete_routine(routine_id: str):
+    patient_id = request.args.get("patient_id", "").strip()
+    connection = database()
+    try:
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Create a local profile before deleting routines."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM progress_checkins WHERE routine_id=%s AND user_id=%s", (routine_id, user["id"]))
+            cursor.execute("DELETE FROM care_routines WHERE routine_id=%s AND user_id=%s", (routine_id, user["id"]))
+            if cursor.rowcount != 1:
+                return jsonify({"error": "Routine not found."}), 404
+        connection.commit()
+        return jsonify({"routine_id": routine_id, "message": "Routine and its local progress history deleted."})
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.get("/api/progress-checkins")
+def list_progress_checkins():
+    patient_id = request.args.get("patient_id", "").strip()
+    connection = database()
+    try:
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Create or open a local profile before viewing progress."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT c.checkin_id, c.routine_id, DATE_FORMAT(c.checkin_date, '%%Y-%%m-%%d') AS checkin_date, c.reported_trend,
+                   c.discomfort_score, c.change_score, c.priority_score, c.note, c.image_stored, r.condition_label, r.routine_name
+                   FROM progress_checkins c JOIN care_routines r ON r.routine_id=c.routine_id
+                   WHERE c.user_id=%s ORDER BY c.checkin_date DESC, c.id DESC LIMIT 100""",
+                (user["id"],),
+            )
+            checkins = cursor.fetchall()
+        return jsonify({"checkins": checkins, "score_label": "Reported-concern priority, not disease risk", "image_policy": "Comparison images are processed in the browser and are not stored."})
+    finally:
+        connection.close()
+
+
+@app.post("/api/progress-checkins")
+def create_progress_checkin():
+    payload = request.get_json(silent=True) or {}
+    patient_id = str(payload.get("patient_id", "")).strip()
+    routine_id = str(payload.get("routine_id", "")).strip()[:50]
+    trend = str(payload.get("reported_trend", "")).strip()
+    checkin_date = str(payload.get("checkin_date", "")).strip()[:10]
+    note = str(payload.get("note", "")).strip()[:2000]
+    if trend not in {"improving", "unchanged", "worsening"} or not routine_id:
+        return jsonify({"error": "Choose a routine and a self-reported trend."}), 400
+    try:
+        datetime.strptime(checkin_date, "%Y-%m-%d")
+        discomfort = int(payload.get("discomfort", 0)); change = int(payload.get("change", 0))
+    except ValueError:
+        return jsonify({"error": "Provide valid check-in details."}), 400
+    connection = database()
+    try:
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Create a local profile before adding a check-in."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT routine_id FROM care_routines WHERE routine_id=%s AND user_id=%s", (routine_id, user["id"]))
+            if not cursor.fetchone():
+                return jsonify({"error": "Routine not found."}), 404
+        model = run_screening_model(0, max(0, discomfort), max(0, change), 80, {"width": 0, "height": 0}, urgent_concern=False)
+        checkin_id = f"checkin-{uuid.uuid4().hex[:12]}"
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO progress_checkins (checkin_id, user_id, routine_id, checkin_date, reported_trend, discomfort_score, change_score, priority_score, note, image_stored, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE, %s)",
+                (checkin_id, user["id"], routine_id, checkin_date, trend, discomfort, change, model["risk_score"], note, now()),
+            )
+        connection.commit()
+        trend_label = {"improving": "Improving — self-reported", "unchanged": "No change — self-reported", "worsening": "Worsening — self-reported"}[trend]
+        return jsonify({"checkin_id": checkin_id, "priority_score": model["risk_score"], "priority_label": "Reported-concern priority, not disease risk", "progress_label": trend_label, "image_stored": False}), 201
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 @app.post("/api/clinical-review-requests")
