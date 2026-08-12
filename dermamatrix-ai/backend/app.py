@@ -28,6 +28,7 @@ MAX_FILE_BYTES = 10 * 1024 * 1024
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_BYTES
+DATABASE_BOOT_ERROR: str | None = None
 
 
 def now() -> str:
@@ -101,12 +102,21 @@ def initialise_database() -> None:
             INDEX idx_review_assessment (assessment_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     ]
-    connection = database()
+    global DATABASE_BOOT_ERROR
+    try:
+        connection = database()
+    except pymysql.MySQLError as error:
+        DATABASE_BOOT_ERROR = str(error)
+        app.logger.warning("MySQL is unavailable; assessments will run without persistence: %s", error)
+        return
     try:
         with connection.cursor() as cursor:
             for statement in statements:
                 cursor.execute(statement)
         connection.commit()
+    except pymysql.MySQLError as error:
+        DATABASE_BOOT_ERROR = str(error)
+        app.logger.warning("MySQL schema initialisation failed: %s", error)
     finally:
         connection.close()
 
@@ -149,6 +159,7 @@ def clinician_first_care_plan(risk_score: int) -> dict:
         "next_step": timing,
         "routine_guardrail": "Do not start medicines, self-treatment, or a condition-specific care routine based only on this app.",
         "product_guardrail": "Discuss any recommended personal-care product with a pharmacist or registered medical practitioner before using it, especially with allergies, pregnancy, broken skin, or ongoing treatment.",
+        "diet_guidance": "For general wellbeing, maintain regular meals with adequate protein, fruits and vegetables, and hydration. Do not use diet changes to self-treat a suspected condition; seek an RMP or dietitian’s advice for personalised guidance.",
         "diagnosis_notice": "AI output is a possible pattern for clinician discussion—not a verified diagnosis.",
     }
 
@@ -158,13 +169,13 @@ def personal_care_catalog(area: str, risk_score: int) -> list[dict]:
     if risk_score >= 65:
         return []
     items = [
-        {"name": "Fragrance-free moisturiser", "category": "Cosmetic / personal care", "purpose": "Supports the skin barrier for dry-feeling skin.", "guardrail": "Check ingredients against known allergies; stop use if irritation occurs."},
-        {"name": "Broad-spectrum sunscreen", "category": "Cosmetic / personal care", "purpose": "Everyday sun-protection product discovery.", "guardrail": "This is not a treatment; choose a labelled product from a licensed seller."},
+        {"name": "Fragrance-free moisturiser", "category": "Cosmetic / personal care", "purpose": "Supports the skin barrier for dry-feeling skin.", "guardrail": "Check ingredients against known allergies; stop use if irritation occurs.", "affiliate_url": os.getenv("AFFILIATE_MOISTURISER_URL", "")},
+        {"name": "Broad-spectrum sunscreen", "category": "Cosmetic / personal care", "purpose": "Everyday sun-protection product discovery.", "guardrail": "This is not a treatment; choose a labelled product from a licensed seller.", "affiliate_url": os.getenv("AFFILIATE_SUNSCREEN_URL", "")},
     ]
     if area == "Hair":
-        items.append({"name": "Gentle, fragrance-free scalp cleanser", "category": "Cosmetic / personal care", "purpose": "A low-irritation cleansing option to discuss with a pharmacist.", "guardrail": "Avoid using on broken or painful skin without clinician advice."})
+        items.append({"name": "Gentle, fragrance-free scalp cleanser", "category": "Cosmetic / personal care", "purpose": "A low-irritation cleansing option to discuss with a pharmacist.", "guardrail": "Avoid using on broken or painful skin without clinician advice.", "affiliate_url": os.getenv("AFFILIATE_SCALP_CLEANSER_URL", "")})
     elif area == "Nails":
-        items.append({"name": "Protective nail-care emollient", "category": "Cosmetic / personal care", "purpose": "Helps support dry cuticles and nail surroundings.", "guardrail": "Do not use it to self-treat discoloured, painful, or lifting nails."})
+        items.append({"name": "Protective nail-care emollient", "category": "Cosmetic / personal care", "purpose": "Helps support dry cuticles and nail surroundings.", "guardrail": "Do not use it to self-treat discoloured, painful, or lifting nails.", "affiliate_url": os.getenv("AFFILIATE_NAIL_CARE_URL", "")})
     return items
 
 
@@ -185,7 +196,14 @@ def health():
             connection.close()
         return jsonify({"status": "ok", "service": "dermamatrix-api", "mode": "educational-prototype", "database": "mysql-connected" if connected else "unavailable", "model": "screening-triage-v1"})
     except pymysql.MySQLError:
-        return jsonify({"status": "degraded", "database": "unavailable"}), 503
+        return jsonify({
+            "status": "ok",
+            "service": "dermamatrix-api",
+            "mode": "educational-prototype",
+            "database": "mysql-unavailable-no-persistence",
+            "model": "screening-triage-v1",
+            "notice": "Screening demo is active. Configure MYSQL_USER and MYSQL_PASSWORD to enable profile and assessment persistence.",
+        })
 
 
 @app.post("/api/profiles")
@@ -248,7 +266,7 @@ def products():
     except ValueError:
         return jsonify({"error": "Invalid risk score."}), 400
     items = personal_care_catalog(area, risk_score)
-    return jsonify({"items": items, "eligible": bool(items), "consultation_required": True, "policy": "No prescription medicine, diagnosis-specific treatment, dosage, or paid ranking is provided by this prototype.", "pharmacy_notice": "Before using a suggested product or routine, consult an RMP or pharmacist and use a licensed pharmacy."})
+    return jsonify({"items": items, "eligible": bool(items), "consultation_required": True, "affiliate_disclosure": "Some links may be affiliate links. This does not change clinical suitability, ordering, or access to care.", "policy": "No prescription medicine, diagnosis-specific treatment, dosage, or paid ranking is provided by this prototype.", "pharmacy_notice": "Before using a suggested product or routine, consult an RMP or pharmacist and use a licensed pharmacy."})
 
 
 @app.post("/api/assessments")
@@ -280,30 +298,39 @@ def create_assessment():
     risk_level, title, summary = screening_summary(area, risk_score)
     assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
     patient_id = request.form.get("patient_id", "").strip()
-    connection = database()
+    persistence = "mysql"
     try:
-        with connection.cursor() as cursor:
-            user_id = None
-            if patient_id:
-                cursor.execute("SELECT id FROM users WHERE patient_id = %s", (patient_id,))
-                user = cursor.fetchone()
-                user_id = user["id"] if user else None
-            cursor.execute("INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)", (assessment_id, user_id, area, risk_score, quality, "awaiting_rmp_review", now()))
-        connection.commit()
-    finally:
-        connection.close()
+        connection = database()
+        try:
+            with connection.cursor() as cursor:
+                user_id = None
+                if patient_id:
+                    cursor.execute("SELECT id FROM users WHERE patient_id = %s", (patient_id,))
+                    user = cursor.fetchone()
+                    user_id = user["id"] if user else None
+                cursor.execute("INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)", (assessment_id, user_id, area, risk_score, quality, "awaiting_rmp_review", now()))
+            connection.commit()
+        finally:
+            connection.close()
+    except pymysql.MySQLError:
+        persistence = "not-persisted-mysql-unavailable"
 
     return jsonify({
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "label": "Good" if quality >= 80 else "Needs clearer image"}, "risk": {"score": risk_score, "level": risk_level}, "screening": {"title": title, "summary": summary},
-        "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "lesion_segmentation": "visual prototype overlay", "classification": "HAM10000 research classifier" if research_classifier else "not run: requires explicit dermatoscopic lesion image selection", "explainability": "Grad-CAM integration point"},
-        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "awaiting_rmp_review", "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if risk_score < 65 else "blocked_pending_clinical_review",
+        "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "attention_map": "Grad-CAM research attention map" if research_classifier else "not run: requires explicit dermatoscopic lesion image selection", "classification": "HAM10000 research classifier" if research_classifier else "not run: requires explicit dermatoscopic lesion image selection", "explainability": "Grad-CAM research attention map"},
+        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "awaiting_rmp_review", "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if risk_score < 65 else "blocked_pending_clinical_review",
     })
 
 
 @app.errorhandler(413)
 def too_large(_error):
     return jsonify({"error": "The image is larger than 10 MB."}), 413
+
+
+@app.errorhandler(pymysql.MySQLError)
+def mysql_unavailable(_error):
+    return jsonify({"error": "MySQL is temporarily unavailable. Screening can continue without saving a profile; retry persistence after database access is restored."}), 503
 
 
 initialise_database()

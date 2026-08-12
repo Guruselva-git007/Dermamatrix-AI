@@ -13,6 +13,8 @@ MYSQL_SOCKET=/tmp/mysql.sock MYSQL_USER=root .venv/bin/python backend/app.py
 
 Open `http://127.0.0.1:8000`.
 
+If MySQL credentials are unavailable on demo day, the screening, CNN research classification, Grad-CAM attention map, care guidance, clinic search, and affiliate-ready catalogue remain available; only profile/assessment persistence is disabled. To re-enable it, start with `MYSQL_USER`, `MYSQL_PASSWORD`, and (when required) `MYSQL_SOCKET` set for your local MySQL account.
+
 ## Endpoints
 
 - `GET /api/health` – local service, MySQL, and model health check

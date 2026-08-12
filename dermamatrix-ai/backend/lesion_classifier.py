@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import os
+import base64
 from functools import lru_cache
 
 import torch
@@ -40,18 +41,38 @@ def load_model():
 
 
 def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
-    """Return top research labels for a dermatoscopic lesion image."""
+    """Return research labels plus a Grad-CAM attention map for dermoscopy only."""
     model = load_model()
     if model is None:
         return {"available": False, "reason": "Research weights are not installed.", "notice": RESEARCH_NOTICE}
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = transforms.Compose([transforms.Resize(280), transforms.CenterCrop(224), transforms.ToTensor()])(image).unsqueeze(0)
-    with torch.inference_mode():
-        probabilities = functional.softmax(model(tensor), dim=1)[0].tolist()
+    activations = []
+    hook = model.layer4.register_forward_hook(lambda _module, _inputs, output: activations.append(output))
+    try:
+        model.zero_grad(set_to_none=True)
+        logits = model(tensor)
+        predicted_index = int(logits.argmax(dim=1).item())
+        activations[0].retain_grad()
+        logits[0, predicted_index].backward()
+        gradients = activations[0].grad[0]
+        weights = gradients.mean(dim=(1, 2), keepdim=True)
+        attention = functional.relu((weights * activations[0][0]).sum(dim=0, keepdim=True))
+        attention = functional.interpolate(attention.unsqueeze(0), size=(224, 224), mode="bilinear", align_corners=False)[0, 0]
+        attention = attention - attention.min()
+        attention = attention / (attention.max() + 1e-8)
+        attention_image = Image.fromarray((attention.detach().cpu().numpy() * 255).astype("uint8"), mode="L")
+        buffer = io.BytesIO()
+        attention_image.save(buffer, format="PNG")
+        attention_base64 = base64.b64encode(buffer.getvalue()).decode("ascii")
+        probabilities = functional.softmax(logits, dim=1)[0].detach().cpu().tolist()
+    finally:
+        hook.remove()
     ranked = sorted(zip(CLASSES, probabilities), key=lambda value: value[1], reverse=True)
     return {
         "available": True,
         "model": "HAM10000 ResNet-34 research model", "model_version": "Tschandl-2020-resnet34", "image_requirement": "Single, in-focus dermatoscopic lesion image only—not a face photo or selfie.",
         "top_predictions": [{"code": code, "label": LABELS[code], "probability": round(probability, 4)} for code, probability in ranked[:3]],
+        "attention_map": {"image": f"data:image/png;base64,{attention_base64}", "label": "Grad-CAM research attention map — not a lesion segmentation or medical finding."},
         "notice": RESEARCH_NOTICE,
     }
