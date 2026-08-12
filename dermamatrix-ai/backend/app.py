@@ -31,6 +31,20 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_BYTES
 DATABASE_BOOT_ERROR: str | None = None
 
 
+def load_local_env() -> None:
+    """Load simple KEY=VALUE local demo settings without committing secrets."""
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if not os.path.isfile(env_path):
+        return
+    with open(env_path, encoding="utf-8") as file:
+        for raw_line in file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
 def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -333,6 +347,7 @@ def mysql_unavailable(_error):
     return jsonify({"error": "MySQL is temporarily unavailable. Screening can continue without saving a profile; retry persistence after database access is restored."}), 503
 
 
+load_local_env()
 initialise_database()
 
 if __name__ == "__main__":
