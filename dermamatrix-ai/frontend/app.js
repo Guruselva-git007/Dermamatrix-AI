@@ -72,9 +72,11 @@ function setResearchAttention(researchClassifier) {
 
 async function analyze() {
   if (!state.imageUrl) return;
+  if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
+  if ($('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
   const button = $('#analyzeButton'); button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
   const form = new FormData();
-  [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || '']].forEach(([key, value]) => form.append(key, value));
+  [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || ''], ['image_consent', String($('#imageConsent').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)]].forEach(([key, value]) => form.append(key, value));
   try {
     const response = await fetch('/api/assessments', { method: 'POST', body: form });
     const data = await response.json();
@@ -89,6 +91,8 @@ async function analyze() {
     $('#modelStatus').textContent = `${Math.round(data.model.confidence * 100)}% · screening support`;
     $('#clinicalStatus').textContent = 'Awaiting RMP review';
     setResearchAttention(data.research_classifier); showCarePlan(data.care_plan);
+    if (data.quality.issues?.length) toast(data.quality.issues[0]);
+    if (data.urgent_notice) toast(data.urgent_notice);
     $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
     $('#stepCount').textContent = 'STEP 3 OF 3'; loadProducts(data.area, score);
   } catch (error) { toast(error.message || 'Unable to review this image.'); }
@@ -169,8 +173,16 @@ function clearLocalProfile() {
   toast('Your local profile has been cleared from this browser.');
 }
 
+function updateImageContext() {
+  const dermoscopy = $('#imageContext').value === 'dermoscopic_lesion';
+  $('#dermoscopyAttestation').hidden = !dermoscopy;
+  $('#dermoscopyConsent').required = dermoscopy;
+  if (!dermoscopy) $('#dermoscopyConsent').checked = false;
+}
+
 $$('.area-choice button').forEach(button => { button.onclick = () => selectArea(button.dataset.area); });
 $('#imageInput').onchange = event => setImage(event.target.files[0]);
+$('#imageContext').onchange = updateImageContext;
 const drop = $('#dropZone');
 ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
@@ -190,3 +202,4 @@ $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. The
 restoreProfile();
 restoreSettings();
 renderDiscoveryCatalog();
+updateImageContext();

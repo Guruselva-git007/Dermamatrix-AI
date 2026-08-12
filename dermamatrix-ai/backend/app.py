@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import pymysql
 from flask import Flask, jsonify, request, send_from_directory
-from PIL import Image, ImageStat
+from PIL import Image, ImageFilter, ImageStat
 from werkzeug.utils import secure_filename
 
 from model_service import run_screening_model
@@ -140,16 +140,31 @@ def allowed_file(filename: str) -> bool:
 
 
 def image_quality(image_bytes: bytes) -> tuple[int, dict]:
-    """Non-clinical image-quality features only—never a disease classifier."""
+    """Return non-diagnostic image usability checks; never a disease classifier."""
     with Image.open(io.BytesIO(image_bytes)) as image:
         image = image.convert("RGB")
         width, height = image.size
         resized = image.resize((1, 1))
         brightness = sum(ImageStat.Stat(resized).mean) / 3
-    resolution_score = min(1.0, (width * height) / (1000 * 1000)) * 10
-    light_score = max(0, 10 - abs(brightness - 145) / 17)
-    quality = int(max(55, min(98, 74 + resolution_score + light_score)))
-    return quality, {"width": width, "height": height, "brightness": round(brightness, 1)}
+        edge_variance = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES).convert("L")).var[0]
+    issues = []
+    if min(width, height) < 450:
+        issues.append("The image is too small; retake it at a higher resolution.")
+    if brightness < 55:
+        issues.append("The image is too dark; use even, indirect light.")
+    elif brightness > 220:
+        issues.append("The image is overexposed; avoid flash glare.")
+    if edge_variance < 90:
+        issues.append("The image may be out of focus; retake it sharply.")
+    resolution_score = min(1.0, (width * height) / (1000 * 1000)) * 18
+    light_score = max(0, 18 - abs(brightness - 145) / 8)
+    focus_score = min(18, edge_variance / 11)
+    quality = int(max(0, min(98, 46 + resolution_score + light_score + focus_score)))
+    return quality, {
+        "width": width, "height": height, "brightness": round(brightness, 1),
+        "edge_variance": round(edge_variance, 1), "usable_for_research_model": not issues,
+        "issues": issues,
+    }
 
 
 def screening_summary(area: str, risk_score: int) -> tuple[str, str, str]:
@@ -158,6 +173,19 @@ def screening_summary(area: str, risk_score: int) -> tuple[str, str, str]:
     if risk_score < 65:
         return ("MODERATE REVIEW", "Clinical review recommended", f"The {area.lower()} screen and symptom details indicate a pattern worth discussing with a dermatologist, especially if it is new or changing.")
     return ("PRIORITY CLINICAL REVIEW", "Please arrange clinical review soon", "Your reported symptom details indicate a need for timely RMP review. This tool cannot determine a diagnosis or urgency on its own.")
+
+
+def research_model_status(area: str, image_context: str, dermoscopy_attested: bool, image_features: dict) -> tuple[bool, str]:
+    """Guard research inference to its published image domain."""
+    if area != "Skin":
+        return False, "The lesion research model is limited to dermatoscopic skin-lesion images."
+    if image_context != "dermoscopic_lesion":
+        return False, "Choose a dermatoscopic lesion image only if a dermatoscope was used."
+    if not dermoscopy_attested:
+        return False, "Confirm that this is a single, in-focus dermatoscopic lesion image before research inference."
+    if not image_features["usable_for_research_model"]:
+        return False, "Retake the image before research inference: " + " ".join(image_features["issues"])
+    return True, "Eligible for research-only dermatoscopic lesion inference."
 
 
 def clinician_first_care_plan(risk_score: int) -> dict:
@@ -298,15 +326,22 @@ def create_assessment():
     except Exception:
         return jsonify({"error": "The selected file could not be read as an image."}), 422
     area = request.form.get("area", "Skin").strip()[:30] or "Skin"
+    if area not in {"Skin", "Hair", "Nails"}:
+        return jsonify({"error": "Choose Skin & sweat, Hair & scalp, or Nail health."}), 400
     try:
         duration = int(request.form.get("duration", 0)); discomfort = int(request.form.get("discomfort", 0)); change = int(request.form.get("change", 0))
     except ValueError:
         return jsonify({"error": "Invalid assessment details."}), 400
 
-    model_output = run_screening_model(duration, discomfort, change, quality, image_features)
+    if request.form.get("image_consent") != "true":
+        return jsonify({"error": "Confirm that you have consent to upload this image for screening support."}), 400
+    urgent_concern = request.form.get("urgent_concern") == "true"
+    model_output = run_screening_model(duration, discomfort, change, quality, image_features, urgent_concern)
     image_context = request.form.get("image_context", "general_photo").strip()
-    research_classifier = None
-    if area == "Skin" and image_context == "dermoscopic_lesion":
+    dermoscopy_attested = request.form.get("dermoscopy_attestation") == "true"
+    can_run_research_model, research_reason = research_model_status(area, image_context, dermoscopy_attested, image_features)
+    research_classifier = {"available": False, "reason": research_reason}
+    if can_run_research_model:
         research_classifier = classify_dermoscopic_lesion(image_bytes)
     risk_score = model_output["risk_score"]
     risk_level, title, summary = screening_summary(area, risk_score)
@@ -331,9 +366,9 @@ def create_assessment():
 
     return jsonify({
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
-        "quality": {"score": quality, "label": "Good" if quality >= 80 else "Needs clearer image"}, "risk": {"score": risk_score, "level": risk_level}, "screening": {"title": title, "summary": summary},
-        "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "attention_map": "Grad-CAM research attention map" if research_classifier else "not run: requires explicit dermatoscopic lesion image selection", "classification": "HAM10000 research classifier" if research_classifier else "not run: requires explicit dermatoscopic lesion image selection", "explainability": "Grad-CAM research attention map"},
-        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "awaiting_rmp_review", "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if risk_score < 65 else "blocked_pending_clinical_review",
+        "quality": {"score": quality, "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"]}, "risk": {"score": risk_score, "level": risk_level, "label": "Reported-concern priority, not disease risk"}, "screening": {"title": title, "summary": summary},
+        "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
+        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_rmp_contact_selected" if urgent_concern else "awaiting_rmp_review", "urgent_notice": "You selected a prompt-care concern. Contact an RMP or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if risk_score < 65 and not urgent_concern else "blocked_pending_clinical_review",
     })
 
 
