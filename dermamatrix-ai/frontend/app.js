@@ -187,6 +187,17 @@ function restoreSettings() {
   document.body.classList.toggle('reduce-motion', reducedMotion);
 }
 
+function applyTheme(theme) {
+  const dark = theme === 'dark';
+  document.body.dataset.theme = dark ? 'dark' : 'light';
+  $('#themeToggle').setAttribute('aria-pressed', String(dark));
+  $('#themeToggle').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Day</b>' : '<span aria-hidden="true">☾</span><b>Night</b>';
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#0b1426' : '#2474d8';
+}
+
+function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') || 'light'); }
+
 function clearLocalProfile() {
   localStorage.removeItem('dermamatrix_profile'); state.profile = null;
   $('#profileName').textContent = 'Guest profile'; $('#profileMeta').textContent = 'Save health details';
@@ -299,9 +310,11 @@ $('#notificationsToggle').onchange = event => { localStorage.setItem('dermamatri
 $('#motionToggle').onchange = event => { localStorage.setItem('dermamatrix_reduced_motion', String(event.target.checked)); document.body.classList.toggle('reduce-motion', event.target.checked); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
 $('#clearProfileButton').onclick = clearLocalProfile;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
+$('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('dermamatrix_theme', next); applyTheme(next); };
 $('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin;
 restoreProfile();
 restoreSettings();
+restoreTheme();
 renderDiscoveryCatalog();
 updateImageContext();
 resetRoutineForm();
