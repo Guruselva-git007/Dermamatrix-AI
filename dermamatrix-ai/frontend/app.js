@@ -29,7 +29,7 @@ function closeResult() { $('#resultModal').classList.remove('show'); $('#resultM
 function renderProducts(items, eligible, disclosure) {
   const grid = $('#productGrid');
   if (!eligible) {
-    grid.innerHTML = '<article class="product-empty"><span>✚</span><h3>Clinical review first</h3><p>This screen is not eligible for product guidance. Please consult an RMP.</p></article>';
+    grid.innerHTML = '<article class="product-empty"><span>✚</span><h3>Keep your routine simple</h3><p>Browse the general care shelf above. Avoid adding new products to a painful, rapidly changing, or broken-skin concern without professional advice.</p></article>';
     return;
   }
   const cards = items.map(item => {
@@ -62,9 +62,12 @@ function setResearchAttention(researchClassifier) {
   const research = $('#researchResult');
   const map = $('#attentionMap');
   if (!researchClassifier?.available) {
-    research.hidden = true; map.hidden = true; $('#attentionLabel').textContent = 'Image preview'; return;
+    $('#researchHeading').textContent = 'Image scope';
+    $('#researchPrediction').textContent = researchClassifier?.reason || 'General photos receive visual-quality feedback and screening support only. They are not disease-classified.';
+    research.hidden = false; map.hidden = true; $('#attentionLabel').textContent = 'Image preview'; return;
   }
   const top = researchClassifier.top_predictions[0];
+  $('#researchHeading').textContent = 'Research lesion model';
   $('#researchPrediction').textContent = `${top.label} · ${Math.round(top.probability * 100)}% research confidence. Not a diagnosis; only for dermatoscopic lesion images.`;
   $('#attentionLabel').textContent = 'Grad-CAM research attention — not lesion segmentation';
   map.src = researchClassifier.attention_map.image; map.hidden = false; research.hidden = false;
@@ -89,8 +92,10 @@ async function analyze() {
     $('#findingTitle').textContent = data.screening.title; $('#findingText').textContent = data.screening.summary;
     $('#qualityScore').textContent = `${data.quality.score}% · ${data.quality.label}`;
     $('#modelStatus').textContent = `${Math.round(data.model.confidence * 100)}% · screening support`;
-    $('#clinicalStatus').textContent = 'Awaiting RMP review';
+    $('#clinicalStatus').textContent = 'Ready to save locally';
     setResearchAttention(data.research_classifier); showCarePlan(data.care_plan);
+    const note = $('#concernNote').value.trim();
+    $('#progressText').textContent = note ? `Tracking note: “${note}” Your image is not saved; save this summary to compare future reported changes.` : 'Save this non-diagnostic snapshot to compare your reported changes over time. Uploaded images are not saved.';
     if (data.quality.issues?.length) toast(data.quality.issues[0]);
     if (data.urgent_notice) toast(data.urgent_notice);
     $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
@@ -99,13 +104,19 @@ async function analyze() {
   button.disabled = false; button.innerHTML = 'Review image <span>→</span>';
 }
 
-async function requestReview() {
-  if (!state.assessmentId) return toast('Complete a screen before requesting review.');
-  try {
-    const response = await fetch('/api/clinical-review-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ assessment_id: state.assessmentId, patient_id: state.profile?.patient_id || '' }) });
-    const data = await response.json(); if (!response.ok) throw Error(data.error);
-    $('#clinicalStatus').textContent = 'RMP review requested'; toast('Review request saved. An RMP must independently assess the concern.');
-  } catch (error) { toast(error.message || 'Could not request review.'); }
+function saveProgress() {
+  if (!state.assessmentId) return toast('Complete a screen before saving progress.');
+  const entries = JSON.parse(localStorage.getItem('dermamatrix_progress') || '[]');
+  const entry = { id: state.assessmentId, date: new Date().toISOString(), area: state.area, priority: $('#resultRisk').textContent, note: $('#concernNote').value.trim(), imageStored: false };
+  const unique = [entry, ...entries.filter(item => item.id !== entry.id)].slice(0, 12);
+  localStorage.setItem('dermamatrix_progress', JSON.stringify(unique));
+  $('#clinicalStatus').textContent = `${unique.length} local snapshot${unique.length === 1 ? '' : 's'} saved`;
+  toast('Progress snapshot saved locally. Uploaded images are not kept.');
+}
+
+function viewCare() {
+  closeResult();
+  $('#care').scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
 }
 
 function searchDoctors(event) {
@@ -187,7 +198,7 @@ const drop = $('#dropZone');
 ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
 drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
-$('#analyzeButton').onclick = analyze; $('#requestReviewButton').onclick = requestReview;
+$('#analyzeButton').onclick = analyze; $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
 $('#doctorSearchForm').onsubmit = searchDoctors; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });

@@ -169,10 +169,10 @@ def image_quality(image_bytes: bytes) -> tuple[int, dict]:
 
 def screening_summary(area: str, risk_score: int) -> tuple[str, str, str]:
     if risk_score < 40:
-        return ("LOWER-PRIORITY REVIEW", "Monitor and discuss if it changes", f"The {area.lower()} screen and symptom details are suitable to monitor. Seek an RMP if the concern changes, becomes painful, or worries you.")
+        return ("TRACK AND REVISIT", "A lower-priority screening snapshot", f"Your reported {area.lower()} concern can be tracked over time. Consider professional advice if it changes, becomes painful, or worries you.")
     if risk_score < 65:
-        return ("MODERATE REVIEW", "Clinical review recommended", f"The {area.lower()} screen and symptom details indicate a pattern worth discussing with a dermatologist, especially if it is new or changing.")
-    return ("PRIORITY CLINICAL REVIEW", "Please arrange clinical review soon", "Your reported symptom details indicate a need for timely RMP review. This tool cannot determine a diagnosis or urgency on its own.")
+        return ("SCREENING SNAPSHOT", "Keep an eye on reported changes", f"Your reported {area.lower()} details are worth tracking and discussing with a dermatologist if new, changing, persistent, or concerning.")
+    return ("PROMPT-CARE FLAG", "Do not rely on the app alone", "Your selected symptom details suggest seeking timely professional care. This tool cannot determine a diagnosis or urgency on its own.")
 
 
 def research_model_status(area: str, image_context: str, dermoscopy_attested: bool, image_features: dict) -> tuple[bool, str]:
@@ -191,25 +191,23 @@ def research_model_status(area: str, image_context: str, dermoscopy_attested: bo
 def clinician_first_care_plan(risk_score: int) -> dict:
     """Return safe next steps; never a diagnosis, prescription, or treatment plan."""
     if risk_score >= 65:
-        timing = "Arrange a dermatologist or registered medical practitioner consultation as soon as possible."
+        timing = "Avoid relying on app suggestions for a painful, rapidly changing, or severe concern; seek timely professional care."
     elif risk_score >= 40:
-        timing = "Arrange a dermatologist or registered medical practitioner consultation before starting a new care routine."
+        timing = "Keep a simple, non-irritating routine and consider professional advice before changing products."
     else:
-        timing = "Book a routine clinician consultation if the concern persists, changes, or worries you."
+        timing = "Track changes with the local progress report and seek professional advice if the concern persists, changes, or worries you."
     return {
-        "heading": "Clinician-first care recommendation",
+        "heading": "Personal care suggestions",
         "next_step": timing,
-        "routine_guardrail": "Do not start medicines, self-treatment, or a condition-specific care routine based only on this app.",
-        "product_guardrail": "Discuss any recommended personal-care product with a pharmacist or registered medical practitioner before using it, especially with allergies, pregnancy, broken skin, or ongoing treatment.",
-        "diet_guidance": "For general wellbeing, maintain regular meals with adequate protein, fruits and vegetables, and hydration. Do not use diet changes to self-treat a suspected condition; seek an RMP or dietitian’s advice for personalised guidance.",
-        "diagnosis_notice": "AI output is a possible pattern for clinician discussion—not a verified diagnosis.",
+        "routine_guardrail": "Use gentle cleansing, avoid picking or harsh scrubs, and stop any product that stings or irritates. This is general self-care, not a treatment plan.",
+        "product_guardrail": "Personal-care categories are not chosen for a disease or a deficiency. Discuss new products, supplements, allergies, pregnancy, broken skin, and ongoing treatment with a pharmacist or registered medical practitioner.",
+        "diet_guidance": "For general wellbeing, aim for regular meals with protein, fruits or vegetables, and hydration. Do not use supplements or diet changes to self-treat a suspected condition.",
+        "diagnosis_notice": "The app reports screening support and, only in dermatoscopic lesion mode, a research label—not a verified diagnosis.",
     }
 
 
 def personal_care_catalog(area: str, risk_score: int) -> list[dict]:
     """Generic non-medicinal categories; no brands, prescription drugs or doses."""
-    if risk_score >= 65:
-        return []
     items = [
         {"name": "Fragrance-free moisturiser", "category": "Cosmetic / personal care", "purpose": "Supports the skin barrier for dry-feeling skin.", "guardrail": "Check ingredients against known allergies; stop use if irritation occurs.", "affiliate_url": os.getenv("AFFILIATE_MOISTURISER_URL", "")},
         {"name": "Broad-spectrum sunscreen", "category": "Cosmetic / personal care", "purpose": "Everyday sun-protection product discovery.", "guardrail": "This is not a treatment; choose a labelled product from a licensed seller.", "affiliate_url": os.getenv("AFFILIATE_SUNSCREEN_URL", "")},
@@ -357,7 +355,7 @@ def create_assessment():
                     cursor.execute("SELECT id FROM users WHERE patient_id = %s", (patient_id,))
                     user = cursor.fetchone()
                     user_id = user["id"] if user else None
-                cursor.execute("INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)", (assessment_id, user_id, area, risk_score, quality, "awaiting_rmp_review", now()))
+                cursor.execute("INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)", (assessment_id, user_id, area, risk_score, quality, "screening_complete", now()))
             connection.commit()
         finally:
             connection.close()
@@ -368,7 +366,7 @@ def create_assessment():
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"]}, "risk": {"score": risk_score, "level": risk_level, "label": "Reported-concern priority, not disease risk"}, "screening": {"title": title, "summary": summary},
         "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
-        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_rmp_contact_selected" if urgent_concern else "awaiting_rmp_review", "urgent_notice": "You selected a prompt-care concern. Contact an RMP or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if risk_score < 65 and not urgent_concern else "blocked_pending_clinical_review",
+        "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if not urgent_concern else "general_care_only",
     })
 
 

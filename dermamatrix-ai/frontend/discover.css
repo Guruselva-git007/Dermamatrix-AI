@@ -12,6 +12,8 @@
 .area-choice small { font-size: 8px; font-weight: 500; color: #8aa1a4; }
 .clinical-checks { display: grid; gap: 7px; margin-top: 14px; padding: 11px 12px; border: 1px solid #d9e9e7; border-radius: 9px; background: #f8fcfb; color: #607a7e; font-size: 9px; line-height: 1.5; }
 .clinical-checks label { display: flex; align-items: flex-start; gap: 7px; cursor: pointer; }.clinical-checks input { flex: 0 0 auto; margin-top: 2px; accent-color: #0a7773; }
+.concern-note { display: block; margin-top: 14px; color: #58777b; font-size: 9px; font-weight: 700; }.concern-note textarea { display: block; width: 100%; min-height: 47px; box-sizing: border-box; margin-top: 6px; padding: 9px 10px; border: 1px solid #d6e7e5; border-radius: 8px; background: #fbfdfd; color: #183f43; resize: vertical; font: 10px/1.45 "DM Sans", sans-serif; }.concern-note textarea:focus { outline: 0; border-color: #0a7773; box-shadow: 0 0 0 3px rgba(10,119,115,.1); }
+.progress-report { display: flex; gap: 9px; margin: 10px 0; padding: 10px 11px; border: 1px solid #d7eae7; border-radius: 8px; background: #f7fcfb; color: #456e71; }.progress-report > span { color: #087b74; font-size: 17px; }.progress-report strong { font-size: 10px; }.progress-report p { margin: 3px 0 0; font-size: 9px; line-height: 1.45; }
 
 .products-section, .settings-section { padding: 46px 8% 52px; border-top: 1px solid #e4eeee; }
 .products-section { background: linear-gradient(135deg, #f5fbfa 0%, #fff 58%, #eef9f7 100%); }
