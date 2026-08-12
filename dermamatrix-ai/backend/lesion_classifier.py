@@ -26,6 +26,7 @@ LABELS = {
     "df": "Dermatofibroma", "mel": "Melanoma", "nv": "Melanocytic nevus", "vasc": "Vascular lesion",
 }
 RESEARCH_NOTICE = "Research-only model output. It is not a diagnosis, medical advice, or a replacement for RMP assessment."
+LOW_CONFIDENCE_THRESHOLD = 0.50
 
 
 @lru_cache(maxsize=1)
@@ -69,10 +70,13 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
     finally:
         hook.remove()
     ranked = sorted(zip(CLASSES, probabilities), key=lambda value: value[1], reverse=True)
+    top_probability = float(ranked[0][1])
     return {
         "available": True,
         "model": "HAM10000 ResNet-34 research model", "model_version": "Tschandl-2020-resnet34", "image_requirement": "Single, in-focus dermatoscopic lesion image only—not a face photo or selfie.",
         "top_predictions": [{"code": code, "label": LABELS[code], "probability": round(probability, 4)} for code, probability in ranked[:3]],
+        "model_confidence": round(top_probability, 4), "uncertainty": round(1 - top_probability, 4), "low_confidence": top_probability < LOW_CONFIDENCE_THRESHOLD,
+        "confidence_notice": "AI model confidence reflects its relative output for this research image domain, not the chance that a patient has a condition.",
         "attention_map": {"image": f"data:image/png;base64,{attention_base64}", "label": "Grad-CAM research attention map — not a lesion segmentation or medical finding."},
         "notice": RESEARCH_NOTICE,
     }

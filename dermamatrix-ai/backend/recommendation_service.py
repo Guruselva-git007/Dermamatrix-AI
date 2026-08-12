@@ -6,6 +6,8 @@ hard-coded in the browser. It must not be used as a disease treatment plan.
 
 from __future__ import annotations
 
+import os
+
 
 GENERAL_WELLBEING = {
     "routine": {
@@ -18,10 +20,10 @@ GENERAL_WELLBEING = {
 }
 
 PRODUCT_CATALOG = [
-    {"id": "barrier-moisturiser", "name": "Fragrance-free barrier moisturiser", "category": "Skin care", "key_property": "Fragrance-conscious emollient", "purpose": "General dry-feeling skin comfort", "precautions": "Check allergies and stop if irritation occurs.", "url": ""},
-    {"id": "sun-protection", "name": "Broad-spectrum sun protection", "category": "Skin care", "key_property": "Broad-spectrum labelled protection", "purpose": "Everyday sun-protection product discovery", "precautions": "Not a treatment; choose from a licensed seller.", "url": ""},
-    {"id": "scalp-cleanser", "name": "Gentle scalp cleanser", "category": "Hair care", "key_property": "Low-irritation cleansing category", "purpose": "Routine scalp cleansing", "precautions": "Avoid using on broken or painful skin without professional advice.", "url": ""},
-    {"id": "nail-emollient", "name": "Protective nail-care emollient", "category": "Nail care", "key_property": "Cuticle and surrounding-skin comfort", "purpose": "General dry cuticle support", "precautions": "Not for self-treating painful, lifting, or discoloured nails.", "url": ""},
+    {"id": "barrier-moisturiser", "name": "Fragrance-free barrier moisturiser", "category": "Skin care", "key_property": "Fragrance-conscious emollient", "purpose": "General dry-feeling skin comfort", "precautions": "Check allergies and stop if irritation occurs.", "affiliate_env": "AFFILIATE_MOISTURISER_URL"},
+    {"id": "sun-protection", "name": "Broad-spectrum sun protection", "category": "Skin care", "key_property": "Broad-spectrum labelled protection", "purpose": "Everyday sun-protection product discovery", "precautions": "Not a treatment; choose from a licensed seller.", "affiliate_env": "AFFILIATE_SUNSCREEN_URL"},
+    {"id": "scalp-cleanser", "name": "Gentle scalp cleanser", "category": "Hair care", "key_property": "Low-irritation cleansing category", "purpose": "Routine scalp cleansing", "precautions": "Avoid using on broken or painful skin without professional advice.", "affiliate_env": "AFFILIATE_SCALP_CLEANSER_URL"},
+    {"id": "nail-emollient", "name": "Protective nail-care emollient", "category": "Nail care", "key_property": "Cuticle and surrounding-skin comfort", "purpose": "General dry cuticle support", "precautions": "Not for self-treating painful, lifting, or discoloured nails.", "affiliate_env": "AFFILIATE_NAIL_CARE_URL"},
 ]
 
 
@@ -35,4 +37,9 @@ def build_recommendations(area: str, research_classifier: dict | None) -> dict:
     research_note = "No condition classification was run for this image type."
     if research_classifier and research_classifier.get("available"):
         research_note = "The research classifier output is shown for clinician discussion only; products and routine are not selected from its label."
-    return {"scope": "General wellbeing and personal-care education", "research_note": research_note, **GENERAL_WELLBEING, "products": items}
+    products = []
+    for item in items:
+        product = {key: value for key, value in item.items() if key != "affiliate_env"}
+        product["url"] = os.getenv(item["affiliate_env"], "")
+        products.append(product)
+    return {"scope": "General wellbeing and personal-care education", "research_note": research_note, "affiliate_disclosure": "A partner link is shown only when configured. It never changes analysis or medical suitability.", **GENERAL_WELLBEING, "products": products}

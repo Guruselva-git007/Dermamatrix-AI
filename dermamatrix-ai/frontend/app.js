@@ -53,8 +53,10 @@ function setResearchAttention(researchClassifier) {
     research.hidden = false; map.hidden = true; $('#attentionLabel').textContent = 'Image preview'; return;
   }
   const top = researchClassifier.top_predictions[0];
+  const confidence = Math.round((researchClassifier.model_confidence ?? top.probability) * 100);
+  const lowConfidence = researchClassifier.low_confidence ? ' Low confidence: the model cannot confidently classify this image.' : '';
   $('#researchHeading').textContent = 'Research lesion model';
-  $('#researchPrediction').textContent = `${top.label} · ${Math.round(top.probability * 100)}% research confidence. Not a diagnosis; only for dermatoscopic lesion images.`;
+  $('#researchPrediction').textContent = `${top.label} · AI model confidence ${confidence}%. ${researchClassifier.confidence_notice || 'This is not a diagnosis.'}${lowConfidence}`;
   $('#attentionLabel').textContent = 'Grad-CAM research attention — not lesion segmentation';
   map.src = researchClassifier.attention_map.image; map.hidden = false; research.hidden = false;
 }
@@ -73,12 +75,13 @@ function renderAnalysisDashboard(data) {
   const segmentation = data.segmentation || {};
   const classifier = data.research_classifier || {};
   const predictions = classifier.available ? classifier.top_predictions.map(item => `${escapeHTML(item.label)} ${Math.round(item.probability * 100)}%`).join(' · ') : 'No disease classification run for this image type.';
+  const confidence = classifier.available ? `AI model confidence: ${Math.round((classifier.model_confidence ?? classifier.top_predictions[0].probability) * 100)}%. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}${classifier.low_confidence ? ' Low confidence: discuss the image with a clinician rather than relying on this output.' : ''}` : '';
   const region = segmentation.available ? segmentation.reliable ? `Candidate-region coverage: ${segmentation.affected_area_percent}% (research baseline)` : segmentation.message : segmentation.message || 'No candidate-region extraction run.';
-  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p><p><strong>Why the AI looked there:</strong> ${classifier.available ? 'Grad-CAM highlights image regions contributing to the research classifier.' : 'Explainability is available only when the scoped research classifier runs.'}</p>`;
+  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}<p><strong>Why the AI looked there:</strong> ${classifier.available ? 'Grad-CAM highlights image regions contributing to the research classifier.' : 'Explainability is available only when the scoped research classifier runs.'}</p>`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
-  const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em></li>`).join('');
-  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products}</ul></div><p class="recommendation-note">${escapeHTML(recommendation.research_note || '')}</p>`;
+  const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
+  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products}</ul></div><p class="recommendation-note">${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
 }
 
 async function analyze() {
