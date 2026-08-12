@@ -59,13 +59,36 @@ function setResearchAttention(researchClassifier) {
   map.src = researchClassifier.attention_map.image; map.hidden = false; research.hidden = false;
 }
 
+function setSegmentation(segmentation) {
+  const overlay = $('#segmentationOverlay');
+  if (segmentation?.available && segmentation.reliable && segmentation.overlay) {
+    overlay.src = segmentation.overlay; overlay.hidden = false;
+    $('#attentionLabel').textContent = `Research candidate region · ${segmentation.affected_area_percent}% of frame`;
+    return;
+  }
+  overlay.hidden = true;
+}
+
+function renderAnalysisDashboard(data) {
+  const segmentation = data.segmentation || {};
+  const classifier = data.research_classifier || {};
+  const predictions = classifier.available ? classifier.top_predictions.map(item => `${escapeHTML(item.label)} ${Math.round(item.probability * 100)}%`).join(' · ') : 'No disease classification run for this image type.';
+  const region = segmentation.available ? segmentation.reliable ? `Candidate-region coverage: ${segmentation.affected_area_percent}% (research baseline)` : segmentation.message : segmentation.message || 'No candidate-region extraction run.';
+  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p><p><strong>Why the AI looked there:</strong> ${classifier.available ? 'Grad-CAM highlights image regions contributing to the research classifier.' : 'Explainability is available only when the scoped research classifier runs.'}</p>`;
+  const recommendation = data.recommendations || {};
+  const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
+  const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em></li>`).join('');
+  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products}</ul></div><p class="recommendation-note">${escapeHTML(recommendation.research_note || '')}</p>`;
+}
+
 async function analyze() {
   if (!state.imageUrl) return;
   if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
   if ($('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
   const button = $('#analyzeButton'); button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
   const form = new FormData();
-  [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || ''], ['image_consent', String($('#imageConsent').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)]].forEach(([key, value]) => form.append(key, value));
+  [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || ''], ['image_consent', String($('#imageConsent').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
+  $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
   try {
     const response = await fetch('/api/assessments', { method: 'POST', body: form });
     const data = await response.json();
@@ -79,7 +102,7 @@ async function analyze() {
     $('#qualityScore').textContent = `${data.quality.score}% · ${data.quality.label}`;
     $('#modelStatus').textContent = `${Math.round(data.model.confidence * 100)}% · screening support`;
     $('#clinicalStatus').textContent = 'Ready to save locally';
-    setResearchAttention(data.research_classifier); showCarePlan(data.care_plan);
+    setSegmentation(data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan);
     const note = $('#concernNote').value.trim();
     $('#progressText').textContent = note ? `Tracking note: “${note}” Your image is not saved; save this summary to compare future reported changes.` : 'Save this non-diagnostic snapshot to compare your reported changes over time. Uploaded images are not saved.';
     if (data.quality.issues?.length) toast(data.quality.issues[0]);
