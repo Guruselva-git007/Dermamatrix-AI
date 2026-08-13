@@ -179,7 +179,7 @@ function renderDiscoveryCatalog() {
     const matchesCategory = state.productFilter === 'all' || item.category === state.productFilter;
     return matchesCategory && (!query || `${item.name} ${item.copy} ${item.keywords}`.toLowerCase().includes(query));
   });
-  $('#productCatalog').innerHTML = visible.length ? visible.map(item => `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-discuss-product="${item.name}">Discuss benefit →</button></article>`).join('') : '<div class="catalog-empty">No matching items. Try “barrier”, “scalp”, or “vitamin”.</div>';
+  $('#productCatalog').innerHTML = visible.length ? visible.map(item => `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-discuss-product="${item.name}">View discussion points →</button></article>`).join('') : '<div class="catalog-empty">No matching topics. Try “barrier”, “scalp”, or “vitamin”.</div>';
   $$('[data-discuss-product]').forEach(button => { button.onclick = () => toast(`${button.dataset.discussProduct}: discuss suitability with an RMP or pharmacist first.`); });
 }
 
