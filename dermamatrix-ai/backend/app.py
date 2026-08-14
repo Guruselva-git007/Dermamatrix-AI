@@ -21,7 +21,7 @@ from werkzeug.utils import secure_filename
 from model_service import run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from recommendation_service import build_recommendations
-from segmentation_service import extract_dermoscopic_region, unavailable_region
+from segmentation_service import extract_visual_candidate_region, segment_dermoscopic_lesion, unavailable_candidate_region
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -554,13 +554,12 @@ def create_assessment():
     dermoscopy_attested = request.form.get("dermoscopy_attestation") == "true"
     can_run_research_model, research_reason = research_model_status(area, image_context, dermoscopy_attested, image_features)
     research_classifier = {"available": False, "reason": research_reason}
-    segmentation = unavailable_region(research_reason)
+    candidate_region = unavailable_candidate_region(research_reason)
+    segmentation = {"available": False, "status": "not_run", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": research_reason}
     if can_run_research_model:
-        segmentation = extract_dermoscopic_region(image_bytes)
-        if segmentation["reliable"]:
-            research_classifier = classify_dermoscopic_lesion(image_bytes)
-        else:
-            research_classifier = {"available": False, "reason": segmentation["message"]}
+        candidate_region = extract_visual_candidate_region(image_bytes)
+        segmentation = segment_dermoscopic_lesion(image_bytes)
+        research_classifier = classify_dermoscopic_lesion(image_bytes)
     manual_symptoms = [value for value in request.form.getlist("symptoms") if value in {"itching", "pain", "redness", "swelling", "scaling", "hair_loss", "nail_change"}]
     previous_treatment = request.form.get("previous_treatment", "").strip()[:500]
     risk_score = model_output["risk_score"]
@@ -586,8 +585,8 @@ def create_assessment():
 
     return jsonify({
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
-        "quality": {"score": quality, "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "risk": {"score": risk_score, "level": risk_level, "label": "Reported-concern priority, not disease risk"}, "screening": {"title": title, "summary": summary},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "segmentation": segmentation, "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "segmentation": segmentation["method"] if segmentation.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
+        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "risk": {"score": risk_score, "level": risk_level, "label": "Reported-concern priority, not disease risk"}, "screening": {"title": title, "summary": summary},
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
         "recommendations": build_recommendations(area, research_classifier), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if not urgent_concern else "general_care_only",
     })
 

@@ -75,8 +75,12 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
         "available": True,
         "model": "HAM10000 ResNet-34 research model", "model_version": "Tschandl-2020-resnet34", "image_requirement": "Single, in-focus dermatoscopic lesion image only—not a face photo or selfie.",
         "top_predictions": [{"code": code, "label": LABELS[code], "probability": round(probability, 4)} for code, probability in ranked[:3]],
+        "top_prediction": {"condition": LABELS[ranked[0][0]], "confidence": round(top_probability, 4)},
+        "alternatives": [{"condition": LABELS[code], "confidence": round(probability, 4)} for code, probability in ranked[1:3]],
         "model_confidence": round(top_probability, 4), "uncertainty": round(1 - top_probability, 4), "low_confidence": top_probability < LOW_CONFIDENCE_THRESHOLD,
+        "below_confidence_threshold": top_probability < LOW_CONFIDENCE_THRESHOLD, "confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
         "confidence_notice": "AI model confidence reflects its relative output for this research image domain, not the chance that a patient has a condition.",
         "attention_map": {"image": f"data:image/png;base64,{attention_base64}", "label": "Grad-CAM research attention map — not a lesion segmentation or medical finding."},
+        "explainability": {"method": "Grad-CAM", "heatmap": f"data:image/png;base64,{attention_base64}", "explanation_text": "Highlighted image regions contributed most to this research model output. They do not identify a diagnosis or lesion boundary."},
         "notice": RESEARCH_NOTICE,
     }

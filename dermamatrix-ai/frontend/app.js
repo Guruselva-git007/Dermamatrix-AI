@@ -61,11 +61,12 @@ function setResearchAttention(researchClassifier) {
   map.src = researchClassifier.attention_map.image; map.hidden = false; research.hidden = false;
 }
 
-function setSegmentation(segmentation) {
+function setSegmentation(candidateRegion, segmentation) {
   const overlay = $('#segmentationOverlay');
-  if (segmentation?.available && segmentation.reliable && segmentation.overlay) {
-    overlay.src = segmentation.overlay; overlay.hidden = false;
-    $('#attentionLabel').textContent = `Research candidate region · ${segmentation.affected_area_percent}% of frame`;
+  const visualRegion = segmentation?.available ? segmentation : candidateRegion;
+  if (visualRegion?.available && visualRegion.overlay && (segmentation?.available || candidateRegion?.reliable)) {
+    overlay.src = visualRegion.overlay; overlay.hidden = false;
+    $('#attentionLabel').textContent = segmentation?.available ? `Model segmentation · ${segmentation.affected_area_percent}% of frame` : `Visual candidate region · ${candidateRegion.affected_area_percent}% of frame`;
     return;
   }
   overlay.hidden = true;
@@ -73,11 +74,12 @@ function setSegmentation(segmentation) {
 
 function renderAnalysisDashboard(data) {
   const segmentation = data.segmentation || {};
+  const candidateRegion = data.candidate_region || {};
   const classifier = data.research_classifier || {};
   const predictions = classifier.available ? classifier.top_predictions.map(item => `${escapeHTML(item.label)} ${Math.round(item.probability * 100)}%`).join(' · ') : 'No disease classification run for this image type.';
   const confidence = classifier.available ? `AI model confidence: ${Math.round((classifier.model_confidence ?? classifier.top_predictions[0].probability) * 100)}%. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}${classifier.low_confidence ? ' Low confidence: discuss the image with a clinician rather than relying on this output.' : ''}` : '';
-  const region = segmentation.available ? segmentation.reliable ? `Candidate-region coverage: ${segmentation.affected_area_percent}% (research baseline)` : segmentation.message : segmentation.message || 'No candidate-region extraction run.';
-  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}<p><strong>Why the AI looked there:</strong> ${classifier.available ? 'Grad-CAM highlights image regions contributing to the research classifier.' : 'Explainability is available only when the scoped research classifier runs.'}</p>`;
+  const region = segmentation.available ? `Model segmentation: ${segmentation.affected_area_percent}% of frame.` : candidateRegion.available && candidateRegion.reliable ? `Visual candidate region: ${candidateRegion.affected_area_percent}% of frame. This is not trained model segmentation.` : segmentation.message || candidateRegion.message || 'No visual-region extraction run.';
+  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}<p><strong>Why the AI looked there:</strong> ${classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.'}</p>`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
@@ -105,7 +107,7 @@ async function analyze() {
     $('#qualityScore').textContent = `${data.quality.score}% · ${data.quality.label}`;
     $('#modelStatus').textContent = `${Math.round(data.model.confidence * 100)}% · screening support`;
     $('#clinicalStatus').textContent = 'Ready to save locally';
-    setSegmentation(data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan);
+    setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan);
     const note = $('#concernNote').value.trim();
     $('#progressText').textContent = note ? `Tracking note: “${note}” Your image is not saved; save this summary to compare future reported changes.` : 'Save this non-diagnostic snapshot to compare your reported changes over time. Uploaded images are not saved.';
     if (data.quality.issues?.length) toast(data.quality.issues[0]);
