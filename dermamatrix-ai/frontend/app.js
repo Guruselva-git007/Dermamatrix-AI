@@ -1,6 +1,22 @@
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all', routines: [], checkins: [], analyses: [] };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
+
+async function requestJSON(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw Error(payload.error || `Request failed (${response.status}).`);
+    return payload;
+  } catch (error) {
+    if (error.name === 'AbortError') throw Error('The request took too long. Please retry.');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 function toast(message) {
   const element = $('#toast');
@@ -26,7 +42,7 @@ function openProfile() { $('#profileModal').classList.add('show'); $('#profileMo
 function closeProfile() { $('#profileModal').classList.remove('show'); $('#profileModal').setAttribute('aria-hidden', 'true'); }
 function closeResult() { $('#resultModal').classList.remove('show'); $('#resultModal').setAttribute('aria-hidden', 'true'); }
 
-function showPage(page) {
+function showPage(page, { syncHistory = true } = {}) {
   const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings'];
   const target = allowed.includes(page) ? page : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
@@ -34,6 +50,7 @@ function showPage(page) {
   const titles = { dashboard: 'Dashboard', home: 'Analyze image', progress: 'My reports', products: 'Care guidance', support: 'Doctor directory', settings: 'Settings' };
   $('#workspaceTitle').textContent = titles[target];
   if (target === 'progress' || target === 'dashboard') loadProgress();
+  if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
   window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
 
@@ -43,7 +60,7 @@ function showCarePlan(plan) {
     box = document.createElement('div'); box.id = 'careRecommendation'; box.className = 'care-recommendation';
     $('#carePlanSlot').append(box);
   }
-  box.innerHTML = `<span>✚</span><p><strong>${plan.heading}</strong><br>${plan.next_step}<br><em>${plan.routine_guardrail}</em><br><em>${plan.diet_guidance}</em></p>`;
+  box.innerHTML = `<span>✚</span><p><strong>${escapeHTML(plan.heading)}</strong><br>${escapeHTML(plan.next_step)}<br><em>${escapeHTML(plan.routine_guardrail)}</em><br><em>${escapeHTML(plan.diet_guidance)}</em></p>`;
 }
 
 function showResultTab(tab) {
@@ -90,7 +107,8 @@ function renderAnalysisDashboard(data) {
   const predictions = classifier.available ? classifier.top_predictions.map(item => `${escapeHTML(item.label)} ${Math.round(item.probability * 100)}%`).join(' · ') : 'No disease classification run for this image type.';
   const confidence = classifier.available ? `AI model confidence: ${Math.round((classifier.model_confidence ?? classifier.top_predictions[0].probability) * 100)}%. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}${classifier.low_confidence ? ' Low confidence: discuss the image with a clinician rather than relying on this output.' : ''}` : '';
   const region = segmentation.available ? `Model segmentation: ${segmentation.affected_area_percent}% of frame.` : candidateRegion.available && candidateRegion.reliable ? `Visual candidate region: ${candidateRegion.affected_area_percent}% of frame. This is not trained model segmentation.` : segmentation.message || candidateRegion.message || 'No visual-region extraction run.';
-  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}<p><strong>Why the AI looked there:</strong> ${classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.'}</p>`;
+  const explainability = classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.';
+  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}<p><strong>Why the AI looked there:</strong> ${escapeHTML(explainability)}</p>`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
@@ -106,9 +124,7 @@ async function analyze() {
   [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || ''], ['image_consent', String($('#imageConsent').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
   $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
   try {
-    const response = await fetch('/api/assessments', { method: 'POST', body: form });
-    const data = await response.json();
-    if (!response.ok) throw Error(data.error);
+    const data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
     state.assessmentId = data.assessment_id;
     const score = data.risk.score;
     $('#resultImage').src = state.imageUrl;
@@ -168,20 +184,41 @@ async function saveProfile(event) {
   payload.health_data_consent = form.get('health_data_consent') === 'on';
   const button = event.currentTarget.querySelector('[type="submit"]'); button.disabled = true;
   try {
-    const response = await fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await response.json(); if (!response.ok) throw Error(data.error);
-    state.profile = { ...data, past_history: payload.past_history, current_history: payload.current_history }; localStorage.setItem('dermamatrix_profile', JSON.stringify(state.profile));
-    $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress(); toast('Local profile saved.');
+    const data = await requestJSON('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    state.profile = { ...data, past_history: payload.past_history, current_history: payload.current_history };
+    persistBrowserProfile();
+    $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); toast('Profile saved in the local project database.');
   } catch (error) { toast(error.message || 'Unable to save profile.'); }
   button.disabled = false;
+}
+
+function persistBrowserProfile() {
+  if (!state.profile?.patient_id) return;
+  localStorage.setItem('dermamatrix_profile', JSON.stringify({ patient_id: state.profile.patient_id, full_name: state.profile.full_name }));
 }
 
 function restoreProfile() {
   try {
     const profile = JSON.parse(localStorage.getItem('dermamatrix_profile'));
-    if (profile?.full_name) { state.profile = profile; $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; }
+    if (profile?.full_name && profile?.patient_id) {
+      state.profile = { patient_id: profile.patient_id, full_name: profile.full_name };
+      persistBrowserProfile();
+      $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id;
+    }
   } catch { /* no local profile */ }
   updateDashboardIdentity();
+}
+
+async function hydrateProfile() {
+  if (!state.profile?.patient_id) return;
+  try {
+    const profile = await requestJSON(`/api/profiles/${encodeURIComponent(state.profile.patient_id)}`, {}, 10000);
+    state.profile = { ...state.profile, ...profile };
+    $('#profileName').textContent = state.profile.full_name; $('#profileMeta').textContent = state.profile.patient_id;
+    updateDashboardIdentity();
+  } catch {
+    // A local project database may be offline; routine loading displays the same recoverable state.
+  }
 }
 
 const discoveryItems = [
@@ -228,7 +265,7 @@ function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') |
 function clearLocalProfile() {
   localStorage.removeItem('dermamatrix_profile'); state.profile = null;
   $('#profileName').textContent = 'Guest profile'; $('#profileMeta').textContent = 'Save health details';
-  state.routines = []; state.checkins = []; state.analyses = []; updateDashboardIdentity(); renderProgress();
+  state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; updateDashboardIdentity(); renderProgress();
   toast('Your local profile has been cleared from this browser.');
 }
 
@@ -275,15 +312,30 @@ function renderProgress() {
   renderDashboard();
 }
 
-async function loadProgress() {
+async function loadProgress({ force = false } = {}) {
   if (!state.profile?.patient_id) { renderProgress(); return; }
-  try {
-    const patientId = encodeURIComponent(state.profile.patient_id);
-    const [routineResponse, checkinResponse, analysisResponse] = await Promise.all([fetch(`/api/routines?patient_id=${patientId}`), fetch(`/api/progress-checkins?patient_id=${patientId}`), fetch(`/api/analysis-history?patient_id=${patientId}`)]);
-    const routineData = await routineResponse.json(); const checkinData = await checkinResponse.json(); const analysisData = await analysisResponse.json();
-    if (!routineResponse.ok || !checkinResponse.ok || !analysisResponse.ok) throw Error(routineData.error || checkinData.error || analysisData.error);
-    state.routines = routineData.routines; state.checkins = checkinData.checkins; state.analyses = analysisData.analyses; renderProgress();
-  } catch (error) { toast(error.message || 'Progress data is unavailable right now.'); }
+  const patientId = state.profile.patient_id;
+  if (!force && state.progressLoadedFor === patientId) { renderProgress(); return; }
+  if (state.progressLoadPromise) return state.progressLoadPromise;
+  state.progressLoadPromise = (async () => {
+    try {
+      const encodedId = encodeURIComponent(patientId);
+      const [routineData, checkinData, analysisData] = await Promise.all([
+        requestJSON(`/api/routines?patient_id=${encodedId}`),
+        requestJSON(`/api/progress-checkins?patient_id=${encodedId}`),
+        requestJSON(`/api/analysis-history?patient_id=${encodedId}`),
+      ]);
+      if (state.profile?.patient_id !== patientId) return;
+      state.routines = routineData.routines; state.checkins = checkinData.checkins; state.analyses = analysisData.analyses;
+      state.progressLoadedFor = patientId;
+      renderProgress();
+    } catch (error) {
+      toast(error.message || 'Progress data is unavailable right now.');
+    } finally {
+      state.progressLoadPromise = null;
+    }
+  })();
+  return state.progressLoadPromise;
 }
 
 function editRoutine(routineId) {
@@ -301,18 +353,16 @@ async function saveRoutine(event) {
   const payload = { patient_id: state.profile.patient_id, condition_label: $('#conditionLabel').value, routine_name: $('#routineName').value, start_date: $('#routineStartDate').value, notes: $('#routineNotes').value };
   const editingId = $('#editingRoutineId').value;
   try {
-    const response = await fetch(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await response.json(); if (!response.ok) throw Error(data.error);
-    resetRoutineForm(); await loadProgress(); toast(editingId ? 'Routine updated.' : 'Routine added.');
+    await requestJSON(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    resetRoutineForm(); await loadProgress({ force: true }); toast(editingId ? 'Routine updated.' : 'Routine added.');
   } catch (error) { toast(error.message || 'Could not save this routine.'); }
 }
 
 async function deleteRoutine(routineId) {
   if (!window.confirm('Delete this routine and its progress history?')) return;
   try {
-    const response = await fetch(`/api/routines/${routineId}?patient_id=${encodeURIComponent(state.profile.patient_id)}`, { method: 'DELETE' });
-    const data = await response.json(); if (!response.ok) throw Error(data.error);
-    await loadProgress(); toast('Routine deleted.');
+    await requestJSON(`/api/routines/${routineId}?patient_id=${encodeURIComponent(state.profile.patient_id)}`, { method: 'DELETE' });
+    await loadProgress({ force: true }); toast('Routine deleted.');
   } catch (error) { toast(error.message || 'Could not delete this routine.'); }
 }
 
@@ -322,9 +372,8 @@ async function saveCheckin(event) {
   const file = $('#checkinImage').files[0];
   const payload = { patient_id: state.profile.patient_id, routine_id: $('#checkinRoutine').value, checkin_date: $('#checkinDate').value, reported_trend: $('#checkinTrend').value, discomfort: $('#checkinDiscomfort').value, change: $('#checkinChange').value, note: $('#checkinNote').value };
   try {
-    const response = await fetch('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await response.json(); if (!response.ok) throw Error(data.error);
-    event.currentTarget.reset(); $('#checkinDate').value = currentDate(); await loadProgress();
+    const data = await requestJSON('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    event.currentTarget.reset(); $('#checkinDate').value = currentDate(); await loadProgress({ force: true });
     toast(file ? `${data.progress_label}. The comparison image was not stored.` : `${data.progress_label}. Check-in saved.`);
   } catch (error) { toast(error.message || 'Could not save this check-in.'); }
 }
@@ -366,12 +415,21 @@ $('#clearProfileButton').onclick = clearLocalProfile;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
 $('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('dermamatrix_theme', next); applyTheme(next); };
 $('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin;
-restoreProfile();
-restoreSettings();
-restoreTheme();
-renderDiscoveryCatalog();
-updateImageContext();
-resetRoutineForm();
-$('#checkinDate').value = currentDate();
-loadProgress();
-showPage(location.hash.replace('#', '') || 'dashboard');
+window.addEventListener('popstate', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
+window.addEventListener('hashchange', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
+window.addEventListener('beforeunload', () => { if (state.imageUrl) URL.revokeObjectURL(state.imageUrl); });
+
+async function initialiseApp() {
+  restoreProfile();
+  restoreSettings();
+  restoreTheme();
+  renderDiscoveryCatalog();
+  updateImageContext();
+  resetRoutineForm();
+  $('#checkinDate').value = currentDate();
+  await hydrateProfile();
+  await loadProgress();
+  showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false });
+}
+
+initialiseApp();

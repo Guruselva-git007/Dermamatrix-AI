@@ -63,6 +63,9 @@ def database() -> pymysql.Connection:
         "database": os.getenv("MYSQL_DATABASE", "dermamatrix_ai"),
         "charset": "utf8mb4",
         "autocommit": False,
+        "connect_timeout": 5,
+        "read_timeout": 15,
+        "write_timeout": 15,
         "cursorclass": pymysql.cursors.DictCursor,
     }
     socket_path = os.getenv("MYSQL_SOCKET")
@@ -372,6 +375,32 @@ def create_profile():
     return jsonify({"patient_id": patient_id, "full_name": payload["full_name"].strip(), "stored_in": "mysql", "consent_recorded": True}), 201
 
 
+@app.get("/api/profiles/<patient_id>")
+def get_profile(patient_id: str):
+    """Restore a locally selected profile from MySQL without retaining history in browser storage."""
+    connection = database()
+    try:
+        user = user_for_patient(connection, patient_id.strip())
+        if not user:
+            return jsonify({"error": "Profile not found in the local project database."}), 404
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT past_history, current_history FROM medical_histories
+                   WHERE user_id=%s ORDER BY updated_at DESC, id DESC LIMIT 1""",
+                (user["id"],),
+            )
+            history = cursor.fetchone() or {"past_history": "", "current_history": ""}
+        return jsonify({
+            "patient_id": user["patient_id"],
+            "full_name": user["full_name"],
+            "past_history": history["past_history"],
+            "current_history": history["current_history"],
+            "stored_in": "mysql",
+        })
+    finally:
+        connection.close()
+
+
 @app.get("/api/routines")
 def list_routines():
     patient_id = request.args.get("patient_id", "").strip()
@@ -635,45 +664,39 @@ def create_assessment():
     patient_id = request.form.get("patient_id", "").strip()
     user_id = None
     persistence = "mysql"
-    try:
-        connection = database()
-        try:
-            with connection.cursor() as cursor:
-                if patient_id:
-                    cursor.execute("SELECT id FROM users WHERE patient_id = %s", (patient_id,))
-                    user = cursor.fetchone()
-                    user_id = user["id"] if user else None
-                cursor.execute("INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)", (assessment_id, user_id, area, risk_score, quality, "screening_complete", now()))
-            connection.commit()
-        finally:
-            connection.close()
-    except pymysql.MySQLError:
-        persistence = "not-persisted-mysql-unavailable"
-
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "risk": {"score": risk_score, "level": risk_level, "label": "Reported-concern priority, not disease risk"}, "screening": {"title": title, "summary": summary},
         "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
         "recommendations": build_recommendations(area, research_classifier), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if not urgent_concern else "general_care_only",
     }
-    if persistence == "mysql":
-        try:
-            connection = database()
-            try:
-                response["progress_comparison"] = previous_progress_summary(connection, user_id, area)
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
-                        (assessment_id, user_id, area, json.dumps(stored_analysis_summary(response)), now()),
-                    )
-                connection.commit()
-            finally:
-                connection.close()
-        except pymysql.MySQLError:
-            response["persistence"] = "mysql-assessment-saved-analysis-metadata-not-persisted"
-            response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Analysis history could not be saved right now."}
-    else:
+    connection = None
+    try:
+        connection = database()
+        if patient_id:
+            user = user_for_patient(connection, patient_id)
+            user_id = user["id"] if user else None
+        response["progress_comparison"] = previous_progress_summary(connection, user_id, area)
+        timestamp = now()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (assessment_id, user_id, area, risk_score, quality, "screening_complete", timestamp),
+            )
+            cursor.execute(
+                "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
+                (assessment_id, user_id, area, json.dumps(stored_analysis_summary(response)), timestamp),
+            )
+        connection.commit()
+    except pymysql.MySQLError:
+        if connection:
+            connection.rollback()
+        persistence = "not-persisted-mysql-unavailable"
+        response["persistence"] = persistence
         response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Analysis metadata could not be saved because MySQL is unavailable."}
+    finally:
+        if connection:
+            connection.close()
     return jsonify(response)
 
 
