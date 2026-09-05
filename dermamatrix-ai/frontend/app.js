@@ -1,4 +1,5 @@
 const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null };
+let processingTimers = [];
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -25,6 +26,8 @@ function toast(message) {
 }
 
 function selectArea(area) {
+  const areaChanged = state.area !== area;
+  if (areaChanged) resetImage();
   state.area = area;
   $$('.area-choice button').forEach(button => button.classList.toggle('selected', button.dataset.area === area));
   const sweat = area === 'Sweat';
@@ -72,12 +75,76 @@ function setImage(file) {
   if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
   state.file = file; state.imageUrl = URL.createObjectURL(file);
   const zone = $('#dropZone'); zone.style.backgroundImage = `url("${state.imageUrl}")`; zone.classList.add('has-image');
+  $('#uploadPreviewImage').src = state.imageUrl;
+  $('#uploadPreviewName').textContent = file.name;
+  $('#uploadPreview').hidden = false;
   $('#analyzeButton').disabled = false; $('#stepCount').textContent = 'STEP 2 OF 3';
+}
+
+function resetImage() {
+  if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
+  state.imageUrl = null; state.file = null;
+  const zone = $('#dropZone');
+  if (zone) { zone.style.backgroundImage = ''; zone.classList.remove('has-image'); }
+  const preview = $('#uploadPreview');
+  if (preview) preview.hidden = true;
+  const input = $('#imageInput');
+  if (input) input.value = '';
 }
 
 function openProfile() { $('#profileModal').classList.add('show'); $('#profileModal').setAttribute('aria-hidden', 'false'); }
 function closeProfile() { $('#profileModal').classList.remove('show'); $('#profileModal').setAttribute('aria-hidden', 'true'); }
 function closeResult() { $('#resultModal').classList.remove('show'); $('#resultModal').setAttribute('aria-hidden', 'true'); }
+
+function installImagePreview() {
+  if ($('#uploadPreview')) return;
+  const preview = document.createElement('section');
+  preview.id = 'uploadPreview'; preview.className = 'upload-preview'; preview.hidden = true;
+  preview.innerHTML = '<img id="uploadPreviewImage" alt="Selected image preview" /><div><span class="eyebrow">IMAGE READY</span><strong>Check the photo before continuing</strong><small id="uploadPreviewName"></small></div><button type="button" class="text-button" id="replaceImageButton">Replace</button>';
+  $('#dropZone').insertAdjacentElement('afterend', preview);
+  $('#replaceImageButton').onclick = () => $('#imageInput').click();
+}
+
+function installProcessingOverlay() {
+  if ($('#processingModal')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'processingModal'; overlay.className = 'processing-modal'; overlay.setAttribute('aria-hidden', 'true');
+  overlay.innerHTML = '<div class="processing-card" role="status" aria-live="polite"><span class="processing-orbit" aria-hidden="true"></span><p class="eyebrow">ANALYSIS IN PROGRESS</p><h2 id="processingTitle">Preparing your screening summary</h2><p id="processingCopy">Each completed stage is shown clearly. This app will not represent an unavailable model as a result.</p><ol id="processingSteps" class="processing-steps"></ol></div>';
+  document.body.append(overlay);
+}
+
+function processingStages(area) {
+  if (area === 'Skin') return ['Checking image quality', 'Preparing the image', 'Checking the eligible research-model path', 'Organising the screening summary'];
+  if (area === 'Hair') return ['Checking image quality', 'Preparing the image', 'Checking the hair/scalp model adapter', 'Organising the screening summary'];
+  if (area === 'Nails') return ['Checking image quality', 'Preparing the image', 'Checking the nail model adapter', 'Organising the screening summary'];
+  return ['Validating questionnaire responses', 'Normalising reported inputs', 'Calculating transparent input contributions', 'Organising the screening summary'];
+}
+
+function openProcessing(area) {
+  installProcessingOverlay();
+  const modal = $('#processingModal');
+  const stages = processingStages(area);
+  $('#processingTitle').textContent = area === 'Sweat' ? 'Preparing your questionnaire summary' : 'Preparing your image summary';
+  $('#processingCopy').textContent = area === 'Skin'
+    ? 'Image quality and research-model eligibility are checked before any scoped output is shown.'
+    : area === 'Sweat' ? 'Questionnaire inputs are explained with transparent contributions; no image model runs.' : 'Image quality is checked first. A disorder label is shown only if this deployment has compatible trained weights.';
+  $('#processingSteps').innerHTML = stages.map((stage, index) => `<li class="${index === 0 ? 'active' : ''}"><span>${index === 0 ? '…' : index + 1}</span>${stage}</li>`).join('');
+  modal.classList.add('show'); modal.setAttribute('aria-hidden', 'false');
+  processingTimers.forEach(window.clearTimeout); processingTimers = stages.slice(1).map((_, index) => window.setTimeout(() => {
+    const rows = $$('#processingSteps li');
+    rows.forEach((row, rowIndex) => { row.classList.toggle('done', rowIndex < index + 1); row.classList.toggle('active', rowIndex === index + 1); });
+    const current = rows[index + 1]?.querySelector('span'); if (current) current.textContent = '…';
+    const previous = rows[index]?.querySelector('span'); if (previous) previous.textContent = '✓';
+  }, 170 * (index + 1)));
+}
+
+async function finishProcessing(startedAt) {
+  const remaining = 620 - (performance.now() - startedAt);
+  if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
+  processingTimers.forEach(window.clearTimeout); processingTimers = [];
+  const modal = $('#processingModal');
+  if (modal) { modal.classList.remove('show'); modal.setAttribute('aria-hidden', 'true'); }
+}
 
 function showPage(page, { syncHistory = true } = {}) {
   const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings'];
@@ -109,6 +176,16 @@ function showResultTab(tab) {
   $$('[data-result-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.resultPanel === target));
 }
 
+function classifierPredictions(classifier) {
+  if (!classifier?.available) return [];
+  if (Array.isArray(classifier.top_predictions)) return classifier.top_predictions;
+  if (classifier.top_prediction) {
+    const prediction = classifier.top_prediction;
+    return [{ label: prediction.label || prediction.condition || 'Research label', probability: Number(prediction.probability ?? prediction.confidence ?? classifier.model_confidence ?? 0) }];
+  }
+  return [];
+}
+
 function setResearchAttention(researchClassifier) {
   const research = $('#researchResult');
   const map = $('#attentionMap');
@@ -117,11 +194,20 @@ function setResearchAttention(researchClassifier) {
     $('#researchPrediction').textContent = researchClassifier?.reason || 'General photos receive visual-quality feedback and screening support only. They are not disease-classified.';
     research.hidden = false; map.hidden = true; $('#attentionLabel').textContent = 'Image preview'; return;
   }
-  const top = researchClassifier.top_predictions[0];
+  const top = classifierPredictions(researchClassifier)[0];
+  if (!top) {
+    $('#researchHeading').textContent = 'Research model record';
+    $('#researchPrediction').textContent = 'A model record is available, but no prediction detail was retained in this report.';
+    research.hidden = false; map.hidden = true; return;
+  }
   const confidence = Math.round((researchClassifier.model_confidence ?? top.probability) * 100);
   const lowConfidence = researchClassifier.low_confidence ? ' Low confidence: the model cannot confidently classify this image.' : '';
   $('#researchHeading').textContent = 'Research lesion model';
   $('#researchPrediction').textContent = `${top.label} · AI model confidence ${confidence}%. ${researchClassifier.confidence_notice || 'This is not a diagnosis.'}${lowConfidence}`;
+  if (!researchClassifier.attention_map?.image) {
+    $('#attentionLabel').textContent = 'Saved report · attention image not retained';
+    map.hidden = true; research.hidden = false; return;
+  }
   $('#attentionLabel').textContent = 'Grad-CAM research attention — not lesion segmentation';
   map.src = researchClassifier.attention_map.image; map.hidden = false; research.hidden = false;
 }
@@ -140,9 +226,10 @@ function setSegmentation(candidateRegion, segmentation) {
 function renderAnalysisDashboard(data) {
   const segmentation = data.segmentation || {};
   const candidateRegion = data.candidate_region || {};
-  const classifier = data.research_classifier || {};
-  const predictions = classifier.available ? classifier.top_predictions.map(item => `${escapeHTML(item.label)} ${Math.round(item.probability * 100)}%`).join(' · ') : 'No disease classification run for this image type.';
-  const confidence = classifier.available ? `AI model confidence: ${Math.round((classifier.model_confidence ?? classifier.top_predictions[0].probability) * 100)}%. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}${classifier.low_confidence ? ' Low confidence: discuss the image with a clinician rather than relying on this output.' : ''}` : '';
+  const classifier = data.research_classifier || data.classification || {};
+  const predictionsList = classifierPredictions(classifier);
+  const predictions = classifier.available && predictionsList.length ? predictionsList.map(item => `${escapeHTML(item.label)} ${Math.round(item.probability * 100)}%`).join(' · ') : 'No disease classification run for this image type.';
+  const confidence = classifier.available && predictionsList.length ? `AI model confidence: ${Math.round((classifier.model_confidence ?? predictionsList[0].probability) * 100)}%. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}${classifier.low_confidence ? ' Low confidence: discuss the image with a clinician rather than relying on this output.' : ''}` : '';
   const region = segmentation.available ? `Model segmentation: ${segmentation.affected_area_percent}% of frame.` : candidateRegion.available && candidateRegion.reliable ? `Visual candidate region: ${candidateRegion.affected_area_percent}% of frame. This is not trained model segmentation.` : segmentation.message || candidateRegion.message || 'No visual-region extraction run.';
   const explainability = classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.';
   const questionnaireExplanation = (data.explainability?.features || []).map(item => `<li>${escapeHTML(item.feature)}: ${escapeHTML(item.value)} (${escapeHTML(item.points)} priority points)</li>`).join('');
@@ -163,6 +250,7 @@ async function analyze() {
   if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
   if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
   const button = $('#analyzeButton'); button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
+  const processingStarted = performance.now(); openProcessing(state.area);
   try {
     let data;
     if (sweat) {
@@ -179,6 +267,7 @@ async function analyze() {
       $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
       data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
     }
+    await finishProcessing(processingStarted);
     state.assessmentId = data.assessment_id;
     const score = data.risk.score;
     const questionnaire = data.input_type === 'questionnaire';
@@ -207,7 +296,7 @@ async function analyze() {
     if (data.urgent_notice) toast(data.urgent_notice);
     showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
     $('#stepCount').textContent = questionnaire ? 'STEP 2 OF 2' : 'STEP 3 OF 3';
-  } catch (error) { toast(error.message || 'Unable to review this image.'); }
+  } catch (error) { await finishProcessing(processingStarted); toast(error.message || 'Unable to review this image.'); }
   button.disabled = false; button.innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
 }
 
@@ -360,6 +449,78 @@ function resetRoutineForm() {
   $('#routineFormTitle').textContent = 'Add a routine'; $('#cancelRoutineEdit').hidden = true;
 }
 
+function reportClassification(summary) {
+  const classifier = summary?.classification || {};
+  const prediction = classifierPredictions(classifier)[0];
+  return prediction ? `${prediction.label} · ${Math.round(prediction.probability * 100)}% research confidence` : 'Screening summary only';
+}
+
+function renderReportRegister() {
+  let register = $('#reportRegister');
+  if (!register) {
+    register = document.createElement('section'); register.id = 'reportRegister'; register.className = 'report-register';
+    $('#progressSummary').insertAdjacentElement('afterend', register);
+  }
+  if (!state.profile?.patient_id) {
+    register.innerHTML = '<div class="report-register-heading"><div><p class="eyebrow">SAVED REPORTS</p><h3>Analysis history</h3><p>Create a local profile to retain report metadata without retaining the uploaded image.</p></div></div><p class="empty-state">No profile is connected yet.</p>';
+    return;
+  }
+  const analyses = state.analyses || [];
+  const rows = analyses.length ? analyses.map(item => {
+    const summary = item.summary || {};
+    const priority = summary.risk?.score === undefined ? '—' : `${summary.risk.score}/100`;
+    const xai = summary.classification?.available ? 'Grad-CAM run' : summary.input_type === 'questionnaire' ? 'Input contributions' : 'Scope recorded';
+    return `<div class="report-row"><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time><span>${escapeHTML(item.area)}</span><strong>${escapeHTML(reportClassification(summary))}</strong><span>${escapeHTML(priority)}</span><span>${escapeHTML(xai)}</span><div><button class="text-button" data-view-report="${escapeHTML(item.assessment_id)}">View</button><button class="text-button" data-download-report="${escapeHTML(item.assessment_id)}">Export</button></div></div>`;
+  }).join('') : '<p class="empty-state">Saved analysis metadata will appear here after an analysis. Image pixels are never retained in this prototype.</p>';
+  register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">SAVED REPORTS</p><h3>Analysis history</h3><p>Open a saved report or export a concise discussion brief. Images and Grad-CAM overlays are not retained.</p></div><span>${analyses.length} saved</span></div><div class="report-table" role="table"><div class="report-row report-head" role="row"><span>Date</span><span>Area</span><span>Result scope</span><span>Priority</span><span>Evidence</span><span>Action</span></div>${rows}</div>`;
+  $$('[data-view-report]').forEach(button => { button.onclick = () => showSavedReport(button.dataset.viewReport); });
+  $$('[data-download-report]').forEach(button => { button.onclick = () => downloadSavedReport(button.dataset.downloadReport); });
+}
+
+function showSavedReport(assessmentId) {
+  const item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
+  if (!item) return toast('This saved report is no longer available.');
+  const data = { ...item.summary, research_classifier: item.summary?.classification || {} };
+  const questionnaire = data.input_type === 'questionnaire';
+  state.assessmentId = assessmentId;
+  $('.segmentation-stage').classList.toggle('sweat-summary', questionnaire);
+  $('#resultImage').hidden = true; $('#resultImage').removeAttribute('src'); $('#segmentationOverlay').hidden = true; $('#attentionMap').hidden = true;
+  $('#resultRisk').textContent = data.risk?.level || 'SAVED REPORT';
+  $('#resultRisk').className = `risk-label ${(data.risk?.score || 0) < 40 ? 'low' : 'moderate'}`;
+  $('#findingTitle').textContent = data.screening?.title || 'Saved screening summary';
+  $('#findingText').textContent = data.screening?.summary || 'This report contains saved screening metadata only.';
+  $('#qualityScore').textContent = data.quality?.score === null || data.quality?.score === undefined ? data.quality?.label || 'Not applicable' : `${data.quality.score}% · ${data.quality.label}`;
+  $('#modelStatus').textContent = data.classification?.available ? 'Research model record retained' : questionnaire ? 'Questionnaire contribution summary' : 'No scoped classifier output';
+  $('#clinicalStatus').textContent = 'Saved metadata · no image retained';
+  setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {});
+  $('#progressText').textContent = `Saved ${String(item.created_at).slice(0, 10)}. This report can support a clinician discussion; it does not confirm a diagnosis or treatment response.`;
+  $('.result-footnote').textContent = 'This is a saved metadata report. The original image, visual candidate overlay, and Grad-CAM image were intentionally not retained.';
+  showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
+}
+
+function downloadSavedReport(assessmentId) {
+  const item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
+  if (!item) return toast('This saved report is no longer available.');
+  const summary = item.summary || {};
+  const lines = [
+    'DERMAMATRIX AI — SCREENING DISCUSSION BRIEF',
+    `Saved: ${String(item.created_at).slice(0, 19)}`,
+    `Area: ${item.area}`,
+    `Screening summary: ${summary.screening?.title || 'Not available'}`,
+    `Priority: ${summary.risk?.score ?? '—'}/100 — ${summary.risk?.label || 'Not a disease risk'}`,
+    `Classifier scope: ${reportClassification(summary)}`,
+    `Segmentation: ${summary.segmentation?.status || 'Not run'}`,
+    `Explainability: ${summary.classification?.available ? 'Grad-CAM was produced during the original research inference; its image was not retained.' : summary.input_type === 'questionnaire' ? 'Questionnaire input-contribution summary.' : 'No scoped classifier explanation available.'}`,
+    '',
+    'Important: This educational prototype provides screening support only. It is not a diagnosis, prescription, or substitute for a registered medical practitioner. Discuss new routines, products, supplements, or treatment with a clinician or pharmacist.',
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob); const link = document.createElement('a');
+  link.href = url; link.download = `dermamatrix-discussion-brief-${String(item.created_at).slice(0, 10)}.txt`; link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  toast('Discussion brief exported.');
+}
+
 function renderProgress() {
   const hasProfile = Boolean(state.profile?.patient_id);
   const routines = state.routines || []; const checkins = state.checkins || []; const analyses = state.analyses || [];
@@ -374,6 +535,7 @@ function renderProgress() {
   $('#progressHistory').innerHTML = medicalHistory + timeline + analysisHistory;
   $$('[data-edit-routine]').forEach(button => { button.onclick = () => editRoutine(button.dataset.editRoutine); });
   $$('[data-delete-routine]').forEach(button => { button.onclick = () => deleteRoutine(button.dataset.deleteRoutine); });
+  renderReportRegister();
   renderDashboard();
 }
 
@@ -485,6 +647,8 @@ window.addEventListener('hashchange', () => showPage(location.hash.replace('#', 
 window.addEventListener('beforeunload', () => { if (state.imageUrl) URL.revokeObjectURL(state.imageUrl); });
 
 async function initialiseApp() {
+  installImagePreview();
+  installProcessingOverlay();
   restoreProfile();
   restoreSettings();
   restoreTheme();
