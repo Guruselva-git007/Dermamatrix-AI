@@ -9,6 +9,7 @@ independently assess every patient before diagnosis, counselling or treatment.
 from __future__ import annotations
 
 import io
+import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -109,6 +110,17 @@ def initialise_database() -> None:
             clinical_status VARCHAR(60) NOT NULL,
             created_at DATETIME NOT NULL,
             CONSTRAINT fk_assessment_user FOREIGN KEY (user_id) REFERENCES users(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        """CREATE TABLE IF NOT EXISTS analysis_records (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            assessment_id VARCHAR(50) UNIQUE NOT NULL,
+            user_id BIGINT NULL,
+            area VARCHAR(30) NOT NULL,
+            result_json LONGTEXT NOT NULL,
+            image_stored BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at DATETIME NOT NULL,
+            CONSTRAINT fk_analysis_user FOREIGN KEY (user_id) REFERENCES users(id),
+            INDEX idx_analysis_user_area (user_id, area, created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
         """CREATE TABLE IF NOT EXISTS clinical_review_requests (
             id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -242,6 +254,34 @@ def research_model_status(area: str, image_context: str, dermoscopy_attested: bo
     if not image_features["usable_for_research_model"]:
         return False, "Retake the image before research inference: " + " ".join(image_features["issues"])
     return True, "Eligible for research-only dermatoscopic lesion inference."
+
+
+def stored_analysis_summary(response: dict) -> dict:
+    """Persist reproducible result metadata without retaining image pixels or base64 assets."""
+    classifier = response.get("research_classifier", {})
+    segmentation = response.get("segmentation", {})
+    candidate = response.get("candidate_region", {})
+    return {
+        "created_at": response["created_at"], "area": response["area"], "quality": response["quality"], "risk": response["risk"],
+        "screening": response["screening"], "manual_context": response["manual_context"],
+        "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
+        "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
+        "classification": {key: classifier.get(key) for key in ("available", "top_prediction", "alternatives", "model_confidence", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
+        "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}),
+        "image_stored": False,
+    }
+
+
+def previous_progress_summary(connection: pymysql.Connection, user_id: int | None, area: str) -> dict:
+    """Return an honest longitudinal status; no healing inference is made from this prototype."""
+    if not user_id:
+        return {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Create a profile before saving analysis history. This result can still be saved as a local snapshot."}
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at DESC LIMIT 1", (user_id, area))
+        previous = cursor.fetchone()
+    if not previous:
+        return {"status": "insufficient_evidence", "previous_analysis": None, "summary": "This is the first saved analysis for this area. A future upload can be placed alongside it, but the app does not infer healing or cure."}
+    return {"status": "insufficient_evidence", "previous_analysis": previous["created_at"].isoformat() if hasattr(previous["created_at"], "isoformat") else str(previous["created_at"]), "summary": "A previous analysis exists. A validated longitudinal model is not configured, so the app does not label image change as improving, stable, or worsening."}
 
 
 def clinician_first_care_plan(risk_score: int) -> dict:
@@ -450,6 +490,33 @@ def list_progress_checkins():
         connection.close()
 
 
+@app.get("/api/analysis-history")
+def list_analysis_history():
+    """Return saved analysis metadata for a profile; uploaded image bytes are never returned or stored."""
+    patient_id = request.args.get("patient_id", "").strip()
+    connection = database()
+    try:
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Create or open a local profile before viewing saved analyses."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT assessment_id, area, result_json, image_stored, created_at FROM analysis_records WHERE user_id=%s ORDER BY created_at DESC LIMIT 50",
+                (user["id"],),
+            )
+            records = cursor.fetchall()
+        analyses = []
+        for record in records:
+            summary = json.loads(record["result_json"])
+            analyses.append({
+                "assessment_id": record["assessment_id"], "area": record["area"], "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
+                "image_stored": bool(record["image_stored"]), "summary": summary,
+            })
+        return jsonify({"analyses": analyses, "image_policy": "Analysis metadata is stored for registered profiles. Uploaded image bytes are not stored in this prototype."})
+    finally:
+        connection.close()
+
+
 @app.post("/api/progress-checkins")
 def create_progress_checkin():
     payload = request.get_json(silent=True) or {}
@@ -566,12 +633,12 @@ def create_assessment():
     risk_level, title, summary = screening_summary(area, risk_score)
     assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
     patient_id = request.form.get("patient_id", "").strip()
+    user_id = None
     persistence = "mysql"
     try:
         connection = database()
         try:
             with connection.cursor() as cursor:
-                user_id = None
                 if patient_id:
                     cursor.execute("SELECT id FROM users WHERE patient_id = %s", (patient_id,))
                     user = cursor.fetchone()
@@ -583,12 +650,31 @@ def create_assessment():
     except pymysql.MySQLError:
         persistence = "not-persisted-mysql-unavailable"
 
-    return jsonify({
+    response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "risk": {"score": risk_score, "level": risk_level, "label": "Reported-concern priority, not disease risk"}, "screening": {"title": title, "summary": summary},
         "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
         "recommendations": build_recommendations(area, research_classifier), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if not urgent_concern else "general_care_only",
-    })
+    }
+    if persistence == "mysql":
+        try:
+            connection = database()
+            try:
+                response["progress_comparison"] = previous_progress_summary(connection, user_id, area)
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
+                        (assessment_id, user_id, area, json.dumps(stored_analysis_summary(response)), now()),
+                    )
+                connection.commit()
+            finally:
+                connection.close()
+        except pymysql.MySQLError:
+            response["persistence"] = "mysql-assessment-saved-analysis-metadata-not-persisted"
+            response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Analysis history could not be saved right now."}
+    else:
+        response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Analysis metadata could not be saved because MySQL is unavailable."}
+    return jsonify(response)
 
 
 @app.errorhandler(413)

@@ -1,4 +1,4 @@
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all', routines: [], checkins: [] };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all', routines: [], checkins: [], analyses: [] };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -27,11 +27,13 @@ function closeProfile() { $('#profileModal').classList.remove('show'); $('#profi
 function closeResult() { $('#resultModal').classList.remove('show'); $('#resultModal').setAttribute('aria-hidden', 'true'); }
 
 function showPage(page) {
-  const allowed = ['home', 'products', 'progress', 'settings'];
-  const target = allowed.includes(page) ? page : 'home';
+  const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings'];
+  const target = allowed.includes(page) ? page : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
   $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
-  if (target === 'progress') loadProgress();
+  const titles = { dashboard: 'Dashboard', home: 'Analyze image', progress: 'My reports', products: 'Care guidance', support: 'Doctor directory', settings: 'Settings' };
+  $('#workspaceTitle').textContent = titles[target];
+  if (target === 'progress' || target === 'dashboard') loadProgress();
   window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
 
@@ -39,9 +41,18 @@ function showCarePlan(plan) {
   let box = $('#careRecommendation');
   if (!box) {
     box = document.createElement('div'); box.id = 'careRecommendation'; box.className = 'care-recommendation';
-    $('#researchResult').insertAdjacentElement('afterend', box);
+    $('#carePlanSlot').append(box);
   }
   box.innerHTML = `<span>✚</span><p><strong>${plan.heading}</strong><br>${plan.next_step}<br><em>${plan.routine_guardrail}</em><br><em>${plan.diet_guidance}</em></p>`;
+}
+
+function showResultTab(tab) {
+  const target = ['summary', 'evidence', 'care', 'progress', 'support'].includes(tab) ? tab : 'summary';
+  $$('[data-result-tab]').forEach(button => {
+    const selected = button.dataset.resultTab === target;
+    button.classList.toggle('selected', selected); button.setAttribute('aria-selected', String(selected));
+  });
+  $$('[data-result-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.resultPanel === target));
 }
 
 function setResearchAttention(researchClassifier) {
@@ -109,10 +120,11 @@ async function analyze() {
     $('#clinicalStatus').textContent = 'Ready to save locally';
     setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan);
     const note = $('#concernNote').value.trim();
-    $('#progressText').textContent = note ? `Tracking note: “${note}” Your image is not saved; save this summary to compare future reported changes.` : 'Save this non-diagnostic snapshot to compare your reported changes over time. Uploaded images are not saved.';
+    const comparison = data.progress_comparison?.summary || 'Analysis metadata is saved for a registered profile. Uploaded images are not stored.';
+    $('#progressText').textContent = note ? `Tracking note: “${note}” ${comparison}` : comparison;
     if (data.quality.issues?.length) toast(data.quality.issues[0]);
     if (data.urgent_notice) toast(data.urgent_notice);
-    $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
+    showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
     $('#stepCount').textContent = 'STEP 3 OF 3';
   } catch (error) { toast(error.message || 'Unable to review this image.'); }
   button.disabled = false; button.innerHTML = 'Review image <span>→</span>';
@@ -135,10 +147,19 @@ function viewCare() {
 
 function searchDoctors(event) {
   event.preventDefault();
-  const location = $('#doctorLocation').value.trim();
+  openDirectorySearch($('#doctorLocation').value);
+}
+
+function openDirectorySearch(locationValue) {
+  const location = String(locationValue || '').trim();
   if (!location) return;
   const query = encodeURIComponent(`dermatologist near ${location}`);
   window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank', 'noopener,noreferrer');
+}
+
+function searchDirectory(event) {
+  event.preventDefault();
+  openDirectorySearch($('#directoryLocation').value);
 }
 
 async function saveProfile(event) {
@@ -150,7 +171,7 @@ async function saveProfile(event) {
     const response = await fetch('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await response.json(); if (!response.ok) throw Error(data.error);
     state.profile = { ...data, past_history: payload.past_history, current_history: payload.current_history }; localStorage.setItem('dermamatrix_profile', JSON.stringify(state.profile));
-    $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; closeProfile(); await loadProgress(); toast('Local profile saved.');
+    $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress(); toast('Local profile saved.');
   } catch (error) { toast(error.message || 'Unable to save profile.'); }
   button.disabled = false;
 }
@@ -160,6 +181,7 @@ function restoreProfile() {
     const profile = JSON.parse(localStorage.getItem('dermamatrix_profile'));
     if (profile?.full_name) { state.profile = profile; $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; }
   } catch { /* no local profile */ }
+  updateDashboardIdentity();
 }
 
 const discoveryItems = [
@@ -198,7 +220,7 @@ function applyTheme(theme) {
   $('#themeToggle').setAttribute('aria-pressed', String(dark));
   $('#themeToggle').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
   $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Day</b>' : '<span aria-hidden="true">☾</span><b>Night</b>';
-  document.querySelector('meta[name="theme-color"]').content = dark ? '#0b1426' : '#2474d8';
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#071a33' : '#f6f8fb';
 }
 
 function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') || 'light'); }
@@ -206,13 +228,30 @@ function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') |
 function clearLocalProfile() {
   localStorage.removeItem('dermamatrix_profile'); state.profile = null;
   $('#profileName').textContent = 'Guest profile'; $('#profileMeta').textContent = 'Save health details';
-  state.routines = []; state.checkins = []; renderProgress();
+  state.routines = []; state.checkins = []; state.analyses = []; updateDashboardIdentity(); renderProgress();
   toast('Your local profile has been cleared from this browser.');
 }
 
 const escapeHTML = value => String(value || '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 
 function currentDate() { return new Date().toISOString().slice(0, 10); }
+
+function updateDashboardIdentity() {
+  const name = state.profile?.full_name?.trim().split(/\s+/)[0] || 'there';
+  $('#dashboardUser').textContent = name;
+}
+
+function renderDashboard() {
+  const analyses = state.analyses || [];
+  $('#dashboardActivity').innerHTML = !analyses.length
+    ? '<p class="empty-state">No saved analyses yet. Start with a clear image when you are ready.</p>'
+    : analyses.slice(0, 4).map(item => {
+      const classification = item.summary?.classification?.top_prediction;
+      const title = classification ? classification.condition : 'Visual screening snapshot';
+      const meta = classification ? `${Math.round(classification.confidence * 100)}% AI model confidence` : 'No scoped classifier output';
+      return `<article class="dashboard-record"><span>◌</span><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.area)} · ${escapeHTML(meta)}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`;
+    }).join('');
+}
 
 function resetRoutineForm() {
   $('#routineForm').reset(); $('#editingRoutineId').value = ''; $('#routineStartDate').value = currentDate();
@@ -221,7 +260,7 @@ function resetRoutineForm() {
 
 function renderProgress() {
   const hasProfile = Boolean(state.profile?.patient_id);
-  const routines = state.routines || []; const checkins = state.checkins || [];
+  const routines = state.routines || []; const checkins = state.checkins || []; const analyses = state.analyses || [];
   const latest = checkins[0];
   $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.length}</strong><small>active routines</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(latest.reported_trend) : '—'}</strong><small>latest self-reported trend</small></article><article><span>◌</span><strong>${latest ? `${latest.priority_score}/100` : '—'}</strong><small>reported-concern priority</small></article>`;
   $('#openProfileFromProgress').textContent = hasProfile ? 'Profile connected' : 'Set up profile';
@@ -229,19 +268,21 @@ function renderProgress() {
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
   const medicalHistory = hasProfile && (state.profile.past_history || state.profile.current_history) ? `<div class="medical-history-summary"><strong>Profile medical history</strong>${state.profile.past_history ? `<p>Past: ${escapeHTML(state.profile.past_history)}</p>` : ''}${state.profile.current_history ? `<p>Current: ${escapeHTML(state.profile.current_history)}</p>` : ''}</div>` : '';
   const timeline = !hasProfile ? '<p class="empty-state">Your progress timeline is available after profile setup.</p>' : !checkins.length ? '<p class="empty-state">Save your first check-in to create a timeline.</p>' : checkins.map(item => `<article class="history-item"><div><strong>${escapeHTML(item.reported_trend)} · ${item.priority_score}/100</strong><p>${escapeHTML(item.condition_label)} · ${escapeHTML(item.routine_name)}</p>${item.note ? `<small>${escapeHTML(item.note)}</small>` : ''}</div><time>${escapeHTML(item.checkin_date)}</time></article>`).join('');
-  $('#progressHistory').innerHTML = medicalHistory + timeline;
+  const analysisHistory = !hasProfile ? '' : !analyses.length ? '<p class="empty-state">Saved image-analysis metadata will appear here after an analysis.</p>' : `<div class="analysis-history-group"><strong>Saved analysis metadata</strong>${analyses.map(item => { const classification = item.summary?.classification?.top_prediction; const label = classification ? `${classification.condition} · ${Math.round(classification.confidence * 100)}% AI model confidence` : 'No scoped classifier output'; return `<article class="history-item"><div><strong>${escapeHTML(label)}</strong><p>${escapeHTML(item.area)} · ${escapeHTML(item.summary?.segmentation?.status || 'segmentation not run')}</p><small>${escapeHTML(item.summary?.image_stored ? 'Image stored with consent' : 'Image pixels were not stored')}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`; }).join('')}</div>`;
+  $('#progressHistory').innerHTML = medicalHistory + timeline + analysisHistory;
   $$('[data-edit-routine]').forEach(button => { button.onclick = () => editRoutine(button.dataset.editRoutine); });
   $$('[data-delete-routine]').forEach(button => { button.onclick = () => deleteRoutine(button.dataset.deleteRoutine); });
+  renderDashboard();
 }
 
 async function loadProgress() {
   if (!state.profile?.patient_id) { renderProgress(); return; }
   try {
     const patientId = encodeURIComponent(state.profile.patient_id);
-    const [routineResponse, checkinResponse] = await Promise.all([fetch(`/api/routines?patient_id=${patientId}`), fetch(`/api/progress-checkins?patient_id=${patientId}`)]);
-    const routineData = await routineResponse.json(); const checkinData = await checkinResponse.json();
-    if (!routineResponse.ok || !checkinResponse.ok) throw Error(routineData.error || checkinData.error);
-    state.routines = routineData.routines; state.checkins = checkinData.checkins; renderProgress();
+    const [routineResponse, checkinResponse, analysisResponse] = await Promise.all([fetch(`/api/routines?patient_id=${patientId}`), fetch(`/api/progress-checkins?patient_id=${patientId}`), fetch(`/api/analysis-history?patient_id=${patientId}`)]);
+    const routineData = await routineResponse.json(); const checkinData = await checkinResponse.json(); const analysisData = await analysisResponse.json();
+    if (!routineResponse.ok || !checkinResponse.ok || !analysisResponse.ok) throw Error(routineData.error || checkinData.error || analysisData.error);
+    state.routines = routineData.routines; state.checkins = checkinData.checkins; state.analyses = analysisData.analyses; renderProgress();
   } catch (error) { toast(error.message || 'Progress data is unavailable right now.'); }
 }
 
@@ -297,6 +338,7 @@ function updateImageContext() {
 
 $$('.area-choice button').forEach(button => { button.onclick = () => selectArea(button.dataset.area); });
 $$('[data-page-nav]').forEach(link => { link.onclick = event => { event.preventDefault(); showPage(link.dataset.pageNav); }; });
+$$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(button.dataset.dashboardNav); });
 $('#imageInput').onchange = event => setImage(event.target.files[0]);
 $('#imageContext').onchange = updateImageContext;
 const drop = $('#dropZone');
@@ -304,13 +346,20 @@ const drop = $('#dropZone');
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
 drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
 $('#analyzeButton').onclick = analyze; $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
-$('#doctorSearchForm').onsubmit = searchDoctors; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
+$$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab(button.dataset.resultTab); });
+$('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => $('.sidebar').classList.toggle('open');
 document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeResult(); closeProfile(); } });
 $$('.product-tabs button').forEach(button => { button.onclick = () => { state.productFilter = button.dataset.filter; $$('.product-tabs button').forEach(tab => tab.classList.toggle('selected', tab === button)); renderDiscoveryCatalog(); }; });
 $('#productSearch').oninput = renderDiscoveryCatalog;
+$('#workspaceSearch').onkeydown = event => {
+  if (event.key !== 'Enter') return;
+  const query = event.currentTarget.value.trim();
+  if (!query) return;
+  $('#productSearch').value = query; renderDiscoveryCatalog(); showPage('products');
+};
 $('#notificationsToggle').onchange = event => { localStorage.setItem('dermamatrix_notifications', String(event.target.checked)); toast(event.target.checked ? 'Local care reminders enabled.' : 'Local care reminders disabled.'); };
 $('#motionToggle').onchange = event => { localStorage.setItem('dermamatrix_reduced_motion', String(event.target.checked)); document.body.classList.toggle('reduce-motion', event.target.checked); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
 $('#clearProfileButton').onclick = clearLocalProfile;
@@ -325,4 +374,4 @@ updateImageContext();
 resetRoutineForm();
 $('#checkinDate').value = currentDate();
 loadProgress();
-showPage(location.hash.replace('#', '') || 'home');
+showPage(location.hash.replace('#', '') || 'dashboard');
