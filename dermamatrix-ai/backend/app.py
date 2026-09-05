@@ -24,7 +24,7 @@ from model_service import run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from pirs_service import calculate_pirs
 from recommendation_service import build_recommendations
-from report_service import build_assessment_report_pdf
+from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
 from segmentation_service import extract_visual_candidate_region, segment_dermoscopic_lesion, unavailable_candidate_region
 from sweat_service import sweat_questionnaire_result
@@ -744,6 +744,68 @@ def download_assessment_report(assessment_id: str):
     except Exception:
         connection.rollback()
         raise
+    finally:
+        connection.close()
+
+
+@app.get("/api/history/download")
+def download_history_export():
+    """Download one signed-in account's saved metadata as a printable PDF.
+
+    This is deliberately not a bulk image export: source photos and visual
+    overlays are never stored by the local prototype.
+    """
+    connection = database()
+    try:
+        user = user_for_patient(connection, str(session.get("patient_id", "")).strip())
+        if not user:
+            return jsonify({"error": "Sign in to download your saved history."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT assessment_id, area, result_json, created_at FROM analysis_records WHERE user_id=%s ORDER BY created_at DESC LIMIT 50",
+                (user["id"],),
+            )
+            raw_analyses = cursor.fetchall()
+            cursor.execute(
+                """SELECT r.condition_label, r.routine_name, DATE_FORMAT(r.start_date, '%%Y-%%m-%%d') AS start_date,
+                   COUNT(c.id) AS checkin_count FROM care_routines r
+                   LEFT JOIN progress_checkins c ON c.routine_id=r.routine_id AND c.user_id=r.user_id
+                   WHERE r.user_id=%s GROUP BY r.routine_id ORDER BY r.start_date DESC, r.id DESC LIMIT 50""",
+                (user["id"],),
+            )
+            routines = cursor.fetchall()
+            cursor.execute(
+                """SELECT DATE_FORMAT(c.checkin_date, '%%Y-%%m-%%d') AS checkin_date, c.reported_trend, c.priority_score,
+                   r.condition_label FROM progress_checkins c JOIN care_routines r ON r.routine_id=c.routine_id
+                   WHERE c.user_id=%s ORDER BY c.checkin_date DESC, c.id DESC LIMIT 100""",
+                (user["id"],),
+            )
+            checkins = cursor.fetchall()
+        analyses = []
+        for record in raw_analyses:
+            try:
+                summary = json.loads(record["result_json"])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                summary = {}
+            analyses.append({
+                "assessment_id": record["assessment_id"],
+                "area": record["area"],
+                "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
+                "summary": summary,
+            })
+        report_bytes = build_history_report_pdf(
+            account=account_response(user, account_history(connection, user["id"])),
+            analyses=analyses,
+            routines=routines,
+            checkins=checkins,
+        )
+        return send_file(
+            io.BytesIO(report_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"dermamatrix-personal-history-{datetime.now(timezone.utc).date().isoformat()}.pdf",
+            max_age=0,
+        )
     finally:
         connection.close()
 

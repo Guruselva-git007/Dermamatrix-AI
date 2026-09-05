@@ -13,7 +13,7 @@ const assessmentTransitions = Object.freeze({
   RESULT_READY: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -220,7 +220,7 @@ function installProcessingOverlay() {
   if ($('#processingModal')) return;
   const overlay = document.createElement('div');
   overlay.id = 'processingModal'; overlay.className = 'processing-modal'; overlay.setAttribute('aria-hidden', 'true');
-  overlay.innerHTML = '<div class="processing-card" role="status" aria-live="polite"><span class="processing-orbit" aria-hidden="true"></span><p class="eyebrow">ANALYSIS IN PROGRESS</p><h2 id="processingTitle">Preparing your screening summary</h2><p id="processingCopy">Each completed stage is shown clearly. This app will not represent an unavailable model as a result.</p><ol id="processingSteps" class="processing-steps"></ol></div>';
+  overlay.innerHTML = '<div class="processing-card" role="status" aria-live="polite"><div class="scan-visual" aria-hidden="true"><span class="scan-corner corner-one"></span><span class="scan-corner corner-two"></span><span class="scan-corner corner-three"></span><span class="scan-corner corner-four"></span><span class="scan-line"></span><span class="scan-glow"></span></div><p class="eyebrow">ANALYSIS IN PROGRESS</p><h2 id="processingTitle">Preparing your screening summary</h2><p id="processingCopy">Each completed stage is shown clearly. This app will not represent an unavailable model as a result.</p><ol id="processingSteps" class="processing-steps"></ol></div>';
   document.body.append(overlay);
 }
 
@@ -348,7 +348,7 @@ function renderAnalysisDashboard(data) {
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
-  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products}</ul></div><p class="recommendation-note">${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
+  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products}</ul></div><p class="recommendation-note"><strong>Medicine safety:</strong> ${escapeHTML(recommendation.medicine_policy || 'No medicine, dose, or diagnosis-specific treatment is suggested from an uploaded image.')} ${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
 }
 
 async function analyze() {
@@ -395,7 +395,7 @@ async function analyze() {
     $('#modelStatus').textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}% · screening support` : data.model?.status === 'rule_based_prototype' ? 'Questionnaire contribution summary' : 'Model adapter unavailable';
     $('#clinicalStatus').textContent = data.persistence === 'mysql' ? 'Saved to your local account · no image retained' : 'Guest result · not stored';
     $('#saveProgressButton').innerHTML = data.persistence === 'mysql' ? 'Refresh saved reports <span>→</span>' : 'Create account to save <span>→</span>';
-    setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan);
+    setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan); updateDoctorSupport(data.risk);
     if (questionnaire) {
       $('#attentionLabel').textContent = 'Questionnaire summary';
       $('.result-footnote').textContent = 'Questionnaire inputs use a transparent contribution summary. Grad-CAM and image-region visualisation do not apply to tabular input.';
@@ -438,16 +438,59 @@ function searchDoctors(event) {
   openDirectorySearch($('#doctorLocation').value);
 }
 
-function openDirectorySearch(locationValue) {
+function directoryLocationStatus(message) {
+  const status = $('#directoryLocationStatus');
+  if (status) status.textContent = message;
+}
+
+function openDirectorySearch(locationValue, { appointment = false } = {}) {
   const location = String(locationValue || '').trim();
-  if (!location) return;
-  const query = encodeURIComponent(`dermatologist near ${location}`);
+  if (!location) return toast('Enter a city or area, or use your device location first.');
+  state.nearbySearchLocation = location;
+  const query = encodeURIComponent(appointment ? `dermatology clinic appointment options near ${location}` : `dermatologist near ${location}`);
   window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank', 'noopener,noreferrer');
 }
 
 function searchDirectory(event) {
   event.preventDefault();
   openDirectorySearch($('#directoryLocation').value);
+}
+
+function useNearbyLocation({ target = 'directory' } = {}) {
+  if (!navigator.geolocation) return toast('This browser does not provide device location. Enter a city or locality instead.');
+  directoryLocationStatus('Requesting your device location. It is used only to open a Maps search and is not saved.');
+  navigator.geolocation.getCurrentPosition(
+    position => {
+      const coordinates = `${position.coords.latitude.toFixed(4)},${position.coords.longitude.toFixed(4)}`;
+      state.nearbySearchLocation = coordinates;
+      if (target === 'result') $('#doctorLocation').value = 'Current device location';
+      else $('#directoryLocation').value = 'Current device location';
+      directoryLocationStatus('Location received in this browser. Opening nearby dermatologist results in Maps.');
+      openDirectorySearch(coordinates);
+    },
+    () => {
+      directoryLocationStatus('Location was not shared. Enter a city or locality to search manually.');
+      toast('Location was not shared. You can still search by city or area.');
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+  );
+}
+
+function openAppointmentOptions(locationValue) {
+  const location = String(locationValue || state.nearbySearchLocation || '').trim();
+  openDirectorySearch(location, { appointment: true });
+}
+
+function updateDoctorSupport(risk = {}) {
+  state.latestRisk = risk;
+  const highPriority = ['HIGH', 'URGENT'].includes(risk.severity);
+  const title = highPriority ? 'Professional review is recommended' : 'Optional professional support';
+  const copy = highPriority
+    ? 'Your reported-concern priority is high. Use your location to open nearby dermatologist listings with current ratings and contact details. Appointment availability is confirmed only by the clinic or booking provider.'
+    : 'Search Google Maps for current directory details such as ratings, contact options, and directions; verify registration and the listing directly before booking.';
+  const heading = $('#doctorSupportTitle'); const description = $('#doctorSupportCopy');
+  if (heading) heading.textContent = title;
+  if (description) description.textContent = copy;
 }
 
 async function saveProfile(event) {
@@ -606,7 +649,7 @@ function showSavedReport(assessmentId) {
   $('#qualityScore').textContent = data.quality?.score === null || data.quality?.score === undefined ? data.quality?.label || 'Not applicable' : `${data.quality.score}% · ${data.quality.label}`;
   $('#modelStatus').textContent = data.classification?.available ? 'Research model record retained' : questionnaire ? 'Questionnaire contribution summary' : 'No scoped classifier output';
   $('#clinicalStatus').textContent = 'Saved metadata · no image retained';
-  setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {});
+  setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.risk || {});
   $('#progressText').textContent = `Saved ${String(item.created_at).slice(0, 10)}. This report can support a clinician discussion; it does not confirm a diagnosis or treatment response.`;
   $('.result-footnote').textContent = 'This is a saved metadata report. The original image, visual candidate overlay, and Grad-CAM image were intentionally not retained.';
   showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
@@ -631,12 +674,39 @@ async function downloadSavedReport(assessmentId) {
   }
 }
 
+async function downloadHistory() {
+  if (!state.profile?.patient_id) {
+    showAuthGate('register');
+    return toast('Create or sign in to an account before downloading saved history.');
+  }
+  try {
+    const response = await fetch('/api/history/download');
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw Error(payload.error || 'Unable to generate the history export.');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob); const link = document.createElement('a');
+    link.href = url; link.download = `dermamatrix-personal-history-${currentDate()}.pdf`; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    toast('Personal history PDF downloaded.');
+  } catch (error) {
+    toast(error.message || 'Unable to generate the history export.');
+  }
+}
+
 function renderProgress() {
   const hasProfile = Boolean(state.profile?.patient_id);
   const routines = state.routines || []; const checkins = state.checkins || []; const analyses = state.analyses || [];
   const latest = checkins[0];
   $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.length}</strong><small>active routines</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(latest.reported_trend) : '—'}</strong><small>latest self-reported trend</small></article><article><span>◌</span><strong>${latest ? `${latest.priority_score}/100` : '—'}</strong><small>reported-concern priority</small></article>`;
   $('#openProfileFromProgress').textContent = hasProfile ? 'Profile connected' : 'Set up profile';
+  $('#downloadHistoryButton').disabled = !hasProfile;
+  $('#monitoringNote').textContent = !hasProfile
+    ? 'Create an account to retain a check-in timeline and download history. This app never passively monitors you between entries.'
+    : latest
+      ? `Last self-reported check-in: ${latest.checkin_date}. Add another check-in whenever there is a meaningful change; this app does not passively observe you between entries.`
+      : 'Ongoing monitoring is input-driven. Add your first check-in after starting a routine, then log meaningful changes over time.';
   $('#routineList').innerHTML = !hasProfile ? '<p class="empty-state">Set up a profile to store routines and progress securely in this local app.</p>' : !routines.length ? '<p class="empty-state">No routines yet. Add a clinician-recorded condition and its routine.</p>' : routines.map(routine => `<article class="routine-item"><div><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>Started ${escapeHTML(routine.start_date)} · ${routine.checkin_count || 0} check-in${Number(routine.checkin_count) === 1 ? '' : 's'}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">Delete</button></div></article>`).join('');
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
   const medicalHistory = hasProfile && (state.profile.past_history || state.profile.current_history) ? `<div class="medical-history-summary"><strong>Profile medical history</strong>${state.profile.past_history ? `<p>Past: ${escapeHTML(state.profile.past_history)}</p>` : ''}${state.profile.current_history ? `<p>Current: ${escapeHTML(state.profile.current_history)}</p>` : ''}</div>` : '';
@@ -733,7 +803,12 @@ const drop = $('#dropZone');
 drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
 $('#analyzeButton').onclick = analyze; $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
 $$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab(button.dataset.resultTab); });
-$('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
+$('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory;
+$('#useResultLocationButton').onclick = () => useNearbyLocation({ target: 'result' });
+$('#useDirectoryLocationButton').onclick = () => useNearbyLocation({ target: 'directory' });
+$('#resultAppointmentSearchButton').onclick = () => openAppointmentOptions($('#doctorLocation').value === 'Current device location' ? state.nearbySearchLocation : $('#doctorLocation').value);
+$('#appointmentSearchButton').onclick = () => openAppointmentOptions($('#directoryLocation').value === 'Current device location' ? state.nearbySearchLocation : $('#directoryLocation').value);
+$('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
 $$('[data-auth-tab]').forEach(button => { button.onclick = () => setAuthTab(button.dataset.authTab); });
 $('#registerForm').onsubmit = registerAccount; $('#loginForm').onsubmit = loginAccount; $('#continueGuestButton').onclick = continueAsGuest;
 $('#forgotPasswordButton').onclick = () => setAuthMessage('Password reset needs an email delivery service, which is not configured for this local college-project server. Create a new test account or ask the local project administrator for help.');
@@ -754,7 +829,7 @@ $('#motionToggle').onchange = event => { localStorage.setItem('dermamatrix_reduc
 $('#clearProfileButton').onclick = clearLocalProfile;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
 $('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('dermamatrix_theme', next); applyTheme(next); };
-$('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin;
+$('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin; $('#downloadHistoryButton').onclick = downloadHistory;
 window.addEventListener('popstate', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
 window.addEventListener('hashchange', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
 window.addEventListener('beforeunload', () => { if (state.imageUrl) URL.revokeObjectURL(state.imageUrl); });

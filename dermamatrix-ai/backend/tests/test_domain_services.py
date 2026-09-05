@@ -12,7 +12,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from pirs_service import calculate_pirs
-from report_service import build_assessment_report_pdf
+from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
 from sweat_service import sweat_questionnaire_result
 
@@ -59,6 +59,16 @@ class ReportTests(unittest.TestCase):
                     "care_plan": {"next_step": "Track the concern and discuss it with a clinician if it changes."},
                 },
             },
+        )
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertGreater(len(pdf), 1000)
+
+    def test_history_export_is_a_real_pdf_without_images(self):
+        pdf = build_history_report_pdf(
+            account={"full_name": "Test Account", "patient_id": "DMX-TEST", "email_address": "test@example.test", "past_history": "None recorded", "current_history": "Tracking a concern"},
+            analyses=[{"created_at": "2026-09-06T10:00:00Z", "area": "Skin", "summary": {"risk": {"score": 32, "level": "LOW"}, "classification": {"available": False}}}],
+            routines=[{"condition_label": "Clinician-recorded concern", "routine_name": "Gentle routine", "start_date": "2026-09-01", "checkin_count": 1}],
+            checkins=[{"checkin_date": "2026-09-06", "condition_label": "Clinician-recorded concern", "reported_trend": "improving", "priority_score": 18}],
         )
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 1000)

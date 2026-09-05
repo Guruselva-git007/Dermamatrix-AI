@@ -60,7 +60,15 @@ The browser uses an explicit assessment state machine (`IDLE`, `CATEGORY_SELECTE
 
 Completed assessments are persisted only for the authenticated account. Guest assessments are returned for the current screen only; neither uploaded images nor guest assessment metadata are retained. Uploaded image pixels are never stored.
 
-Registered users can open **My reports** and download a server-generated, account-scoped PDF discussion brief. The PDF contains stored assessment metadata and care-discussion guidance, but intentionally excludes images and overlays because the app does not retain them.
+Registered users can open **My reports** and download a server-generated, account-scoped PDF discussion brief. The PDF contains stored assessment metadata and care-discussion guidance, but intentionally excludes images and overlays because the app does not retain them. **Download history PDF** exports that account's saved screening metadata, routines, self-reported check-ins, and profile history in one printable document.
+
+The progress page is **input-driven monitoring**, not passive or continuous medical monitoring: it refreshes when the person saves a new screening or self-reported check-in. It does not claim healing, treatment effectiveness, or observation between entries.
+
+## Doctor search and appointment handoff
+
+For every result—and with clearer wording for `HIGH` or `URGENT` reported-concern priority—the app can open a nearby dermatologist search in Google Maps. The person may enter a city or grant browser location permission; coordinates are used only in the current browser to open Maps and are not persisted. Maps is the source of current listings, ratings, contact information, directions, and any clinic-specific appointment options. DermaMatrix does not rank, verify, create, or confirm bookings.
+
+No prescription medicine, dosage, diagnosis-specific treatment, or product recommendation is generated from an uploaded image. The care library contains only general personal-care education with an explicit clinician/pharmacist guardrail.
 
 ## Verification
 

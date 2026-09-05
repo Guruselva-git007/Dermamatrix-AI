@@ -46,4 +46,11 @@ def build_recommendations(area: str, research_classifier: dict | None) -> dict:
         product = {key: value for key, value in item.items() if key != "affiliate_env"}
         product["url"] = os.getenv(item["affiliate_env"], "")
         products.append(product)
-    return {"scope": "General wellbeing and personal-care education", "research_note": research_note, "affiliate_disclosure": "A partner link is shown only when configured. It never changes analysis or medical suitability.", **GENERAL_WELLBEING, "products": products}
+    return {
+        "scope": "General wellbeing and personal-care education",
+        "research_note": research_note,
+        "medicine_policy": "No medicine, prescription treatment, dose, or diagnosis-specific product is suggested from an uploaded image. A normal-looking or usable image is not interpreted as a treatment decision.",
+        "affiliate_disclosure": "A partner link is shown only when configured. It never changes analysis or medical suitability.",
+        **GENERAL_WELLBEING,
+        "products": products,
+    }
