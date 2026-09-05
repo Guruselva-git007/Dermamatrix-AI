@@ -27,6 +27,16 @@ Open `http://127.0.0.1:8000`.
 
 `run_local_mysql.sh` starts an isolated MySQL 8 instance on port `3307`, creates the `dermamatrix_ai` database, and grants only the app's local database privileges. It does not modify a separately installed system MySQL service.
 
+## Run in VS Code
+
+Open the `dermamatrix-ai` folder itself in VS Code. The repository includes a launch profile, task shortcuts, and an extension recommendation for the Python debugger.
+
+1. Complete the local setup above, including `backend/.env`.
+2. Select the project interpreter (`.venv/bin/python`, or the existing `.ml-venv/bin/python` if that is the environment you use) when VS Code asks.
+3. Press **F5** and select **DermaMatrix: Run locally (MySQL)**. The launch profile starts the isolated MySQL service first and then opens the API in VS Code's integrated terminal.
+
+For a terminal-only start, use `bash backend/scripts/run_app.sh`. It selects `.venv` (or the existing `.ml-venv` fallback), verifies Flask/MySQL dependencies, starts the isolated database, and serves the app at `http://127.0.0.1:8000`. In VS Code, **Terminal → Run Task → DermaMatrix: Verify local stack** confirms that Flask and MySQL are connected.
+
 ## Local account access
 
 The entry screen supports account creation, sign-in, and a non-persistent guest workspace.

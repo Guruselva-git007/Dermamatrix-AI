@@ -1,0 +1,61 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "DermaMatrix: Start local MySQL",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/backend/scripts/run_local_mysql.sh"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "DermaMatrix: Run complete local stack",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/backend/scripts/run_app.sh"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "dermamatrix",
+        "pattern": [
+          {
+            "regexp": "^(.*)$",
+            "message": 1
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Starting DermaMatrix",
+          "endsPattern": "Running on http://127\\.0\\.0\\.1:8000"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
+      "label": "DermaMatrix: Verify local stack",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/backend/scripts/check_local_stack.sh"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}
