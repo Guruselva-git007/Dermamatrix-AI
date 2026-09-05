@@ -5,7 +5,7 @@
 | Component | Intended input | Output | Clinical status |
 | --- | --- | --- | --- |
 | Reported-concern prioritisation | User-selected duration, discomfort, recent change, and image usability | A discussion-priority label | Demonstration logic; not trained, not a diagnosis or risk prediction model |
-| HAM10000 ResNet-34 | One in-focus **dermatoscopic** image of one skin lesion | Seven research label probabilities and Grad-CAM attention | Research-only; not validated or deployed as a medical device |
+| HAM10000 ResNet-34 | One in-focus **dermatoscopic** image of one skin lesion | Research label ranking, Grad-CAM attention, and a calibrated likelihood only when an independent-validation artifact is configured | Research-only; not validated or deployed as a medical device |
 
 The HAM10000 component does **not** run on a face/selfie, hair/scalp image, nail image, sweat-gland concern, or a normal camera image. The user must choose dermatoscopic lesion mode, confirm the capture method, and pass the usability gate before it is called. Grad-CAM is an attention visualisation, not lesion segmentation and not a medical finding.
 
@@ -13,7 +13,8 @@ The HAM10000 component does **not** run on a face/selfie, hair/scalp image, nail
 
 - HAM10000 represents dermatoscopic pigmented-lesion images; it is not a representative clinical population or a general dermatology, hair, nail, or deficiency dataset.
 - The app has no prospective clinical validation, subgroup performance study, calibration study, clinician review workflow, or regulatory clearance.
-- A probability from this model must never be shown as a diagnosis, a disease risk, or a treatment recommendation.
+- Raw softmax scores are relative model rankings and are never shown as calibrated medical probabilities. The runtime only exposes an estimated likelihood when a version-matched temperature-scaling artifact with independent validation provenance is present.
+- The app has no fitted out-of-distribution detector. It reports `OOD_NOT_EVALUATED` instead of calling an image known, normal, or out-of-distribution.
 - A user-selected prompt-care concern is escalated without being overridden by the model.
 
 ## Required work before clinical deployment

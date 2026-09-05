@@ -5,12 +5,17 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from io import BytesIO
+
+from PIL import Image
 
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+from calibration_service import calibrated_probabilities, prediction_uncertainty
+from ml_evaluation import multiclass_metrics, validate_patient_level_splits
 from pirs_service import calculate_pirs
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
@@ -37,6 +42,89 @@ class RiskAndPirsTests(unittest.TestCase):
         self.assertEqual(result["engine"]["status"], "rule_based_prototype")
         self.assertEqual(result["explainability"]["method"], "Questionnaire input-contribution summary")
         self.assertGreaterEqual(result["risk_score"], 18)
+
+
+class MlContractTests(unittest.TestCase):
+    def test_temperature_calibration_produces_probability_only_with_valid_artifact(self):
+        calibration = {"available": True, "temperature": 2.0, "calibration_version": "qa-cal-v1"}
+        likelihoods = calibrated_probabilities([2.0, 0.0], calibration)
+        self.assertAlmostEqual(sum(likelihoods), 1.0)
+        self.assertLess(likelihoods[0], 0.9)  # softer than the raw softmax at temperature 1
+        self.assertIsNone(calibrated_probabilities([2.0, 0.0], {"available": False}))
+
+    def test_probability_is_not_reported_concern_priority(self):
+        likelihood = calibrated_probabilities([2.0, 0.0], {"available": True, "temperature": 2.0})[0]
+        priority = normalise_reported_priority(65)
+        self.assertNotEqual(round(likelihood * 100), priority["score"])
+        self.assertEqual(priority["label"], "Reported-concern priority, not condition likelihood or disease risk.")
+
+    def test_missing_calibration_or_ood_detector_yields_uncertain_contract(self):
+        uncertainty = prediction_uncertainty(None)
+        self.assertEqual(uncertainty["status"], "UNCERTAIN")
+        self.assertEqual(uncertainty["ood_status"], "OOD_NOT_EVALUATED")
+        self.assertEqual(uncertainty["certainty"], "NOT_AVAILABLE")
+
+    def test_patient_split_leakage_is_detected(self):
+        errors = validate_patient_level_splits([
+            {"patient_id": "p1", "split": "train"},
+            {"patient_id": "p1", "split": "test"},
+        ])
+        self.assertEqual(len(errors), 1)
+
+    def test_evaluation_metrics_include_calibration_and_per_class_values(self):
+        metrics = multiclass_metrics([0, 1, 0, 1], [[.8, .2], [.1, .9], [.7, .3], [.2, .8]], ["a", "b"])
+        self.assertIn("expected_calibration_error", metrics)
+        self.assertIn("specificity", metrics["per_class"]["a"])
+
+    def test_general_or_low_quality_image_has_no_fabricated_condition_likelihood(self):
+        from app import app
+
+        image = Image.new("RGB", (32, 32), color=(140, 140, 140))
+        payload = BytesIO()
+        image.save(payload, format="PNG")
+        client = app.test_client()
+        response = client.post("/api/assessments", data={
+            "image": (BytesIO(payload.getvalue()), "qa.png"), "area": "Skin", "image_context": "general_photo",
+            "image_consent": "true", "duration": "0", "discomfort": "0", "change": "0",
+        }, content_type="multipart/form-data")
+        result = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(result["input_validation"]["status"], "LOW_QUALITY")
+        self.assertFalse(result["research_classifier"]["available"])
+        self.assertFalse(result["research_classifier"]["condition_likelihood"]["available"])
+        self.assertEqual(result["input_validation"]["normal_appearance"], "NOT_ASSESSED")
+        self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
+
+    def test_sweat_path_is_questionnaire_only(self):
+        from app import app
+
+        response = app.test_client().post("/api/sweat-assessments", json={"questionnaire_consent": True, "pattern": "usual", "frequency": 0, "duration": 0})
+        result = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(result["input_type"], "questionnaire")
+        self.assertFalse(result["research_classifier"]["available"])
+        self.assertEqual(result["model_pipeline"]["attention_map"], "not applicable")
+
+    def test_assessment_summary_retains_model_and_calibration_lineage(self):
+        from app import stored_analysis_summary
+
+        summary = stored_analysis_summary({
+            "created_at": "2026-09-06T10:00:00Z", "area": "Skin", "input_type": "image",
+            "quality": {"score": 88}, "input_validation": {}, "risk": {}, "pirs": {},
+            "screening": {}, "manual_context": {}, "candidate_region": {}, "segmentation": {},
+            "recommendations": {}, "care_plan": {}, "explainability": {},
+            "model_metadata": {"model_version": "model-v1", "dataset_version": "dataset-v1"},
+            "model_pipeline": {"model_lineage": {"pipeline_version": "pipeline-v1"}},
+            "research_classifier": {
+                "available": True, "model_id": "skin-test", "model_version": "model-v1",
+                "dataset_version": "dataset-v1", "pipeline_version": "pipeline-v1",
+                "calibration": {"calibration_version": "calibration-v1"},
+            },
+        })
+        saved = summary["classification"]
+        self.assertEqual(saved["model_version"], "model-v1")
+        self.assertEqual(saved["calibration"]["calibration_version"], "calibration-v1")
+        self.assertEqual(summary["model_pipeline"]["model_lineage"]["pipeline_version"], "pipeline-v1")
 
 
 class ReportTests(unittest.TestCase):

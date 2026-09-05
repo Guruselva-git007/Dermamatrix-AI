@@ -62,9 +62,13 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     pirs_value = f"{_text(pirs.get('score'), '—')}/100 · {_text(pirs.get('band'), 'UNCERTAIN')}"
     prediction = classification.get("top_prediction") or {}
     classification_value = _text(prediction.get("condition"), "No scoped disease classification was run") if classification.get("available") else "No scoped disease classification was run"
-    confidence = prediction.get("confidence") or classification.get("model_confidence")
-    if confidence is not None and classification.get("available"):
-        classification_value += f"<br/><font color='#5C6E80'>Research-model output confidence: {_text(round(float(confidence) * 100))}% (not medical certainty)</font>"
+    likelihood = prediction.get("calibrated_probability")
+    calibration = classification.get("calibration") or {}
+    uncertainty = classification.get("uncertainty") or {}
+    if likelihood is not None and classification.get("available"):
+        classification_value += f"<br/><font color='#5C6E80'>Estimated likelihood: {_text(round(float(likelihood) * 100))}% · calibration: {_text(calibration.get('calibration_version'))} · certainty: {_text(uncertainty.get('certainty'))}</font>"
+    elif classification.get("available"):
+        classification_value += "<br/><font color='#5C6E80'>Research ranking only. Calibration artifact unavailable, so no condition likelihood is shown.</font>"
 
     rows = [
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
@@ -101,7 +105,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Segmentation:</b> {_text(segmentation.get('status'), 'Not run')}. {_text(segmentation.get('notice'), '')}", body),
         Spacer(1, 1.5 * mm),
-        Paragraph(_text((summary.get("explainability") or {}).get("notice"), "No additional explainability artifact was retained."), note),
+        Paragraph(_text((summary.get("explainability") or {}).get("notice") or (classification.get("explainability") or {}).get("explanation_text"), "No additional explainability artifact was retained."), note),
         Paragraph("General guidance for discussion", heading),
         Paragraph(f"<b>Next step:</b> {_text(care_plan.get('next_step'))}", body),
         Spacer(1, 1.5 * mm),

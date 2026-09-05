@@ -18,6 +18,9 @@ import torch.nn.functional as functional
 from PIL import Image
 from torchvision import models, transforms
 
+from calibration_service import calibrated_probabilities, load_temperature_calibration, prediction_uncertainty
+from model_metadata import SKIN_DATASET_VERSION, SKIN_MODEL_ID, SKIN_MODEL_VERSION, PIPELINE_VERSION
+
 
 WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "models", "ham10000_resnet34_research.ptw")
 CLASSES = ("akiec", "bcc", "bkl", "df", "mel", "nv", "vasc")
@@ -45,7 +48,18 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
     """Return research labels plus a Grad-CAM attention map for dermoscopy only."""
     model = load_model()
     if model is None:
-        return {"available": False, "reason": "Research weights are not installed.", "notice": RESEARCH_NOTICE}
+        return {
+            "available": False,
+            "reason": "Research weights are not installed.",
+            "notice": RESEARCH_NOTICE,
+            "model_id": SKIN_MODEL_ID,
+            "model_version": SKIN_MODEL_VERSION,
+            "dataset_version": SKIN_DATASET_VERSION,
+            "pipeline_version": PIPELINE_VERSION,
+            "condition_likelihood": {"available": False, "status": "NOT_RUN", "estimated_likelihood": None, "notice": "No model weights are installed, so no condition likelihood is available."},
+            "calibration": {"available": False, "status": "NOT_RUN", "calibration_version": None},
+            "uncertainty": prediction_uncertainty(None),
+        }
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = transforms.Compose([transforms.Resize(280), transforms.CenterCrop(224), transforms.ToTensor()])(image).unsqueeze(0)
     activations = []
@@ -66,21 +80,58 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
         buffer = io.BytesIO()
         attention_image.save(buffer, format="PNG")
         attention_base64 = base64.b64encode(buffer.getvalue()).decode("ascii")
-        probabilities = functional.softmax(logits, dim=1)[0].detach().cpu().tolist()
+        raw_probabilities = functional.softmax(logits, dim=1)[0].detach().cpu().tolist()
+        logit_values = logits[0].detach().cpu().tolist()
     finally:
         hook.remove()
-    ranked = sorted(zip(CLASSES, probabilities), key=lambda value: value[1], reverse=True)
-    top_probability = float(ranked[0][1])
+    calibration = load_temperature_calibration(SKIN_MODEL_ID, SKIN_MODEL_VERSION, CLASSES)
+    likelihoods = calibrated_probabilities(logit_values, calibration)
+    uncertainty = prediction_uncertainty(likelihoods)
+    ranked = sorted(enumerate(raw_probabilities), key=lambda value: value[1], reverse=True)
+    top_index = ranked[0][0]
+    top_likelihood = float(likelihoods[top_index]) if likelihoods is not None else None
+    predictions = [
+        {
+            "code": CLASSES[index],
+            "label": LABELS[CLASSES[index]],
+            "calibrated_probability": round(float(likelihoods[index]), 4) if likelihoods is not None else None,
+            "relative_score": round(float(raw_score), 4),
+        }
+        for index, raw_score in ranked[:3]
+    ]
     return {
         "available": True,
-        "model": "HAM10000 ResNet-34 research model", "model_version": "Tschandl-2020-resnet34", "image_requirement": "Single, in-focus dermatoscopic lesion image only—not a face photo or selfie.",
-        "top_predictions": [{"code": code, "label": LABELS[code], "probability": round(probability, 4)} for code, probability in ranked[:3]],
-        "top_prediction": {"condition": LABELS[ranked[0][0]], "confidence": round(top_probability, 4)},
-        "alternatives": [{"condition": LABELS[code], "confidence": round(probability, 4)} for code, probability in ranked[1:3]],
-        "model_confidence": round(top_probability, 4), "uncertainty": round(1 - top_probability, 4), "low_confidence": top_probability < LOW_CONFIDENCE_THRESHOLD,
-        "below_confidence_threshold": top_probability < LOW_CONFIDENCE_THRESHOLD, "confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
-        "confidence_notice": "AI model confidence reflects its relative output for this research image domain, not the chance that a patient has a condition.",
+        "model": "HAM10000 ResNet-34 research model", "model_id": SKIN_MODEL_ID, "model_version": SKIN_MODEL_VERSION,
+        "dataset_version": SKIN_DATASET_VERSION, "pipeline_version": PIPELINE_VERSION,
+        "image_requirement": "Single, in-focus dermatoscopic lesion image only—not a face photo or selfie.",
+        "top_predictions": predictions,
+        "top_prediction": {
+            "condition": LABELS[CLASSES[top_index]],
+            "calibrated_probability": round(top_likelihood, 4) if top_likelihood is not None else None,
+            "relative_score": round(float(raw_probabilities[top_index]), 4),
+            "target_class_index": top_index,
+        },
+        "alternatives": [
+            {"condition": item["label"], "calibrated_probability": item["calibrated_probability"], "relative_score": item["relative_score"]}
+            for item in predictions[1:]
+        ],
+        "condition_likelihood": {
+            "available": likelihoods is not None,
+            "status": "CALIBRATED" if likelihoods is not None else "NOT_AVAILABLE",
+            "primary_finding": LABELS[CLASSES[top_index]] if likelihoods is not None else None,
+            "estimated_likelihood": round(top_likelihood, 4) if top_likelihood is not None else None,
+            "predictions": predictions if likelihoods is not None else [],
+            "notice": "Estimated likelihood is available only after independent-validation calibration." if likelihoods is not None else calibration["notice"],
+        },
+        "calibration": calibration,
+        "uncertainty": uncertainty,
+        "model_confidence": round(top_likelihood, 4) if top_likelihood is not None else None,
+        "raw_top_score": round(float(raw_probabilities[top_index]), 4),
+        "low_confidence": uncertainty["certainty"] == "LOW",
+        "below_confidence_threshold": uncertainty["certainty"] == "LOW",
+        "confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
+        "confidence_notice": "A raw softmax score is a model-relative ranking output, not a real-world likelihood. A likelihood is emitted only from a version-matched calibration artifact.",
         "attention_map": {"image": f"data:image/png;base64,{attention_base64}", "label": "Grad-CAM research attention map — not a lesion segmentation or medical finding."},
-        "explainability": {"method": "Grad-CAM", "heatmap": f"data:image/png;base64,{attention_base64}", "explanation_text": "Highlighted image regions contributed most to this research model output. They do not identify a diagnosis or lesion boundary."},
+        "explainability": {"method": "Grad-CAM", "heatmap": f"data:image/png;base64,{attention_base64}", "target_class_index": top_index, "target_class": CLASSES[top_index], "explanation_text": "Highlighted image regions contributed most to the selected research-model class output. They do not identify a diagnosis or lesion boundary."},
         "notice": RESEARCH_NOTICE,
     }

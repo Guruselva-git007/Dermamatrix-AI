@@ -8,6 +8,9 @@ clinically validated formula, prediction, prognosis, or diagnosis.
 from __future__ import annotations
 
 
+PIRS_VERSION = "transparent-prototype-aggregation-v1.1"
+
+
 def calculate_pirs(
     *,
     area: str,
@@ -35,6 +38,7 @@ def calculate_pirs(
         "band": priority.get("severity", "UNCERTAIN"),
         "factors": factors,
         "confidence": None,
+        "version": PIRS_VERSION,
         "method": "transparent-prototype-aggregation-v1",
         "validation_status": "not_clinically_validated",
         "label": "Personalised reported-concern priority for tracking only; not a clinical prediction.",

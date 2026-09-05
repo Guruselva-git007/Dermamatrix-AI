@@ -21,8 +21,9 @@ def run_screening_model(duration: int, discomfort: int, change: int, quality: in
     symptom_load = min(1.0, (max(0, duration) + max(0, discomfort) + max(0, change)) / 61)
     image_reliability = max(0.0, min(1.0, quality / 100))
     # Quality reduces model confidence, not a patient's risk.
-    probability = sigmoid(-1.15 + 2.25 * symptom_load + 0.25 * (1 - image_reliability))
-    risk_score = min(92, max(28, round(28 + probability * 64)))
+    # This is an internal prioritisation signal, not a condition probability.
+    priority_signal = sigmoid(-1.15 + 2.25 * symptom_load + 0.25 * (1 - image_reliability))
+    risk_score = min(92, max(28, round(28 + priority_signal * 64)))
     if urgent_concern:
         # A user-selected escalation is deliberately never overridden by an algorithm.
         risk_score = max(risk_score, 65)

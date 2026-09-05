@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 
 from model_service import run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
+from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
 from pirs_service import calculate_pirs
 from recommendation_service import build_recommendations
 from report_service import build_assessment_report_pdf, build_history_report_pdf
@@ -279,10 +280,11 @@ def image_quality(image_bytes: bytes) -> tuple[int, dict]:
     light_score = max(0, 18 - abs(brightness - 145) / 8)
     focus_score = min(18, edge_variance / 11)
     quality = int(max(0, min(98, 46 + resolution_score + light_score + focus_score)))
+    quality_status = "LOW_QUALITY" if issues else "GOOD" if quality >= 85 else "ACCEPTABLE"
     return quality, {
         "width": width, "height": height, "brightness": round(brightness, 1),
         "edge_variance": round(edge_variance, 1), "usable_for_research_model": not issues,
-        "issues": issues,
+        "status": quality_status, "issues": issues,
     }
 
 
@@ -294,6 +296,23 @@ def reported_priority(area: str, score: int, urgent_selected: bool) -> dict:
     elif result["severity"] == "MODERATE":
         result["summary"] = f"Your reported {area.lower()} details are worth tracking and discussing with a clinician if new, changing, persistent, or concerning."
     return result
+
+
+def priority_payload(priority: dict, label: str) -> dict:
+    """Keep the API's reported-concern priority separate from likelihood."""
+    return {
+        "score": priority["score"],
+        "level": priority["level"],
+        "severity": priority["severity"],
+        "label": label,
+        "professional_evaluation_recommended": priority["professional_evaluation_recommended"],
+        "urgent_attention_recommended": priority["urgent_attention_recommended"],
+        "version": priority["version"],
+        "method": priority["method"],
+        "thresholds": priority["thresholds"],
+        "validation_status": priority["validation_status"],
+        "factors": priority["factors"],
+    }
 
 
 def research_model_status(area: str, image_context: str, dermoscopy_attested: bool, image_features: dict) -> tuple[bool, str]:
@@ -319,11 +338,11 @@ def stored_analysis_summary(response: dict) -> dict:
     segmentation = response.get("segmentation", {})
     candidate = response.get("candidate_region", {})
     return {
-        "created_at": response["created_at"], "area": response["area"], "input_type": response.get("input_type", "image"), "quality": response["quality"], "input_validation": response.get("input_validation", {}), "risk": response["risk"], "pirs": response.get("pirs", {}),
+        "created_at": response["created_at"], "area": response["area"], "input_type": response.get("input_type", "image"), "quality": response["quality"], "input_validation": response.get("input_validation", {}), "risk": response["risk"], "pirs": response.get("pirs", {}), "model_metadata": response.get("model_metadata", {}), "model_pipeline": response.get("model_pipeline", {}),
         "screening": response["screening"], "manual_context": response["manual_context"],
         "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
-        "classification": {key: classifier.get(key) for key in ("available", "top_prediction", "alternatives", "model_confidence", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
+        "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
         "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}),
         "image_stored": False,
     }
@@ -410,6 +429,7 @@ def model_registry():
             {"area": "Nails", "input": "nail image", "adapter": "Nail image-model adapter", "available": False, "explainability": "Grad-CAM available after compatible trained weights are configured", "notice": "No trained nail model is bundled with this deployment."},
             {"area": "Sweat", "input": "symptom questionnaire", "adapter": "Sweat tabular-model adapter", "available": False, "explainability": "Questionnaire input-contribution summary", "notice": "The runnable prototype is rule-based; no validated XGBoost model or SHAP explainer is bundled."},
         ],
+        "model_metadata": all_model_metadata(),
     })
 
 
@@ -914,13 +934,25 @@ def create_assessment():
     image_context = request.form.get("image_context", "general_photo").strip()
     dermoscopy_attested = request.form.get("dermoscopy_attestation") == "true"
     can_run_research_model, research_reason = research_model_status(area, image_context, dermoscopy_attested, image_features)
+    assessment_metadata = model_metadata(SKIN_MODEL_ID if area == "Skin" else "hair-model-adapter" if area == "Hair" else "nail-model-adapter")
     validation = {
         "status": "LOW_QUALITY" if image_features["issues"] else "VALID_RELEVANT" if can_run_research_model else "UNCERTAIN",
         "category_relevance": "Attested dermatoscopic single-lesion image; eligible for the scoped research path." if can_run_research_model else "Category relevance is not automatically verified in this deployment, so no general-photo disease classification is produced.",
+        "relevance_status": "ATTESTED_DERMOSCOPIC_SCOPE" if can_run_research_model else "RELEVANCE_MODEL_NOT_CONFIGURED",
         "normal_appearance": "NOT_ASSESSED",
         "notice": "A usable image is not evidence of a condition. The app does not infer normality or disease from an unsupported input.",
     }
-    research_classifier = {"available": False, "reason": research_reason}
+    research_classifier = {
+        "available": False,
+        "reason": research_reason,
+        "model_id": assessment_metadata.get("model_id"),
+        "model_version": assessment_metadata.get("model_version"),
+        "dataset_version": assessment_metadata.get("dataset_version"),
+        "pipeline_version": assessment_metadata.get("pipeline_version"),
+        "condition_likelihood": {"available": False, "status": "NOT_RUN", "estimated_likelihood": None, "notice": "No classifier ran for this input, so no condition likelihood is available."},
+        "calibration": {"available": False, "status": "NOT_RUN", "calibration_version": None},
+        "uncertainty": {"status": "UNCERTAIN", "certainty": "NOT_AVAILABLE", "ood_status": "OOD_NOT_EVALUATED", "notice": "No classifier ran, so uncertainty and OOD cannot be assessed."},
+    }
     candidate_region = unavailable_candidate_region(research_reason)
     segmentation = {"available": False, "status": "not_run", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": research_reason}
     if can_run_research_model:
@@ -944,8 +976,8 @@ def create_assessment():
     persistence = "mysql"
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
-        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": {"score": priority["score"], "level": priority["level"], "severity": priority["severity"], "label": "Reported-concern priority, not disease risk", "professional_evaluation_recommended": priority["professional_evaluation_recommended"], "urgent_attention_recommended": priority["urgent_attention_recommended"]}, "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"input_validation": validation["status"], "category_relevance": validation["category_relevance"], "image_quality_gate": "completed", "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
+        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"input_validation": validation["status"], "category_relevance": validation["category_relevance"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
         "recommendations": build_recommendations(area, research_classifier), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if not urgent_concern else "general_care_only",
     }
     if area in {"Hair", "Nails"}:
@@ -953,13 +985,17 @@ def create_assessment():
         response["modality_score"] = {"score": quality, "label": "Image readiness score, not a hair/nail health score or diagnosis."}
         response["model_pipeline"] = {
             "image_quality_gate": "completed",
+            "category_relevance": "RELEVANCE_MODEL_NOT_CONFIGURED",
             "preprocessing": "RGB conversion and image-quality evaluation",
             "candidate_region": f"{modality} region detector not configured",
             "segmentation": "not configured",
             "feature_extraction": f"{modality} image-model adapter not configured",
             "attention_map": "Grad-CAM unavailable until a compatible trained model is configured",
             "classification": f"{modality} disorder classifier not configured",
+            "calibration": "NOT_APPLICABLE_NO_CLASSIFIER",
+            "uncertainty": "NOT_APPLICABLE_NO_CLASSIFIER",
             "explainability": "Unavailable because no modality-specific classifier ran",
+            "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")},
         }
     if not patient_id:
         response["persistence"] = "not-persisted-guest"
@@ -1010,6 +1046,7 @@ def create_sweat_assessment():
     urgent_concern = bool(payload.get("urgent_concern"))
     risk_score = max(sweat["risk_score"], 65) if urgent_concern else sweat["risk_score"]
     priority = reported_priority("Sweat", risk_score, urgent_concern)
+    assessment_metadata = model_metadata("sweat-questionnaire-v1")
     pirs = calculate_pirs(
         area="Sweat",
         priority=priority,
@@ -1026,7 +1063,7 @@ def create_sweat_assessment():
         "input_type": "questionnaire",
         "quality": {"score": None, "image_quality_score": None, "quality_passed": True, "label": "Questionnaire complete", "issues": [], "visibility": "Not applicable to questionnaire input."},
         "input_validation": {"status": "VALID_RELEVANT", "category_relevance": "Sweat concerns use the dedicated questionnaire pathway; no image is accepted.", "normal_appearance": "NOT_APPLICABLE", "notice": "Questionnaire completion does not determine a diagnosis or a sweat-gland disorder."},
-        "risk": {"score": priority["score"], "level": priority["level"], "severity": priority["severity"], "label": "Questionnaire-based reported-concern priority, not disease risk", "professional_evaluation_recommended": priority["professional_evaluation_recommended"], "urgent_attention_recommended": priority["urgent_attention_recommended"]},
+        "risk": priority_payload(priority, "Questionnaire-based reported-concern priority, not disease risk"),
         "pirs": pirs,
         "screening": {"title": priority["title"], "summary": sweat["summary"] if not urgent_concern else priority["summary"]},
         "manual_context": {"symptoms": [], "previous_treatment": "", "sweat_questionnaire": {"pattern": pattern, "body_location": str(payload.get("body_location", "")).strip()[:120]}},
@@ -1034,15 +1071,19 @@ def create_sweat_assessment():
         "segmentation": {"available": False, "status": "not_applicable", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": "Segmentation is not applicable to questionnaire input."},
         "research_classifier": {"available": False, "reason": "No image classifier runs for the sweat questionnaire."},
         "model": sweat["engine"],
+        "model_metadata": assessment_metadata,
         "explainability": sweat["explainability"],
         "model_pipeline": {
             "input_validation": "completed",
             "category_relevance": "Questionnaire-only modality",
             "preprocessing": "Questionnaire values bounded and normalised",
             "classification": "No validated XGBoost model configured",
+            "calibration": "NOT_APPLICABLE_NO_SUPERVISED_MODEL",
+            "uncertainty": "NOT_AVAILABLE_NO_VALIDATED_TABULAR_MODEL",
             "explainability": "Questionnaire input-contribution summary",
             "segmentation": "not applicable",
             "attention_map": "not applicable",
+            "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")},
         },
         "recommendations": build_recommendations("Sweat", None),
         "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.",

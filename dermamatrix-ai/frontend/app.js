@@ -283,10 +283,18 @@ function showResultTab(tab) {
 
 function classifierPredictions(classifier) {
   if (!classifier?.available) return [];
-  if (Array.isArray(classifier.top_predictions)) return classifier.top_predictions;
+  if (Array.isArray(classifier.top_predictions)) return classifier.top_predictions.map(prediction => ({
+    label: prediction.label || prediction.condition || 'Research label',
+    calibratedProbability: Number.isFinite(prediction.calibrated_probability) ? prediction.calibrated_probability : null,
+    relativeScore: Number.isFinite(prediction.relative_score) ? prediction.relative_score : null,
+  }));
   if (classifier.top_prediction) {
     const prediction = classifier.top_prediction;
-    return [{ label: prediction.label || prediction.condition || 'Research label', probability: Number(prediction.probability ?? prediction.confidence ?? classifier.model_confidence ?? 0) }];
+    return [{
+      label: prediction.label || prediction.condition || 'Research label',
+      calibratedProbability: Number.isFinite(prediction.calibrated_probability) ? prediction.calibrated_probability : null,
+      relativeScore: Number.isFinite(prediction.relative_score) ? prediction.relative_score : null,
+    }];
   }
   return [];
 }
@@ -305,10 +313,12 @@ function setResearchAttention(researchClassifier) {
     $('#researchPrediction').textContent = 'A model record is available, but no prediction detail was retained in this report.';
     research.hidden = false; map.hidden = true; return;
   }
-  const confidence = Math.round((researchClassifier.model_confidence ?? top.probability) * 100);
-  const lowConfidence = researchClassifier.low_confidence ? ' Low confidence: the model cannot confidently classify this image.' : '';
+  const likelihood = researchClassifier.condition_likelihood || {};
+  const uncertainty = researchClassifier.uncertainty || {};
   $('#researchHeading').textContent = 'Research lesion model';
-  $('#researchPrediction').textContent = `${top.label} · AI model confidence ${confidence}%. ${researchClassifier.confidence_notice || 'This is not a diagnosis.'}${lowConfidence}`;
+  $('#researchPrediction').textContent = likelihood.available && Number.isFinite(top.calibratedProbability)
+    ? `${top.label} · Estimated likelihood ${Math.round(top.calibratedProbability * 100)}%. Assessment certainty: ${uncertainty.certainty || 'not available'}. ${researchClassifier.confidence_notice || 'This is not a diagnosis.'}`
+    : `${top.label} is the highest-ranked research label. No estimated likelihood is shown because a version-matched calibration artifact is unavailable. ${researchClassifier.confidence_notice || 'This is not a diagnosis.'}`;
   if (!researchClassifier.attention_map?.image) {
     $('#attentionLabel').textContent = 'Saved report · attention image not retained';
     map.hidden = true; research.hidden = false; return;
@@ -333,8 +343,18 @@ function renderAnalysisDashboard(data) {
   const candidateRegion = data.candidate_region || {};
   const classifier = data.research_classifier || data.classification || {};
   const predictionsList = classifierPredictions(classifier);
-  const predictions = classifier.available && predictionsList.length ? predictionsList.map(item => `${escapeHTML(item.label)} ${Math.round(item.probability * 100)}%`).join(' · ') : 'No disease classification run for this image type.';
-  const confidence = classifier.available && predictionsList.length ? `AI model confidence: ${Math.round((classifier.model_confidence ?? predictionsList[0].probability) * 100)}%. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}${classifier.low_confidence ? ' Low confidence: discuss the image with a clinician rather than relying on this output.' : ''}` : '';
+  const likelihood = classifier.condition_likelihood || {};
+  const uncertainty = classifier.uncertainty || {};
+  const predictions = classifier.available && predictionsList.length
+    ? likelihood.available
+      ? predictionsList.map(item => `${escapeHTML(item.label)} ${Math.round(item.calibratedProbability * 100)}%`).join(' · ')
+      : `${escapeHTML(predictionsList[0].label)} (research ranking only; calibrated likelihood unavailable)`
+    : 'No disease classification run for this image type.';
+  const confidence = classifier.available && predictionsList.length
+    ? likelihood.available
+      ? `Estimated likelihood is calibrated with ${escapeHTML(classifier.calibration?.method || 'the configured method')}. Assessment certainty: ${escapeHTML(uncertainty.certainty || 'not available')}. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}`
+      : `${escapeHTML(likelihood.notice || classifier.calibration?.notice || 'Calibration is unavailable, so raw model scores are not displayed as condition likelihoods.')} ${escapeHTML(uncertainty.notice || '')}`
+    : '';
   const region = segmentation.available ? `Model segmentation: ${segmentation.affected_area_percent}% of frame.` : candidateRegion.available && candidateRegion.reliable ? `Visual candidate region: ${candidateRegion.affected_area_percent}% of frame. This is not trained model segmentation.` : segmentation.message || candidateRegion.message || 'No visual-region extraction run.';
   const explainability = classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.';
   const questionnaireExplanation = (data.explainability?.features || []).map(item => `<li>${escapeHTML(item.feature)}: ${escapeHTML(item.value)} (${escapeHTML(item.points)} priority points)</li>`).join('');
@@ -344,7 +364,9 @@ function renderAnalysisDashboard(data) {
     ? `<p><strong>Questionnaire explanation:</strong> ${escapeHTML(data.explainability.notice || '')}</p><ul>${questionnaireExplanation}</ul>`
     : `<p><strong>Why the AI looked there:</strong> ${escapeHTML(explainability)}</p>`;
   const pirs = data.pirs?.score === undefined ? '' : `<p><strong>Shared PIRS:</strong> ${escapeHTML(data.pirs.score)}/100 — ${escapeHTML(data.pirs.label)}<br/><em>${escapeHTML(data.pirs.explanation || '')}</em></p>`;
-  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}${pirs}${xaiBlock}`;
+  const lineage = data.model_metadata || classifier;
+  const lineageBlock = lineage?.model_version ? `<p><strong>Model lineage:</strong> ${escapeHTML(lineage.model_id || classifier.model_id || 'model')} · ${escapeHTML(lineage.model_version || classifier.model_version)} · calibration ${escapeHTML(classifier.calibration?.calibration_version || 'not configured')}</p>` : '';
+  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.status ? ` (${escapeHTML(data.quality.status)})` : ''}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${lineageBlock}${pirs}${xaiBlock}`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
@@ -593,9 +615,12 @@ function renderDashboard() {
   $('#dashboardActivity').innerHTML = !analyses.length
     ? '<p class="empty-state">No saved analyses yet. Start with a clear image when you are ready.</p>'
     : analyses.slice(0, 4).map(item => {
-      const classification = item.summary?.classification?.top_prediction;
-      const title = classification ? classification.condition : 'Visual screening snapshot';
-      const meta = classification ? `${Math.round(classification.confidence * 100)}% AI model confidence` : 'No scoped classifier output';
+      const classification = item.summary?.classification || {};
+      const prediction = classification.top_prediction;
+      const title = prediction ? prediction.condition : 'Visual screening snapshot';
+      const meta = prediction
+        ? Number.isFinite(prediction.calibrated_probability) ? `${Math.round(prediction.calibrated_probability * 100)}% calibrated likelihood` : 'Research ranking; calibration unavailable'
+        : 'No scoped classifier output';
       return `<article class="dashboard-record"><span>◌</span><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.area)} · ${escapeHTML(meta)}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`;
     }).join('');
 }
@@ -608,7 +633,9 @@ function resetRoutineForm() {
 function reportClassification(summary) {
   const classifier = summary?.classification || {};
   const prediction = classifierPredictions(classifier)[0];
-  return prediction ? `${prediction.label} · ${Math.round(prediction.probability * 100)}% research confidence` : 'Screening summary only';
+  return prediction
+    ? Number.isFinite(prediction.calibratedProbability) ? `${prediction.label} · ${Math.round(prediction.calibratedProbability * 100)}% estimated likelihood` : `${prediction.label} · research ranking only`
+    : 'Screening summary only';
 }
 
 function renderReportRegister() {
@@ -711,7 +738,7 @@ function renderProgress() {
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
   const medicalHistory = hasProfile && (state.profile.past_history || state.profile.current_history) ? `<div class="medical-history-summary"><strong>Profile medical history</strong>${state.profile.past_history ? `<p>Past: ${escapeHTML(state.profile.past_history)}</p>` : ''}${state.profile.current_history ? `<p>Current: ${escapeHTML(state.profile.current_history)}</p>` : ''}</div>` : '';
   const timeline = !hasProfile ? '<p class="empty-state">Your progress timeline is available after profile setup.</p>' : !checkins.length ? '<p class="empty-state">Save your first check-in to create a timeline.</p>' : checkins.map(item => `<article class="history-item"><div><strong>${escapeHTML(item.reported_trend)} · ${item.priority_score}/100</strong><p>${escapeHTML(item.condition_label)} · ${escapeHTML(item.routine_name)}</p>${item.note ? `<small>${escapeHTML(item.note)}</small>` : ''}</div><time>${escapeHTML(item.checkin_date)}</time></article>`).join('');
-  const analysisHistory = !hasProfile ? '' : !analyses.length ? '<p class="empty-state">Saved image-analysis metadata will appear here after an analysis.</p>' : `<div class="analysis-history-group"><strong>Saved analysis metadata</strong>${analyses.map(item => { const classification = item.summary?.classification?.top_prediction; const label = classification ? `${classification.condition} · ${Math.round(classification.confidence * 100)}% AI model confidence` : 'No scoped classifier output'; return `<article class="history-item"><div><strong>${escapeHTML(label)}</strong><p>${escapeHTML(item.area)} · ${escapeHTML(item.summary?.segmentation?.status || 'segmentation not run')}</p><small>${escapeHTML(item.summary?.image_stored ? 'Image stored with consent' : 'Image pixels were not stored')}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`; }).join('')}</div>`;
+  const analysisHistory = !hasProfile ? '' : !analyses.length ? '<p class="empty-state">Saved image-analysis metadata will appear here after an analysis.</p>' : `<div class="analysis-history-group"><strong>Saved analysis metadata</strong>${analyses.map(item => { const classification = item.summary?.classification?.top_prediction; const label = classification ? Number.isFinite(classification.calibrated_probability) ? `${classification.condition} · ${Math.round(classification.calibrated_probability * 100)}% estimated likelihood` : `${classification.condition} · research ranking only` : 'No scoped classifier output'; return `<article class="history-item"><div><strong>${escapeHTML(label)}</strong><p>${escapeHTML(item.area)} · ${escapeHTML(item.summary?.segmentation?.status || 'segmentation not run')}</p><small>${escapeHTML(item.summary?.image_stored ? 'Image stored with consent' : 'Image pixels were not stored')}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`; }).join('')}</div>`;
   $('#progressHistory').innerHTML = medicalHistory + timeline + analysisHistory;
   $$('[data-edit-routine]').forEach(button => { button.onclick = () => editRoutine(button.dataset.editRoutine); });
   $$('[data-delete-routine]').forEach(button => { button.onclick = () => deleteRoutine(button.dataset.deleteRoutine); });
