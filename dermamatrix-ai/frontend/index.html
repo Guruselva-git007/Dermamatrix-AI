@@ -16,6 +16,27 @@
     <link rel="stylesheet" href="reference.css" />
   </head>
   <body>
+    <section class="auth-gate" id="authGate" aria-labelledby="authTitle" aria-hidden="true">
+      <div class="auth-backdrop"></div>
+      <div class="auth-layout">
+        <aside class="auth-intro">
+          <a class="auth-brand" href="#dashboard"><span>✚</span> DermaMatrix <b>AI</b></a>
+          <div class="auth-copy"><p class="eyebrow">PERSONAL SCREENING WORKSPACE</p><h1 id="authTitle">A calmer way to organise skin health.</h1><p>Keep your personal screening summaries, routines, and clinician discussion notes in one local workspace.</p></div>
+          <ul><li>Scoped image-analysis support</li><li>Private routine and progress records</li><li>Clinician-first care guidance</li></ul>
+          <p class="auth-safety">Educational screening support only. It is never a diagnosis or a substitute for a registered medical practitioner.</p>
+        </aside>
+        <main class="auth-card">
+          <div class="auth-card-head"><span class="auth-icon">✦</span><div><p class="eyebrow">WELCOME TO DERMAMATRIX</p><h2 id="authFormTitle">Create your secure workspace</h2></div></div>
+          <div class="auth-tabs" role="tablist" aria-label="Account options"><button class="selected" type="button" data-auth-tab="register" role="tab" aria-selected="true">Create account</button><button type="button" data-auth-tab="login" role="tab" aria-selected="false">Sign in</button></div>
+          <p class="auth-message" id="authMessage" role="status" hidden></p>
+          <form class="auth-form" id="registerForm"><label>Full name<input name="full_name" autocomplete="name" maxlength="150" required placeholder="Your name" /></label><label>Email address<input name="email_address" type="email" autocomplete="email" maxlength="254" required placeholder="you@example.com" /></label><label>Phone number<input name="phone_number" autocomplete="tel" inputmode="tel" maxlength="30" required placeholder="Your mobile number" /></label><label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters" /></label><label class="auth-consent"><input name="account_consent" type="checkbox" required /><span>I understand this is a local college-project account. My password is stored only as a secure hash.</span></label><button class="auth-primary" type="submit">Create account <span>→</span></button></form>
+          <form class="auth-form" id="loginForm" hidden><label>Email address<input name="email_address" type="email" autocomplete="email" required placeholder="you@example.com" /></label><label>Password<input name="password" type="password" autocomplete="current-password" required placeholder="Your password" /></label><button class="auth-primary" type="submit">Sign in <span>→</span></button></form>
+          <div class="auth-divider"><span>or</span></div>
+          <button class="auth-guest" id="continueGuestButton" type="button"><span>◌</span><span><strong>Continue as guest</strong><small>Explore without saving an account or health history.</small></span><b>→</b></button>
+          <p class="auth-footnote">Account details are stored in the local MySQL database. We never store uploaded images in this prototype.</p>
+        </main>
+      </div>
+    </section>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Primary navigation">
         <a class="brand" href="#dashboard" data-dashboard-nav="dashboard"><span class="brand-mark">◒</span><span>Derma<span>Matrix</span><small>AI VISUAL INSIGHTS</small></span></a>

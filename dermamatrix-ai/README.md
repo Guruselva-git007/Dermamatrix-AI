@@ -27,6 +27,14 @@ Open `http://127.0.0.1:8000`.
 
 `run_local_mysql.sh` starts an isolated MySQL 8 instance on port `3307`, creates the `dermamatrix_ai` database, and grants only the app's local database privileges. It does not modify a separately installed system MySQL service.
 
+## Local account access
+
+The entry screen supports account creation, sign-in, and a non-persistent guest workspace.
+
+- Account passwords are never stored in plaintext. MySQL holds a salted Werkzeug password hash, and the browser receives an HTTP-only signed session cookie after a successful sign-in.
+- The guest path does not create an account, persist health history, or retain analysis reports.
+- For a durable local login session across Flask restarts, set a long random `FLASK_SECRET_KEY` in the ignored `backend/.env`. Without it, users can still sign in again with their saved email and password after a restart.
+
 ## Project layout
 
 - `frontend/` – accessible, responsive web prototype with a complete assessment flow.

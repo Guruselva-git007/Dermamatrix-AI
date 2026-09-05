@@ -15,8 +15,9 @@ import uuid
 from datetime import datetime, timezone
 
 import pymysql
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, session
 from PIL import Image, ImageFilter, ImageStat
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from model_service import run_screening_model
@@ -87,6 +88,14 @@ def initialise_database() -> None:
             phone_number VARCHAR(30) NOT NULL,
             email_address VARCHAR(254) NOT NULL,
             created_at DATETIME NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        """CREATE TABLE IF NOT EXISTS auth_accounts (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            user_id BIGINT UNIQUE NOT NULL,
+            email_address VARCHAR(254) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            created_at DATETIME NOT NULL,
+            CONSTRAINT fk_auth_account_user FOREIGN KEY (user_id) REFERENCES users(id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
         """CREATE TABLE IF NOT EXISTS medical_histories (
             id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -189,12 +198,37 @@ def allowed_file(filename: str) -> bool:
 
 
 def user_for_patient(connection: pymysql.Connection, patient_id: str) -> dict | None:
-    """Resolve a local demo profile; real deployment requires authenticated sessions."""
-    if not patient_id:
+    """Resolve only the profile bound to the active signed-in browser session."""
+    session_user_id = session.get("user_id")
+    if not patient_id or not session_user_id or session.get("patient_id") != patient_id:
         return None
     with connection.cursor() as cursor:
-        cursor.execute("SELECT id, patient_id, full_name FROM users WHERE patient_id = %s", (patient_id,))
+        cursor.execute("SELECT id, patient_id, full_name, phone_number, email_address FROM users WHERE patient_id=%s AND id=%s", (patient_id, session_user_id))
         return cursor.fetchone()
+
+
+def account_response(user: dict, history: dict | None = None) -> dict:
+    """Return the minimum account data the browser needs; password hashes never leave MySQL."""
+    result = {
+        "patient_id": user["patient_id"],
+        "full_name": user["full_name"],
+        "phone_number": user["phone_number"],
+        "email_address": user["email_address"],
+        "stored_in": "mysql",
+    }
+    if history is not None:
+        result.update({"past_history": history["past_history"], "current_history": history["current_history"]})
+    return result
+
+
+def account_history(connection: pymysql.Connection, user_id: int) -> dict:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT past_history, current_history FROM medical_histories
+               WHERE user_id=%s ORDER BY updated_at DESC, id DESC LIMIT 1""",
+            (user_id,),
+        )
+        return cursor.fetchone() or {"past_history": "", "current_history": ""}
 
 
 def routine_payload(payload: dict) -> tuple[str, str, str, str] | None:
@@ -364,6 +398,96 @@ def model_registry():
     })
 
 
+@app.get("/api/auth/session")
+def auth_session():
+    """Restore an authenticated account from the signed, HTTP-only session cookie."""
+    patient_id = str(session.get("patient_id", "")).strip()
+    if not patient_id:
+        return jsonify({"authenticated": False})
+    connection = database()
+    try:
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            session.clear()
+            return jsonify({"authenticated": False})
+        return jsonify({"authenticated": True, "account": account_response(user)})
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/register")
+def register_account():
+    """Create a local account. Only a salted password hash is persisted."""
+    payload = request.get_json(silent=True) or {}
+    full_name = str(payload.get("full_name", "")).strip()[:150]
+    email_address = str(payload.get("email_address", "")).strip().lower()[:254]
+    phone_number = str(payload.get("phone_number", "")).strip()[:30]
+    password = str(payload.get("password", ""))
+    if not full_name or "@" not in email_address or len(phone_number) < 8:
+        return jsonify({"error": "Enter your full name, a valid email address, and a valid phone number."}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Use a password with at least 8 characters."}), 400
+    if not payload.get("account_consent"):
+        return jsonify({"error": "Confirm the account and privacy acknowledgement to continue."}), 400
+
+    patient_id = f"DMX-{datetime.now(timezone.utc).strftime('%y%m%d')}-{os.urandom(3).hex().upper()}"
+    timestamp = now()
+    connection = database()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM auth_accounts WHERE email_address=%s", (email_address,))
+            if cursor.fetchone():
+                return jsonify({"error": "An account already exists for this email. Sign in instead."}), 409
+            password_hash = generate_password_hash(password)
+            cursor.execute(
+                """INSERT INTO users (patient_id, full_name, phone_number, email_address, created_at)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (patient_id, full_name, phone_number, email_address, timestamp),
+            )
+            user_id = cursor.lastrowid
+            cursor.execute("INSERT INTO auth_accounts (user_id, email_address, password_hash, created_at) VALUES (%s, %s, %s, %s)", (user_id, email_address, password_hash, timestamp))
+            cursor.execute("INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)", (user_id, "", "", timestamp))
+            cursor.execute("INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)", (user_id, "local-auth-v1", "Local account authentication and secure session", timestamp))
+        connection.commit()
+        session.clear(); session["user_id"] = user_id; session["patient_id"] = patient_id
+        return jsonify({"authenticated": True, "account": {"patient_id": patient_id, "full_name": full_name, "phone_number": phone_number, "email_address": email_address, "stored_in": "mysql"}}), 201
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/login")
+def login_account():
+    payload = request.get_json(silent=True) or {}
+    email_address = str(payload.get("email_address", "")).strip().lower()[:254]
+    password = str(payload.get("password", ""))
+    if not email_address or not password:
+        return jsonify({"error": "Enter your email address and password."}), 400
+    connection = database()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT u.id, u.patient_id, u.full_name, u.phone_number, u.email_address, a.password_hash
+                   FROM auth_accounts a JOIN users u ON u.id=a.user_id WHERE a.email_address=%s""",
+                (email_address,),
+            )
+            user = cursor.fetchone()
+        if not user or not user.get("password_hash") or not check_password_hash(user["password_hash"], password):
+            return jsonify({"error": "That email and password do not match."}), 401
+        session.clear(); session["user_id"] = user["id"]; session["patient_id"] = user["patient_id"]
+        return jsonify({"authenticated": True, "account": account_response(user)})
+    finally:
+        connection.close()
+
+
+@app.post("/api/auth/logout")
+def logout_account():
+    session.clear()
+    return jsonify({"authenticated": False})
+
+
 @app.post("/api/profiles")
 def create_profile():
     payload = request.get_json(silent=True) or {}
@@ -376,22 +500,26 @@ def create_profile():
     if "@" not in str(payload["email_address"]) or len(str(payload["phone_number"]).strip()) < 8:
         return jsonify({"error": "Enter a valid email address and phone number."}), 400
 
-    timestamp = now()
-    patient_id = f"DMX-{datetime.now(timezone.utc).strftime('%y%m%d')}-{os.urandom(3).hex().upper()}"
     connection = database()
     try:
+        patient_id = str(session.get("patient_id", "")).strip()
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Sign in before saving health details."}), 401
+        if str(payload["email_address"]).strip().lower() != user["email_address"]:
+            return jsonify({"error": "Email address changes are not supported in this local prototype."}), 400
+        timestamp = now()
         with connection.cursor() as cursor:
-            cursor.execute("INSERT INTO users (patient_id, full_name, phone_number, email_address, created_at) VALUES (%s, %s, %s, %s, %s)", (patient_id, payload["full_name"].strip(), payload["phone_number"].strip(), payload["email_address"].strip().lower(), timestamp))
-            user_id = cursor.lastrowid
-            cursor.execute("INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)", (user_id, payload["past_history"].strip(), payload["current_history"].strip(), timestamp))
-            cursor.execute("INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)", (user_id, "india-prototype-v1", "MySQL storage of profile and health-history data for screening support", timestamp))
+            cursor.execute("UPDATE users SET full_name=%s, phone_number=%s WHERE id=%s", (payload["full_name"].strip(), payload["phone_number"].strip(), user["id"]))
+            cursor.execute("INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)", (user["id"], payload["past_history"].strip(), payload["current_history"].strip(), timestamp))
+            cursor.execute("INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)", (user["id"], "india-prototype-v1", "MySQL storage of profile and health-history data for screening support", timestamp))
         connection.commit()
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
-    return jsonify({"patient_id": patient_id, "full_name": payload["full_name"].strip(), "stored_in": "mysql", "consent_recorded": True}), 201
+    return jsonify({"patient_id": patient_id, "full_name": payload["full_name"].strip(), "email_address": user["email_address"], "phone_number": payload["phone_number"].strip(), "stored_in": "mysql", "consent_recorded": True})
 
 
 @app.get("/api/profiles/<patient_id>")
@@ -402,20 +530,7 @@ def get_profile(patient_id: str):
         user = user_for_patient(connection, patient_id.strip())
         if not user:
             return jsonify({"error": "Profile not found in the local project database."}), 404
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """SELECT past_history, current_history FROM medical_histories
-                   WHERE user_id=%s ORDER BY updated_at DESC, id DESC LIMIT 1""",
-                (user["id"],),
-            )
-            history = cursor.fetchone() or {"past_history": "", "current_history": ""}
-        return jsonify({
-            "patient_id": user["patient_id"],
-            "full_name": user["full_name"],
-            "past_history": history["past_history"],
-            "current_history": history["current_history"],
-            "stored_in": "mysql",
-        })
+        return jsonify(account_response(user, account_history(connection, user["id"])))
     finally:
         connection.close()
 
@@ -816,7 +931,21 @@ def mysql_unavailable(_error):
     return jsonify({"error": "MySQL is temporarily unavailable. Screening can continue without saving a profile; retry persistence after database access is restored."}), 503
 
 
+@app.after_request
+def prevent_stale_local_assets(response):
+    """Keep the local demo browser from retaining an old client after a live update."""
+    if request.path in {"/", "/index.html", "/app.js", "/reference.css"}:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+    return response
+
+
 load_local_env()
+app.config.update(
+    SECRET_KEY=os.getenv("FLASK_SECRET_KEY") or os.urandom(32),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("FLASK_SESSION_SECURE", "false").lower() == "true",
+)
 initialise_database()
 
 if __name__ == "__main__":

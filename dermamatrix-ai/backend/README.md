@@ -20,6 +20,9 @@ For local configuration, copy `backend/.env.example` to `backend/.env`, then add
 ## Endpoints
 
 - `GET /api/health` – local service, MySQL, and model health check
+- `POST /api/auth/register` – creates a local account; only a salted password hash is stored
+- `POST /api/auth/login` / `POST /api/auth/logout` – local account session controls
+- `GET /api/auth/session` – restores the signed local browser session
 - `POST /api/assessments` – accepts `image`, `area`, `duration`, `discomfort`, and `change` as multipart form data
 
 The runnable `screening-triage-v1-demo` engine combines symptom inputs with image-quality reliability. A separate HAM10000 ResNet-34 research classifier can return seven lesion-class probabilities for a dermatoscopic lesion photo. It is **not for face photos, selfies, hair, nails, sweat glands, deficiency detection, medical advice, or diagnosis**. It is research-only and is not a medical device. The response explicitly flags future integrations for validated segmentation, Grad-CAM, and clinical risk models.

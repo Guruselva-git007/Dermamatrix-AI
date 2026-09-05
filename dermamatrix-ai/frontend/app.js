@@ -1,4 +1,4 @@
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null };
 let processingTimers = [];
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -92,9 +92,92 @@ function resetImage() {
   if (input) input.value = '';
 }
 
-function openProfile() { $('#profileModal').classList.add('show'); $('#profileModal').setAttribute('aria-hidden', 'false'); }
+function openProfile() {
+  if (!state.profile?.patient_id) { showAuthGate('register'); return; }
+  const form = $('#profileForm');
+  form.elements.full_name.value = state.profile.full_name || '';
+  form.elements.phone_number.value = state.profile.phone_number || '';
+  form.elements.email_address.value = state.profile.email_address || '';
+  form.elements.past_history.value = state.profile.past_history || '';
+  form.elements.current_history.value = state.profile.current_history || '';
+  $('#profileModal').classList.add('show'); $('#profileModal').setAttribute('aria-hidden', 'false');
+}
 function closeProfile() { $('#profileModal').classList.remove('show'); $('#profileModal').setAttribute('aria-hidden', 'true'); }
 function closeResult() { $('#resultModal').classList.remove('show'); $('#resultModal').setAttribute('aria-hidden', 'true'); }
+
+function setAuthMessage(message = '', success = false) {
+  const element = $('#authMessage');
+  element.textContent = message; element.hidden = !message; element.classList.toggle('success', success);
+}
+
+function setAuthTab(tab) {
+  const target = tab === 'login' ? 'login' : 'register';
+  $$('.auth-tabs button').forEach(button => { const selected = button.dataset.authTab === target; button.classList.toggle('selected', selected); button.setAttribute('aria-selected', String(selected)); });
+  $('#registerForm').hidden = target !== 'register'; $('#loginForm').hidden = target !== 'login';
+  $('#authFormTitle').textContent = target === 'register' ? 'Create your secure workspace' : 'Sign in to your workspace';
+  setAuthMessage('');
+}
+
+function showAuthGate(tab = 'register') {
+  closeProfile(); closeResult(); setAuthTab(tab);
+  $('#authGate').classList.add('show'); $('#authGate').setAttribute('aria-hidden', 'false'); document.body.classList.add('auth-open');
+}
+
+function hideAuthGate() {
+  $('#authGate').classList.remove('show'); $('#authGate').setAttribute('aria-hidden', 'true'); document.body.classList.remove('auth-open');
+}
+
+function applyAccount(account) {
+  state.profile = { ...account }; state.isGuest = false; state.progressLoadedFor = null;
+  $('#profileName').textContent = account.full_name; $('#profileMeta').textContent = account.patient_id;
+  updateDashboardIdentity(); persistBrowserProfile();
+}
+
+async function enterAccount(account, message) {
+  applyAccount(account); hideAuthGate();
+  await hydrateProfile(); await loadProgress({ force: true });
+  if (message) toast(message);
+}
+
+async function registerAccount(event) {
+  event.preventDefault();
+  const form = event.currentTarget; const payload = Object.fromEntries(new FormData(form).entries());
+  payload.account_consent = form.account_consent.checked;
+  const button = form.querySelector('[type="submit"]'); button.disabled = true; setAuthMessage('');
+  try {
+    const data = await requestJSON('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    form.reset(); await enterAccount(data.account, 'Account created. Add health details only when you are ready.');
+  } catch (error) { setAuthMessage(error.message || 'Unable to create your account.'); }
+  button.disabled = false;
+}
+
+async function loginAccount(event) {
+  event.preventDefault();
+  const form = event.currentTarget; const payload = Object.fromEntries(new FormData(form).entries());
+  const button = form.querySelector('[type="submit"]'); button.disabled = true; setAuthMessage('');
+  try {
+    const data = await requestJSON('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    form.reset(); await enterAccount(data.account, 'Signed in to your local workspace.');
+  } catch (error) { setAuthMessage(error.message || 'Unable to sign in.'); }
+  button.disabled = false;
+}
+
+function continueAsGuest() {
+  localStorage.removeItem('dermamatrix_profile'); state.profile = null; state.isGuest = true;
+  state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null;
+  $('#profileName').textContent = 'Guest workspace'; $('#profileMeta').textContent = 'Nothing saved'; updateDashboardIdentity(); renderProgress(); hideAuthGate();
+  toast('Guest workspace opened. Create an account to save reports and routines.');
+}
+
+async function restoreAuthentication() {
+  try {
+    const data = await requestJSON('/api/auth/session', {}, 10000);
+    if (!data.authenticated || !data.account) return false;
+    applyAccount(data.account); return true;
+  } catch {
+    return false;
+  }
+}
 
 function installImagePreview() {
   if ($('#uploadPreview')) return;
@@ -339,7 +422,7 @@ async function saveProfile(event) {
   const button = event.currentTarget.querySelector('[type="submit"]'); button.disabled = true;
   try {
     const data = await requestJSON('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    state.profile = { ...data, past_history: payload.past_history, current_history: payload.current_history };
+    state.profile = { ...state.profile, ...data, past_history: payload.past_history, current_history: payload.current_history };
     persistBrowserProfile();
     $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); toast('Profile saved in the local project database.');
   } catch (error) { toast(error.message || 'Unable to save profile.'); }
@@ -347,20 +430,14 @@ async function saveProfile(event) {
 }
 
 function persistBrowserProfile() {
-  if (!state.profile?.patient_id) return;
-  localStorage.setItem('dermamatrix_profile', JSON.stringify({ patient_id: state.profile.patient_id, full_name: state.profile.full_name }));
+  // The signed HTTP-only session cookie is the identity source. Do not mirror account
+  // identifiers or health details into browser storage.
 }
 
 function restoreProfile() {
-  try {
-    const profile = JSON.parse(localStorage.getItem('dermamatrix_profile'));
-    if (profile?.full_name && profile?.patient_id) {
-      state.profile = { patient_id: profile.patient_id, full_name: profile.full_name };
-      persistBrowserProfile();
-      $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id;
-    }
-  } catch { /* no local profile */ }
-  updateDashboardIdentity();
+  // Earlier builds kept a profile identifier in local storage. Authentication now restores
+  // identity only from the signed server session, so stale browser references are removed.
+  localStorage.removeItem('dermamatrix_profile');
 }
 
 async function hydrateProfile() {
@@ -416,11 +493,12 @@ function applyTheme(theme) {
 
 function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') || 'light'); }
 
-function clearLocalProfile() {
-  localStorage.removeItem('dermamatrix_profile'); state.profile = null;
-  $('#profileName').textContent = 'Guest profile'; $('#profileMeta').textContent = 'Save health details';
+async function clearLocalProfile() {
+  try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { /* local sign-out still continues */ }
+  localStorage.removeItem('dermamatrix_profile'); state.profile = null; state.isGuest = false;
+  $('#profileName').textContent = 'Guest workspace'; $('#profileMeta').textContent = 'Sign in to save';
   state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; updateDashboardIdentity(); renderProgress();
-  toast('Your local profile has been cleared from this browser.');
+  showAuthGate('login'); setAuthMessage('You have been signed out.', true);
 }
 
 const escapeHTML = value => String(value || '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
@@ -624,6 +702,8 @@ drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
 $('#analyzeButton').onclick = analyze; $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
 $$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab(button.dataset.resultTab); });
 $('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
+$$('[data-auth-tab]').forEach(button => { button.onclick = () => setAuthTab(button.dataset.authTab); });
+$('#registerForm').onsubmit = registerAccount; $('#loginForm').onsubmit = loginAccount; $('#continueGuestButton').onclick = continueAsGuest;
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => $('.sidebar').classList.toggle('open');
@@ -657,9 +737,16 @@ async function initialiseApp() {
   updateImageContext();
   resetRoutineForm();
   $('#checkinDate').value = currentDate();
-  await hydrateProfile();
+  $('#clearProfileButton').textContent = 'Sign out';
+  const accountSetting = $('#clearProfileButton').closest('article');
+  accountSetting.querySelector('h3').textContent = 'Account';
+  accountSetting.querySelector('p').textContent = 'End this browser session without deleting your local records.';
+  $('#profileModal .profile-actions [data-close-profile]').textContent = 'Cancel';
+  const authenticated = await restoreAuthentication();
+  if (authenticated) await hydrateProfile();
   await loadProgress();
   showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false });
+  if (!authenticated) showAuthGate('register');
 }
 
 initialiseApp();
