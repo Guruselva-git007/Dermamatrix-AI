@@ -34,7 +34,11 @@ def build_recommendations(area: str, research_classifier: dict | None) -> dict:
         items = [PRODUCT_CATALOG[2]]
     elif area == "Nails":
         items = [PRODUCT_CATALOG[3]]
+    elif area == "Sweat":
+        items = []
     research_note = "No condition classification was run for this image type."
+    if area == "Sweat":
+        research_note = "Sweat guidance is based on questionnaire inputs only. A tabular ML model is not configured in this deployment."
     if research_classifier and research_classifier.get("available"):
         research_note = "The research classifier output is shown for clinician discussion only; products and routine are not selected from its label."
     products = []

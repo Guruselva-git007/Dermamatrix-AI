@@ -27,9 +27,46 @@ function toast(message) {
 function selectArea(area) {
   state.area = area;
   $$('.area-choice button').forEach(button => button.classList.toggle('selected', button.dataset.area === area));
+  const sweat = area === 'Sweat';
+  const labels = {
+    Skin: { title: 'Start with a skin image', status: 'Skin research model: dermatoscopic single-lesion images only.', upload: 'Upload a clear dermatoscopic image', copy: 'The research model accepts attested, in-focus dermatoscopic lesion images only.' },
+    Hair: { title: 'Start with a scalp or hair image', status: 'Hair/scalp model adapter: no trained weights are configured in this deployment.', upload: 'Upload a clear scalp or hair image', copy: 'Image-quality feedback and shared screening support are available; no hair disorder label is generated.' },
+    Nails: { title: 'Start with a nail image', status: 'Nail model adapter: no trained weights are configured in this deployment.', upload: 'Upload a clear nail image', copy: 'Image-quality feedback and shared screening support are available; no nail disorder label is generated.' },
+    Sweat: { title: 'Assess a sweat pattern', status: 'Sweat tabular adapter: transparent questionnaire rules are active; no validated XGBoost model is configured.', upload: '', copy: '' },
+  }[area];
+  $('#screenTitle').textContent = labels.title;
+  $('#screenTitle').nextElementSibling.textContent = sweat ? 'Complete the questionnaire, then review a transparent summary.' : 'Choose one area, then upload a clear image.';
+  $('#home h1').textContent = sweat ? 'Assess a sweat pattern.' : 'Analyze an image.';
+  $('#home p:last-child').textContent = sweat
+    ? 'Use symptoms, context, and daily impact for a transparent questionnaire summary and general guidance.'
+    : 'Upload a clear image for transparent quality feedback, scoped model outputs when eligible, and structured care guidance.';
+  $('#moduleStatus').textContent = labels.status;
+  $('#imageWorkflow').hidden = sweat;
+  $('#sweatWorkflow').hidden = !sweat;
+  $('#uploadStepTitle').textContent = labels.upload;
+  $('#uploadStepCopy').textContent = labels.copy;
+  $('#imageContext').closest('label').hidden = area !== 'Skin';
+  if (area !== 'Skin') $('#imageContext').value = 'general_photo';
+  $('#consentCopy').textContent = sweat
+    ? 'I consent to use this questionnaire for screening support and understand it does not provide a diagnosis.'
+    : 'I have consent to upload this image and understand this tool provides screening support, not a diagnosis.';
+  $('#reviewStepCopy').textContent = sweat
+    ? 'Review a transparent questionnaire summary and general guidance.'
+    : 'Step 3: Review your image with transparent AI scope and guidance.';
+  $('#analyzeButton').innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
+  $('#analyzeButton').disabled = sweat ? false : !state.file;
+  if (sweat) {
+    $('#dermoscopyAttestation').hidden = true;
+    $('#dermoscopyConsent').checked = false;
+    $('#stepCount').textContent = 'STEP 1 OF 2';
+  } else {
+    updateImageContext();
+    $('#stepCount').textContent = state.file ? 'STEP 2 OF 3' : 'STEP 1 OF 3';
+  }
 }
 
 function setImage(file) {
+  if (state.area === 'Sweat') return toast('Sweat patterns use the questionnaire instead of an image.');
   if (!file || !file.type.startsWith('image/')) return toast('Choose a JPG, PNG, or WEBP image.');
   if (file.size > 10 * 1024 * 1024) return toast('Choose an image smaller than 10 MB.');
   if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
@@ -108,7 +145,12 @@ function renderAnalysisDashboard(data) {
   const confidence = classifier.available ? `AI model confidence: ${Math.round((classifier.model_confidence ?? classifier.top_predictions[0].probability) * 100)}%. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}${classifier.low_confidence ? ' Low confidence: discuss the image with a clinician rather than relying on this output.' : ''}` : '';
   const region = segmentation.available ? `Model segmentation: ${segmentation.affected_area_percent}% of frame.` : candidateRegion.available && candidateRegion.reliable ? `Visual candidate region: ${candidateRegion.affected_area_percent}% of frame. This is not trained model segmentation.` : segmentation.message || candidateRegion.message || 'No visual-region extraction run.';
   const explainability = classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.';
-  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}<p><strong>Why the AI looked there:</strong> ${escapeHTML(explainability)}</p>`;
+  const questionnaireExplanation = (data.explainability?.features || []).map(item => `<li>${escapeHTML(item.feature)}: ${escapeHTML(item.value)} (${escapeHTML(item.points)} priority points)</li>`).join('');
+  const xaiBlock = questionnaireExplanation
+    ? `<p><strong>Questionnaire explanation:</strong> ${escapeHTML(data.explainability.notice || '')}</p><ul>${questionnaireExplanation}</ul>`
+    : `<p><strong>Why the AI looked there:</strong> ${escapeHTML(explainability)}</p>`;
+  const pirs = data.pirs?.score === undefined ? '' : `<p><strong>Shared PIRS:</strong> ${escapeHTML(data.pirs.score)}/100 — ${escapeHTML(data.pirs.label)}</p>`;
+  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}${pirs}${xaiBlock}`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
@@ -116,34 +158,57 @@ function renderAnalysisDashboard(data) {
 }
 
 async function analyze() {
-  if (!state.imageUrl) return;
+  const sweat = state.area === 'Sweat';
+  if (!sweat && !state.imageUrl) return;
   if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
-  if ($('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
+  if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
   const button = $('#analyzeButton'); button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
-  const form = new FormData();
-  [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || ''], ['image_consent', String($('#imageConsent').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
-  $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
   try {
-    const data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
+    let data;
+    if (sweat) {
+      const payload = {
+        patient_id: state.profile?.patient_id || '', questionnaire_consent: true, urgent_concern: $('#urgentConcern').checked,
+        pattern: $('#sweatPattern').value, frequency: $('#sweatFrequency').value, duration: $('#sweatDuration').value,
+        body_location: $('#sweatLocation').value, stress: $('#sweatStress').value, heat: $('#sweatHeat').value,
+        medication_change: $('#sweatMedication').checked, daily_impact: $('#sweatImpact').checked,
+      };
+      data = await requestJSON('/api/sweat-assessments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    } else {
+      const form = new FormData();
+      [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || ''], ['image_consent', String($('#imageConsent').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
+      $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
+      data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
+    }
     state.assessmentId = data.assessment_id;
     const score = data.risk.score;
-    $('#resultImage').src = state.imageUrl;
+    const questionnaire = data.input_type === 'questionnaire';
+    $('.segmentation-stage').classList.toggle('sweat-summary', questionnaire);
+    $('#resultImage').hidden = questionnaire;
+    if (questionnaire) $('#resultImage').removeAttribute('src');
+    else $('#resultImage').src = state.imageUrl;
     $('#resultRisk').textContent = data.risk.level;
     $('#resultRisk').className = `risk-label ${score < 40 ? 'low' : 'moderate'}`;
     $('#findingTitle').textContent = data.screening.title; $('#findingText').textContent = data.screening.summary;
-    $('#qualityScore').textContent = `${data.quality.score}% · ${data.quality.label}`;
-    $('#modelStatus').textContent = `${Math.round(data.model.confidence * 100)}% · screening support`;
+    $('#qualityScore').textContent = Number.isFinite(data.quality?.score) ? `${data.quality.score}% · ${data.quality.label}` : data.quality?.label || 'Not applicable';
+    const confidence = data.model?.confidence;
+    $('#modelStatus').textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}% · screening support` : data.model?.status === 'rule_based_prototype' ? 'Questionnaire contribution summary' : 'Model adapter unavailable';
     $('#clinicalStatus').textContent = 'Ready to save locally';
     setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan);
+    if (questionnaire) {
+      $('#attentionLabel').textContent = 'Questionnaire summary';
+      $('.result-footnote').textContent = 'Questionnaire inputs use a transparent contribution summary. Grad-CAM and image-region visualisation do not apply to tabular input.';
+    } else {
+      $('.result-footnote').textContent = 'The overlay shows a visual candidate region or configured segmentation when available. The blue attention layer is Grad-CAM from the real classifier run.';
+    }
     const note = $('#concernNote').value.trim();
     const comparison = data.progress_comparison?.summary || 'Analysis metadata is saved for a registered profile. Uploaded images are not stored.';
     $('#progressText').textContent = note ? `Tracking note: “${note}” ${comparison}` : comparison;
     if (data.quality.issues?.length) toast(data.quality.issues[0]);
     if (data.urgent_notice) toast(data.urgent_notice);
     showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
-    $('#stepCount').textContent = 'STEP 3 OF 3';
+    $('#stepCount').textContent = questionnaire ? 'STEP 2 OF 2' : 'STEP 3 OF 3';
   } catch (error) { toast(error.message || 'Unable to review this image.'); }
-  button.disabled = false; button.innerHTML = 'Review image <span>→</span>';
+  button.disabled = false; button.innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
 }
 
 function saveProgress() {
@@ -379,7 +444,7 @@ async function saveCheckin(event) {
 }
 
 function updateImageContext() {
-  const dermoscopy = $('#imageContext').value === 'dermoscopic_lesion';
+  const dermoscopy = state.area === 'Skin' && $('#imageContext').value === 'dermoscopic_lesion';
   $('#dermoscopyAttestation').hidden = !dermoscopy;
   $('#dermoscopyConsent').required = dermoscopy;
   if (!dermoscopy) $('#dermoscopyConsent').checked = false;
@@ -424,6 +489,7 @@ async function initialiseApp() {
   restoreSettings();
   restoreTheme();
   renderDiscoveryCatalog();
+  $('#imageContext').querySelector('option[value="general_photo"]').textContent = 'General skin, hair, or nail photo';
   updateImageContext();
   resetRoutineForm();
   $('#checkinDate').value = currentDate();
