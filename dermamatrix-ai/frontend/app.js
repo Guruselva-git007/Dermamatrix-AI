@@ -1,7 +1,31 @@
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null };
-let processingTimers = [];
+const AssessmentState = Object.freeze({
+  IDLE: 'IDLE', CATEGORY_SELECTED: 'CATEGORY_SELECTED', INPUT_REQUIRED: 'INPUT_REQUIRED',
+  INPUT_VALIDATING: 'INPUT_VALIDATING', PREPROCESSING: 'PREPROCESSING', ANALYZING: 'ANALYZING',
+  RESULT_READY: 'RESULT_READY', ERROR: 'ERROR'
+});
+const assessmentTransitions = Object.freeze({
+  IDLE: [AssessmentState.CATEGORY_SELECTED],
+  CATEGORY_SELECTED: [AssessmentState.INPUT_REQUIRED, AssessmentState.CATEGORY_SELECTED],
+  INPUT_REQUIRED: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_VALIDATING],
+  INPUT_VALIDATING: [AssessmentState.PREPROCESSING, AssessmentState.ERROR],
+  PREPROCESSING: [AssessmentState.ANALYZING, AssessmentState.ERROR],
+  ANALYZING: [AssessmentState.RESULT_READY, AssessmentState.ERROR],
+  RESULT_READY: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.INPUT_VALIDATING],
+  ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.INPUT_VALIDATING]
+});
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
+
+function transitionAssessment(nextState, detail = '') {
+  const allowed = assessmentTransitions[state.assessmentState] || [];
+  if (nextState !== state.assessmentState && !allowed.includes(nextState)) return false;
+  state.assessmentState = nextState;
+  document.body.dataset.assessmentState = nextState.toLowerCase();
+  const status = $('#assessmentStatus');
+  if (status) status.textContent = detail || nextState.replaceAll('_', ' ');
+  return true;
+}
 
 async function requestJSON(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
@@ -29,6 +53,7 @@ function selectArea(area) {
   const areaChanged = state.area !== area;
   if (areaChanged) resetImage();
   state.area = area;
+  transitionAssessment(AssessmentState.CATEGORY_SELECTED, `${area.toUpperCase()} SELECTED`);
   $$('.area-choice button').forEach(button => button.classList.toggle('selected', button.dataset.area === area));
   const sweat = area === 'Sweat';
   const labels = {
@@ -66,6 +91,7 @@ function selectArea(area) {
     updateImageContext();
     $('#stepCount').textContent = state.file ? 'STEP 2 OF 3' : 'STEP 1 OF 3';
   }
+  transitionAssessment(AssessmentState.INPUT_REQUIRED, sweat ? 'QUESTIONNAIRE REQUIRED' : 'IMAGE REQUIRED');
 }
 
 function setImage(file) {
@@ -79,6 +105,7 @@ function setImage(file) {
   $('#uploadPreviewName').textContent = file.name;
   $('#uploadPreview').hidden = false;
   $('#analyzeButton').disabled = false; $('#stepCount').textContent = 'STEP 2 OF 3';
+  transitionAssessment(AssessmentState.INPUT_REQUIRED, 'IMAGE READY FOR REVIEW');
 }
 
 function resetImage() {
@@ -90,6 +117,7 @@ function resetImage() {
   if (preview) preview.hidden = true;
   const input = $('#imageInput');
   if (input) input.value = '';
+  if (state.assessmentState !== AssessmentState.IDLE) transitionAssessment(AssessmentState.CATEGORY_SELECTED, 'IMAGE REQUIRED');
 }
 
 function openProfile() {
@@ -197,10 +225,10 @@ function installProcessingOverlay() {
 }
 
 function processingStages(area) {
-  if (area === 'Skin') return ['Checking image quality', 'Preparing the image', 'Checking the eligible research-model path', 'Organising the screening summary'];
-  if (area === 'Hair') return ['Checking image quality', 'Preparing the image', 'Checking the hair/scalp model adapter', 'Organising the screening summary'];
-  if (area === 'Nails') return ['Checking image quality', 'Preparing the image', 'Checking the nail model adapter', 'Organising the screening summary'];
-  return ['Validating questionnaire responses', 'Normalising reported inputs', 'Calculating transparent input contributions', 'Organising the screening summary'];
+  if (area === 'Skin') return ['Validating submitted image details', 'Running the server-side image assessment', 'Preparing the structured result'];
+  if (area === 'Hair') return ['Validating submitted image details', 'Running the server-side hair/scalp adapter check', 'Preparing the structured result'];
+  if (area === 'Nails') return ['Validating submitted image details', 'Running the server-side nail adapter check', 'Preparing the structured result'];
+  return ['Validating questionnaire responses', 'Running the transparent questionnaire engine', 'Preparing the structured result'];
 }
 
 function openProcessing(area) {
@@ -213,19 +241,13 @@ function openProcessing(area) {
     : area === 'Sweat' ? 'Questionnaire inputs are explained with transparent contributions; no image model runs.' : 'Image quality is checked first. A disorder label is shown only if this deployment has compatible trained weights.';
   $('#processingSteps').innerHTML = stages.map((stage, index) => `<li class="${index === 0 ? 'active' : ''}"><span>${index === 0 ? '…' : index + 1}</span>${stage}</li>`).join('');
   modal.classList.add('show'); modal.setAttribute('aria-hidden', 'false');
-  processingTimers.forEach(window.clearTimeout); processingTimers = stages.slice(1).map((_, index) => window.setTimeout(() => {
-    const rows = $$('#processingSteps li');
-    rows.forEach((row, rowIndex) => { row.classList.toggle('done', rowIndex < index + 1); row.classList.toggle('active', rowIndex === index + 1); });
-    const current = rows[index + 1]?.querySelector('span'); if (current) current.textContent = '…';
-    const previous = rows[index]?.querySelector('span'); if (previous) previous.textContent = '✓';
-  }, 170 * (index + 1)));
 }
 
-async function finishProcessing(startedAt) {
-  const remaining = 620 - (performance.now() - startedAt);
-  if (remaining > 0) await new Promise(resolve => window.setTimeout(resolve, remaining));
-  processingTimers.forEach(window.clearTimeout); processingTimers = [];
+function finishProcessing(succeeded = false) {
   const modal = $('#processingModal');
+  if (succeeded) {
+    $$('#processingSteps li').forEach(row => { row.classList.remove('active'); row.classList.add('done'); const icon = row.querySelector('span'); if (icon) icon.textContent = '✓'; });
+  }
   if (modal) { modal.classList.remove('show'); modal.setAttribute('aria-hidden', 'true'); }
 }
 
@@ -316,11 +338,13 @@ function renderAnalysisDashboard(data) {
   const region = segmentation.available ? `Model segmentation: ${segmentation.affected_area_percent}% of frame.` : candidateRegion.available && candidateRegion.reliable ? `Visual candidate region: ${candidateRegion.affected_area_percent}% of frame. This is not trained model segmentation.` : segmentation.message || candidateRegion.message || 'No visual-region extraction run.';
   const explainability = classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.';
   const questionnaireExplanation = (data.explainability?.features || []).map(item => `<li>${escapeHTML(item.feature)}: ${escapeHTML(item.value)} (${escapeHTML(item.points)} priority points)</li>`).join('');
+  const validation = data.input_validation || {};
+  const validationBlock = validation.status ? `<p><strong>Input validation:</strong> ${escapeHTML(validation.status)}. ${escapeHTML(validation.category_relevance || validation.notice || '')}</p>` : '';
   const xaiBlock = questionnaireExplanation
     ? `<p><strong>Questionnaire explanation:</strong> ${escapeHTML(data.explainability.notice || '')}</p><ul>${questionnaireExplanation}</ul>`
     : `<p><strong>Why the AI looked there:</strong> ${escapeHTML(explainability)}</p>`;
-  const pirs = data.pirs?.score === undefined ? '' : `<p><strong>Shared PIRS:</strong> ${escapeHTML(data.pirs.score)}/100 — ${escapeHTML(data.pirs.label)}</p>`;
-  $('#analysisPipeline').innerHTML = `<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}${pirs}${xaiBlock}`;
+  const pirs = data.pirs?.score === undefined ? '' : `<p><strong>Shared PIRS:</strong> ${escapeHTML(data.pirs.score)}/100 — ${escapeHTML(data.pirs.label)}<br/><em>${escapeHTML(data.pirs.explanation || '')}</em></p>`;
+  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Confidence:</strong> ${confidence}</p>` : ''}${pirs}${xaiBlock}`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
@@ -333,9 +357,12 @@ async function analyze() {
   if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
   if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
   const button = $('#analyzeButton'); button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
-  const processingStarted = performance.now(); openProcessing(state.area);
+  transitionAssessment(AssessmentState.INPUT_VALIDATING, 'VALIDATING INPUT');
+  openProcessing(state.area);
   try {
     let data;
+    transitionAssessment(AssessmentState.PREPROCESSING, 'SERVER-SIDE PREPROCESSING');
+    transitionAssessment(AssessmentState.ANALYZING, 'ASSESSMENT RUNNING');
     if (sweat) {
       const payload = {
         patient_id: state.profile?.patient_id || '', questionnaire_consent: true, urgent_concern: $('#urgentConcern').checked,
@@ -350,7 +377,8 @@ async function analyze() {
       $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
       data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
     }
-    await finishProcessing(processingStarted);
+    finishProcessing(true);
+    transitionAssessment(AssessmentState.RESULT_READY, 'RESULT READY');
     state.assessmentId = data.assessment_id;
     const score = data.risk.score;
     const questionnaire = data.input_type === 'questionnaire';
@@ -359,12 +387,14 @@ async function analyze() {
     if (questionnaire) $('#resultImage').removeAttribute('src');
     else $('#resultImage').src = state.imageUrl;
     $('#resultRisk').textContent = data.risk.level;
-    $('#resultRisk').className = `risk-label ${score < 40 ? 'low' : 'moderate'}`;
+    const severityClass = { LOW: 'low', MODERATE: 'moderate', HIGH: 'high', URGENT: 'urgent' }[data.risk.severity] || (score < 40 ? 'low' : 'moderate');
+    $('#resultRisk').className = `risk-label ${severityClass}`;
     $('#findingTitle').textContent = data.screening.title; $('#findingText').textContent = data.screening.summary;
     $('#qualityScore').textContent = Number.isFinite(data.quality?.score) ? `${data.quality.score}% · ${data.quality.label}` : data.quality?.label || 'Not applicable';
     const confidence = data.model?.confidence;
     $('#modelStatus').textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}% · screening support` : data.model?.status === 'rule_based_prototype' ? 'Questionnaire contribution summary' : 'Model adapter unavailable';
-    $('#clinicalStatus').textContent = 'Ready to save locally';
+    $('#clinicalStatus').textContent = data.persistence === 'mysql' ? 'Saved to your local account · no image retained' : 'Guest result · not stored';
+    $('#saveProgressButton').innerHTML = data.persistence === 'mysql' ? 'Refresh saved reports <span>→</span>' : 'Create account to save <span>→</span>';
     setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan);
     if (questionnaire) {
       $('#attentionLabel').textContent = 'Questionnaire summary';
@@ -379,18 +409,23 @@ async function analyze() {
     if (data.urgent_notice) toast(data.urgent_notice);
     showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
     $('#stepCount').textContent = questionnaire ? 'STEP 2 OF 2' : 'STEP 3 OF 3';
-  } catch (error) { await finishProcessing(processingStarted); toast(error.message || 'Unable to review this image.'); }
+  } catch (error) { finishProcessing(false); transitionAssessment(AssessmentState.ERROR, 'ASSESSMENT UNAVAILABLE'); toast(error.message || 'Unable to review this image.'); }
   button.disabled = false; button.innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
 }
 
-function saveProgress() {
+async function saveProgress() {
   if (!state.assessmentId) return toast('Complete a screen before saving progress.');
-  const entries = JSON.parse(localStorage.getItem('dermamatrix_progress') || '[]');
-  const entry = { id: state.assessmentId, date: new Date().toISOString(), area: state.area, priority: $('#resultRisk').textContent, note: $('#concernNote').value.trim(), imageStored: false };
-  const unique = [entry, ...entries.filter(item => item.id !== entry.id)].slice(0, 12);
-  localStorage.setItem('dermamatrix_progress', JSON.stringify(unique));
-  $('#clinicalStatus').textContent = `${unique.length} local snapshot${unique.length === 1 ? '' : 's'} saved`;
-  toast('Progress snapshot saved locally. Uploaded images are not kept.');
+  if (!state.profile?.patient_id) {
+    showAuthGate('register');
+    return toast('Guest results are not stored. Create an account to save future reports and routines.');
+  }
+  try {
+    await loadProgress({ force: true });
+    $('#clinicalStatus').textContent = 'Saved to your local account · no image retained';
+    toast('Saved assessment metadata is available in My reports. Uploaded images are not kept.');
+  } catch (error) {
+    toast(error.message || 'Unable to refresh your saved reports.');
+  }
 }
 
 function viewCare() {
@@ -548,9 +583,9 @@ function renderReportRegister() {
     const summary = item.summary || {};
     const priority = summary.risk?.score === undefined ? '—' : `${summary.risk.score}/100`;
     const xai = summary.classification?.available ? 'Grad-CAM run' : summary.input_type === 'questionnaire' ? 'Input contributions' : 'Scope recorded';
-    return `<div class="report-row"><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time><span>${escapeHTML(item.area)}</span><strong>${escapeHTML(reportClassification(summary))}</strong><span>${escapeHTML(priority)}</span><span>${escapeHTML(xai)}</span><div><button class="text-button" data-view-report="${escapeHTML(item.assessment_id)}">View</button><button class="text-button" data-download-report="${escapeHTML(item.assessment_id)}">Export</button></div></div>`;
+    return `<div class="report-row"><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time><span>${escapeHTML(item.area)}</span><strong>${escapeHTML(reportClassification(summary))}</strong><span>${escapeHTML(priority)}</span><span>${escapeHTML(xai)}</span><div><button class="text-button" data-view-report="${escapeHTML(item.assessment_id)}">View</button><button class="text-button" data-download-report="${escapeHTML(item.assessment_id)}">PDF</button></div></div>`;
   }).join('') : '<p class="empty-state">Saved analysis metadata will appear here after an analysis. Image pixels are never retained in this prototype.</p>';
-  register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">SAVED REPORTS</p><h3>Analysis history</h3><p>Open a saved report or export a concise discussion brief. Images and Grad-CAM overlays are not retained.</p></div><span>${analyses.length} saved</span></div><div class="report-table" role="table"><div class="report-row report-head" role="row"><span>Date</span><span>Area</span><span>Result scope</span><span>Priority</span><span>Evidence</span><span>Action</span></div>${rows}</div>`;
+  register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">SAVED REPORTS</p><h3>Analysis history</h3><p>Open a saved report or download a generated PDF discussion brief. Images and Grad-CAM overlays are not retained.</p></div><span>${analyses.length} saved</span></div><div class="report-table" role="table"><div class="report-row report-head" role="row"><span>Date</span><span>Area</span><span>Result scope</span><span>Priority</span><span>Evidence</span><span>Action</span></div>${rows}</div>`;
   $$('[data-view-report]').forEach(button => { button.onclick = () => showSavedReport(button.dataset.viewReport); });
   $$('[data-download-report]').forEach(button => { button.onclick = () => downloadSavedReport(button.dataset.downloadReport); });
 }
@@ -564,7 +599,8 @@ function showSavedReport(assessmentId) {
   $('.segmentation-stage').classList.toggle('sweat-summary', questionnaire);
   $('#resultImage').hidden = true; $('#resultImage').removeAttribute('src'); $('#segmentationOverlay').hidden = true; $('#attentionMap').hidden = true;
   $('#resultRisk').textContent = data.risk?.level || 'SAVED REPORT';
-  $('#resultRisk').className = `risk-label ${(data.risk?.score || 0) < 40 ? 'low' : 'moderate'}`;
+  const severityClass = { LOW: 'low', MODERATE: 'moderate', HIGH: 'high', URGENT: 'urgent' }[data.risk?.severity] || ((data.risk?.score || 0) < 40 ? 'low' : 'moderate');
+  $('#resultRisk').className = `risk-label ${severityClass}`;
   $('#findingTitle').textContent = data.screening?.title || 'Saved screening summary';
   $('#findingText').textContent = data.screening?.summary || 'This report contains saved screening metadata only.';
   $('#qualityScore').textContent = data.quality?.score === null || data.quality?.score === undefined ? data.quality?.label || 'Not applicable' : `${data.quality.score}% · ${data.quality.label}`;
@@ -576,27 +612,23 @@ function showSavedReport(assessmentId) {
   showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
 }
 
-function downloadSavedReport(assessmentId) {
+async function downloadSavedReport(assessmentId) {
   const item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
   if (!item) return toast('This saved report is no longer available.');
-  const summary = item.summary || {};
-  const lines = [
-    'DERMAMATRIX AI — SCREENING DISCUSSION BRIEF',
-    `Saved: ${String(item.created_at).slice(0, 19)}`,
-    `Area: ${item.area}`,
-    `Screening summary: ${summary.screening?.title || 'Not available'}`,
-    `Priority: ${summary.risk?.score ?? '—'}/100 — ${summary.risk?.label || 'Not a disease risk'}`,
-    `Classifier scope: ${reportClassification(summary)}`,
-    `Segmentation: ${summary.segmentation?.status || 'Not run'}`,
-    `Explainability: ${summary.classification?.available ? 'Grad-CAM was produced during the original research inference; its image was not retained.' : summary.input_type === 'questionnaire' ? 'Questionnaire input-contribution summary.' : 'No scoped classifier explanation available.'}`,
-    '',
-    'Important: This educational prototype provides screening support only. It is not a diagnosis, prescription, or substitute for a registered medical practitioner. Discuss new routines, products, supplements, or treatment with a clinician or pharmacist.',
-  ];
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob); const link = document.createElement('a');
-  link.href = url; link.download = `dermamatrix-discussion-brief-${String(item.created_at).slice(0, 10)}.txt`; link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  toast('Discussion brief exported.');
+  try {
+    const response = await fetch(`/api/reports/${encodeURIComponent(assessmentId)}/download`);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw Error(payload.error || 'Unable to generate the PDF report.');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob); const link = document.createElement('a');
+    link.href = url; link.download = `dermamatrix-discussion-brief-${String(item.created_at).slice(0, 10)}.pdf`; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    toast('PDF discussion brief downloaded.');
+  } catch (error) {
+    toast(error.message || 'Unable to generate the PDF report.');
+  }
 }
 
 function renderProgress() {
@@ -704,6 +736,7 @@ $$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab
 $('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory; $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
 $$('[data-auth-tab]').forEach(button => { button.onclick = () => setAuthTab(button.dataset.authTab); });
 $('#registerForm').onsubmit = registerAccount; $('#loginForm').onsubmit = loginAccount; $('#continueGuestButton').onclick = continueAsGuest;
+$('#forgotPasswordButton').onclick = () => setAuthMessage('Password reset needs an email delivery service, which is not configured for this local college-project server. Create a new test account or ask the local project administrator for help.');
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => $('.sidebar').classList.toggle('open');
@@ -734,7 +767,7 @@ async function initialiseApp() {
   restoreTheme();
   renderDiscoveryCatalog();
   $('#imageContext').querySelector('option[value="general_photo"]').textContent = 'General skin, hair, or nail photo';
-  updateImageContext();
+  selectArea(state.area);
   resetRoutineForm();
   $('#checkinDate').value = currentDate();
   $('#clearProfileButton').textContent = 'Sign out';

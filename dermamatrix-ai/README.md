@@ -45,8 +45,36 @@ The entry screen supports account creation, sign-in, and a non-persistent guest 
 - The guest path does not create an account, persist health history, or retain analysis reports.
 - For a durable local login session across Flask restarts, set a long random `FLASK_SECRET_KEY` in the ignored `backend/.env`. Without it, users can still sign in again with their saved email and password after a restart.
 
+## Assessment architecture
+
+The application keeps four modalities behind one account, history, and reporting system:
+
+- **Skin, hair, and nails:** category selection → image preview → input/quality validation → scoped model adapter → normalised reported-concern priority → PIRS record → structured guidance → optional account-scoped history/PDF.
+- **Sweat glands:** category selection → questionnaire → bounded/normalised inputs → transparent rule-contribution summary → normalised priority → PIRS record → structured guidance. It never accepts an image.
+
+The browser uses an explicit assessment state machine (`IDLE`, `CATEGORY_SELECTED`, `INPUT_REQUIRED`, `INPUT_VALIDATING`, `PREPROCESSING`, `ANALYZING`, `RESULT_READY`, and `ERROR`). The processing panel is indeterminate until the backend returns; it does not invent a percentage or claim an unavailable model completed.
+
+`backend/risk_service.py` provides shared `LOW`, `MODERATE`, `HIGH`, `URGENT`, and `UNCERTAIN` semantics. `backend/pirs_service.py` is a transparent, configurable prototype aggregation; it is explicitly **not clinically validated**. The model boundary stays honest: only the optional dermatoscopic HAM10000 research adapter can produce a research label/Grad-CAM, and only when its real weights and required capture attestation are present. Hair, nail, segmentation, and sweat ML adapters remain unavailable until compatible validated models are configured.
+
+## History and reports
+
+Completed assessments are persisted only for the authenticated account. Guest assessments are returned for the current screen only; neither uploaded images nor guest assessment metadata are retained. Uploaded image pixels are never stored.
+
+Registered users can open **My reports** and download a server-generated, account-scoped PDF discussion brief. The PDF contains stored assessment metadata and care-discussion guidance, but intentionally excludes images and overlays because the app does not retain them.
+
+## Verification
+
+Run the focused service tests with:
+
+```bash
+.venv/bin/python -m unittest discover -s backend/tests -v
+```
+
+The existing `.ml-venv` can be used in place of `.venv` in this workspace. In VS Code, run **DermaMatrix: Verify local stack** after F5 to confirm both Flask and MySQL are connected.
+
 ## Project layout
 
 - `frontend/` – accessible, responsive web prototype with a complete assessment flow.
 - `backend/` – Flask API, MySQL persistence, and the runnable screening-triage engine.
+- `backend/risk_service.py`, `backend/pirs_service.py`, `backend/report_service.py` – shared priority/PIRS/PDF-report domain boundaries.
 - `docs/` – model and safety documentation.

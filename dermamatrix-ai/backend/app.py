@@ -15,14 +15,17 @@ import uuid
 from datetime import datetime, timezone
 
 import pymysql
-from flask import Flask, jsonify, request, send_from_directory, session
+from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from PIL import Image, ImageFilter, ImageStat
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from model_service import run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
+from pirs_service import calculate_pirs
 from recommendation_service import build_recommendations
+from report_service import build_assessment_report_pdf
+from risk_service import normalise_reported_priority
 from segmentation_service import extract_visual_candidate_region, segment_dermoscopic_lesion, unavailable_candidate_region
 from sweat_service import sweat_questionnaire_result
 
@@ -173,6 +176,16 @@ def initialise_database() -> None:
             INDEX idx_checkin_routine (routine_id),
             INDEX idx_checkin_user_date (user_id, checkin_date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        """CREATE TABLE IF NOT EXISTS reports (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            report_id VARCHAR(50) UNIQUE NOT NULL,
+            assessment_id VARCHAR(50) UNIQUE NOT NULL,
+            user_id BIGINT NOT NULL,
+            report_type VARCHAR(40) NOT NULL,
+            generated_at DATETIME NOT NULL,
+            CONSTRAINT fk_report_user FOREIGN KEY (user_id) REFERENCES users(id),
+            INDEX idx_report_user_generated (user_id, generated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     ]
     global DATABASE_BOOT_ERROR
     try:
@@ -273,12 +286,14 @@ def image_quality(image_bytes: bytes) -> tuple[int, dict]:
     }
 
 
-def screening_summary(area: str, risk_score: int) -> tuple[str, str, str]:
-    if risk_score < 40:
-        return ("TRACK AND REVISIT", "A lower-priority screening snapshot", f"Your reported {area.lower()} concern can be tracked over time. Consider professional advice if it changes, becomes painful, or worries you.")
-    if risk_score < 65:
-        return ("SCREENING SNAPSHOT", "Keep an eye on reported changes", f"Your reported {area.lower()} details are worth tracking and discussing with a dermatologist if new, changing, persistent, or concerning.")
-    return ("PROMPT-CARE FLAG", "Do not rely on the app alone", "Your selected symptom details suggest seeking timely professional care. This tool cannot determine a diagnosis or urgency on its own.")
+def reported_priority(area: str, score: int, urgent_selected: bool) -> dict:
+    """Add modality context to the shared non-diagnostic priority vocabulary."""
+    result = normalise_reported_priority(score, urgent_selected)
+    if result["severity"] == "LOW":
+        result["summary"] = f"Your reported {area.lower()} concern can be tracked over time. Seek professional advice if it changes, becomes painful, persists, or worries you."
+    elif result["severity"] == "MODERATE":
+        result["summary"] = f"Your reported {area.lower()} details are worth tracking and discussing with a clinician if new, changing, persistent, or concerning."
+    return result
 
 
 def research_model_status(area: str, image_context: str, dermoscopy_attested: bool, image_features: dict) -> tuple[bool, str]:
@@ -304,7 +319,7 @@ def stored_analysis_summary(response: dict) -> dict:
     segmentation = response.get("segmentation", {})
     candidate = response.get("candidate_region", {})
     return {
-        "created_at": response["created_at"], "area": response["area"], "input_type": response.get("input_type", "image"), "quality": response["quality"], "risk": response["risk"], "pirs": response.get("pirs", {}),
+        "created_at": response["created_at"], "area": response["area"], "input_type": response.get("input_type", "image"), "quality": response["quality"], "input_validation": response.get("input_validation", {}), "risk": response["risk"], "pirs": response.get("pirs", {}),
         "screening": response["screening"], "manual_context": response["manual_context"],
         "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
@@ -423,10 +438,13 @@ def register_account():
     email_address = str(payload.get("email_address", "")).strip().lower()[:254]
     phone_number = str(payload.get("phone_number", "")).strip()[:30]
     password = str(payload.get("password", ""))
+    confirm_password = str(payload.get("confirm_password", ""))
     if not full_name or "@" not in email_address or len(phone_number) < 8:
         return jsonify({"error": "Enter your full name, a valid email address, and a valid phone number."}), 400
     if len(password) < 8:
         return jsonify({"error": "Use a password with at least 8 characters."}), 400
+    if password != confirm_password:
+        return jsonify({"error": "Password confirmation does not match."}), 400
     if not payload.get("account_consent"):
         return jsonify({"error": "Confirm the account and privacy acknowledgement to continue."}), 400
 
@@ -680,6 +698,56 @@ def list_analysis_history():
         connection.close()
 
 
+@app.get("/api/reports/<assessment_id>/download")
+def download_assessment_report(assessment_id: str):
+    """Generate a PDF from one account-scoped stored assessment record."""
+    connection = database()
+    try:
+        user = user_for_patient(connection, str(session.get("patient_id", "")).strip())
+        if not user:
+            return jsonify({"error": "Sign in to download a saved report."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT assessment_id, area, result_json, created_at FROM analysis_records WHERE assessment_id=%s AND user_id=%s",
+                (assessment_id, user["id"]),
+            )
+            record = cursor.fetchone()
+        if not record:
+            return jsonify({"error": "Saved assessment not found in your local account."}), 404
+        try:
+            summary = json.loads(record["result_json"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return jsonify({"error": "The saved assessment record is incomplete and cannot be exported."}), 409
+        assessment = {
+            "assessment_id": record["assessment_id"],
+            "area": record["area"],
+            "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
+            "summary": summary,
+        }
+        report_bytes = build_assessment_report_pdf(account=account_response(user), assessment=assessment)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO reports (report_id, assessment_id, user_id, report_type, generated_at)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON DUPLICATE KEY UPDATE report_id=VALUES(report_id), generated_at=VALUES(generated_at)""",
+                (f"report-{uuid.uuid4().hex[:12]}", assessment_id, user["id"], "assessment_discussion_pdf", now()),
+            )
+        connection.commit()
+        date_label = str(assessment["created_at"])[:10] or "report"
+        return send_file(
+            io.BytesIO(report_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"dermamatrix-discussion-brief-{date_label}.pdf",
+            max_age=0,
+        )
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 @app.post("/api/progress-checkins")
 def create_progress_checkin():
     payload = request.get_json(silent=True) or {}
@@ -727,16 +795,17 @@ def request_clinical_review():
     assessment_id = str(payload.get("assessment_id", "")).strip()
     if not assessment_id:
         return jsonify({"error": "An assessment ID is required."}), 400
-    patient_id = str(payload.get("patient_id", "")).strip()
     connection = database()
     try:
+        patient_id = str(payload.get("patient_id", "")).strip()
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Sign in to save a clinician-review request."}), 401
         with connection.cursor() as cursor:
-            user_id = None
-            if patient_id:
-                cursor.execute("SELECT id FROM users WHERE patient_id = %s", (patient_id,))
-                user = cursor.fetchone()
-                user_id = user["id"] if user else None
-            cursor.execute("INSERT INTO clinical_review_requests (user_id, assessment_id, status, requested_at) VALUES (%s, %s, %s, %s)", (user_id, assessment_id, "awaiting_rmp_review", now()))
+            cursor.execute("SELECT assessment_id FROM analysis_records WHERE assessment_id=%s AND user_id=%s", (assessment_id, user["id"]))
+            if not cursor.fetchone():
+                return jsonify({"error": "Assessment not found in your local account."}), 404
+            cursor.execute("INSERT INTO clinical_review_requests (user_id, assessment_id, status, requested_at) VALUES (%s, %s, %s, %s)", (user["id"], assessment_id, "awaiting_rmp_review", now()))
         connection.commit()
     finally:
         connection.close()
@@ -783,6 +852,12 @@ def create_assessment():
     image_context = request.form.get("image_context", "general_photo").strip()
     dermoscopy_attested = request.form.get("dermoscopy_attestation") == "true"
     can_run_research_model, research_reason = research_model_status(area, image_context, dermoscopy_attested, image_features)
+    validation = {
+        "status": "LOW_QUALITY" if image_features["issues"] else "VALID_RELEVANT" if can_run_research_model else "UNCERTAIN",
+        "category_relevance": "Attested dermatoscopic single-lesion image; eligible for the scoped research path." if can_run_research_model else "Category relevance is not automatically verified in this deployment, so no general-photo disease classification is produced.",
+        "normal_appearance": "NOT_ASSESSED",
+        "notice": "A usable image is not evidence of a condition. The app does not infer normality or disease from an unsupported input.",
+    }
     research_classifier = {"available": False, "reason": research_reason}
     candidate_region = unavailable_candidate_region(research_reason)
     segmentation = {"available": False, "status": "not_run", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": research_reason}
@@ -793,15 +868,22 @@ def create_assessment():
     manual_symptoms = [value for value in request.form.getlist("symptoms") if value in {"itching", "pain", "redness", "swelling", "scaling", "hair_loss", "nail_change"}]
     previous_treatment = request.form.get("previous_treatment", "").strip()[:500]
     risk_score = model_output["risk_score"]
-    risk_level, title, summary = screening_summary(area, risk_score)
+    priority = reported_priority(area, risk_score, urgent_concern)
+    pirs = calculate_pirs(
+        area=area,
+        priority=priority,
+        model_confidence=model_output.get("confidence"),
+        image_quality=quality,
+        reported_factors=manual_symptoms,
+    )
     assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
     patient_id = request.form.get("patient_id", "").strip()
     user_id = None
     persistence = "mysql"
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
-        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "risk": {"score": risk_score, "level": risk_level, "label": "Reported-concern priority, not disease risk"}, "pirs": {"score": risk_score, "label": "Shared personalised reported-concern priority; not a clinical prediction."}, "screening": {"title": title, "summary": summary},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"image_quality_gate": "completed", "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
+        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": {"score": priority["score"], "level": priority["level"], "severity": priority["severity"], "label": "Reported-concern priority, not disease risk", "professional_evaluation_recommended": priority["professional_evaluation_recommended"], "urgent_attention_recommended": priority["urgent_attention_recommended"]}, "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "research_classifier": research_classifier, "model_pipeline": {"input_validation": validation["status"], "category_relevance": validation["category_relevance"], "image_quality_gate": "completed", "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research"},
         "recommendations": build_recommendations(area, research_classifier), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if not urgent_concern else "general_care_only",
     }
     if area in {"Hair", "Nails"}:
@@ -817,18 +899,24 @@ def create_assessment():
             "classification": f"{modality} disorder classifier not configured",
             "explainability": "Unavailable because no modality-specific classifier ran",
         }
+    if not patient_id:
+        response["persistence"] = "not-persisted-guest"
+        response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Guest results are not stored. Create an account before analysing to save future report metadata."}
+        return jsonify(response)
+
     connection = None
     try:
         connection = database()
-        if patient_id:
-            user = user_for_patient(connection, patient_id)
-            user_id = user["id"] if user else None
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
+        user_id = user["id"]
         response["progress_comparison"] = previous_progress_summary(connection, user_id, area)
         timestamp = now()
         with connection.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (assessment_id, user_id, area, risk_score, quality, "screening_complete", timestamp),
+                (assessment_id, user_id, area, priority["score"], quality, response["clinical_status"], timestamp),
             )
             cursor.execute(
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
@@ -838,8 +926,7 @@ def create_assessment():
     except pymysql.MySQLError:
         if connection:
             connection.rollback()
-        persistence = "not-persisted-mysql-unavailable"
-        response["persistence"] = persistence
+        response["persistence"] = "not-persisted-mysql-unavailable"
         response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Analysis metadata could not be saved because MySQL is unavailable."}
     finally:
         if connection:
@@ -860,7 +947,15 @@ def create_sweat_assessment():
     assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
     urgent_concern = bool(payload.get("urgent_concern"))
     risk_score = max(sweat["risk_score"], 65) if urgent_concern else sweat["risk_score"]
-    risk_level, title, generic_summary = screening_summary("Sweat", risk_score)
+    priority = reported_priority("Sweat", risk_score, urgent_concern)
+    pirs = calculate_pirs(
+        area="Sweat",
+        priority=priority,
+        reported_factors=[
+            f"Pattern: {pattern}",
+            f"Body location: {str(payload.get('body_location', '')).strip()[:120]}" if str(payload.get("body_location", "")).strip() else "",
+        ],
+    )
     patient_id = str(payload.get("patient_id", "")).strip()
     response = {
         "assessment_id": assessment_id,
@@ -868,9 +963,10 @@ def create_sweat_assessment():
         "area": "Sweat",
         "input_type": "questionnaire",
         "quality": {"score": None, "image_quality_score": None, "quality_passed": True, "label": "Questionnaire complete", "issues": [], "visibility": "Not applicable to questionnaire input."},
-        "risk": {"score": risk_score, "level": risk_level, "label": "Questionnaire-based reported-concern priority, not disease risk"},
-        "pirs": {"score": risk_score, "label": "Shared personalised reported-concern priority; not a clinical prediction."},
-        "screening": {"title": title, "summary": sweat["summary"] if not urgent_concern else generic_summary},
+        "input_validation": {"status": "VALID_RELEVANT", "category_relevance": "Sweat concerns use the dedicated questionnaire pathway; no image is accepted.", "normal_appearance": "NOT_APPLICABLE", "notice": "Questionnaire completion does not determine a diagnosis or a sweat-gland disorder."},
+        "risk": {"score": priority["score"], "level": priority["level"], "severity": priority["severity"], "label": "Questionnaire-based reported-concern priority, not disease risk", "professional_evaluation_recommended": priority["professional_evaluation_recommended"], "urgent_attention_recommended": priority["urgent_attention_recommended"]},
+        "pirs": pirs,
+        "screening": {"title": priority["title"], "summary": sweat["summary"] if not urgent_concern else priority["summary"]},
         "manual_context": {"symptoms": [], "previous_treatment": "", "sweat_questionnaire": {"pattern": pattern, "body_location": str(payload.get("body_location", "")).strip()[:120]}},
         "candidate_region": unavailable_candidate_region("Questionnaire inputs do not have an image region."),
         "segmentation": {"available": False, "status": "not_applicable", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": "Segmentation is not applicable to questionnaire input."},
@@ -879,6 +975,7 @@ def create_sweat_assessment():
         "explainability": sweat["explainability"],
         "model_pipeline": {
             "input_validation": "completed",
+            "category_relevance": "Questionnaire-only modality",
             "preprocessing": "Questionnaire values bounded and normalised",
             "classification": "No validated XGBoost model configured",
             "explainability": "Questionnaire input-contribution summary",
@@ -893,21 +990,27 @@ def create_sweat_assessment():
         "care_plan": clinician_first_care_plan(risk_score),
         "commerce_eligibility": "general_care_only",
     }
+    if not patient_id:
+        response["persistence"] = "not-persisted-guest"
+        response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Guest questionnaire results are not stored. Create an account before reviewing a future assessment to save report metadata."}
+        return jsonify(response)
+
     connection = None
     try:
         connection = database()
-        user = user_for_patient(connection, patient_id) if patient_id else None
-        user_id = user["id"] if user else None
-        response["progress_comparison"] = previous_progress_summary(connection, user_id, "Sweat")
+        user = user_for_patient(connection, patient_id)
+        if not user:
+            return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
+        response["progress_comparison"] = previous_progress_summary(connection, user["id"], "Sweat")
         timestamp = now()
         with connection.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (assessment_id, user_id, "Sweat", risk_score, 0, response["clinical_status"], timestamp),
+                (assessment_id, user["id"], "Sweat", priority["score"], 0, response["clinical_status"], timestamp),
             )
             cursor.execute(
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
-                (assessment_id, user_id, "Sweat", json.dumps(stored_analysis_summary(response)), timestamp),
+                (assessment_id, user["id"], "Sweat", json.dumps(stored_analysis_summary(response)), timestamp),
             )
         connection.commit()
     except pymysql.MySQLError:
@@ -934,7 +1037,7 @@ def mysql_unavailable(_error):
 @app.after_request
 def prevent_stale_local_assets(response):
     """Keep the local demo browser from retaining an old client after a live update."""
-    if request.path in {"/", "/index.html", "/app.js", "/reference.css"}:
+    if request.path in {"/", "/index.html", "/app.js", "/reference.css", "/flow.css"}:
         response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 

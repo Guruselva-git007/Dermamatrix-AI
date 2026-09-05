@@ -41,9 +41,13 @@ else
   "$mysql_bin" --no-defaults --datadir="$data_dir" --socket="$socket_path" --pid-file="$pid_path" --port="$port" --mysqlx-port=33061 --bind-address=127.0.0.1 --log-error="$log_path" --skip-name-resolve --daemonize
 fi
 
+# The app's MYSQL_* settings are loaded above, but MySQL's CLI also treats some
+# similarly named environment values as client options. Clear them for the root
+# bootstrap connection so an app host/port cannot corrupt the socket protocol.
+mysql_root=(env -u MYSQL_HOST -u MYSQL_PORT -u MYSQL_USER -u MYSQL_PASSWORD -u MYSQL_DATABASE "$mysql_client" --no-defaults --protocol=SOCKET --socket="$socket_path" -u root)
 for _ in {1..30}; do
-  if "$mysql_client" --no-defaults --protocol=SOCKET --socket="$socket_path" -u root -e "SELECT 1" >/dev/null 2>&1; then
-    "$mysql_client" --no-defaults --protocol=SOCKET --socket="$socket_path" -u root <<SQL
+  if "${mysql_root[@]}" -e "SELECT 1" >/dev/null 2>&1; then
+    "${mysql_root[@]}" <<SQL
 CREATE DATABASE IF NOT EXISTS dermamatrix_ai CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 CREATE USER IF NOT EXISTS 'dermamatrix_app'@'127.0.0.1' IDENTIFIED BY '${sql_password}';
 CREATE USER IF NOT EXISTS 'dermamatrix_app'@'localhost' IDENTIFIED BY '${sql_password}';
