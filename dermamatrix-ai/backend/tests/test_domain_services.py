@@ -17,6 +17,7 @@ if BACKEND_DIR not in sys.path:
 from calibration_service import calibrated_probabilities, prediction_uncertainty
 from assessment_router import route_image_assessment
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
+from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
 from longitudinal_service import build_progress_comparison
 from dataset_registry import DATASET_REGISTRY
 from ml_evaluation import multiclass_metrics, validate_grouped_splits, validate_patient_level_splits
@@ -85,6 +86,56 @@ class MlContractTests(unittest.TestCase):
         self.assertLess(likelihoods[0], 0.9)  # softer than the raw softmax at temperature 1
         self.assertIsNone(calibrated_probabilities([2.0, 0.0], {"available": False}))
 
+    def test_condition_intelligence_keeps_research_ranking_separate_from_likelihood_and_priority(self):
+        priority = normalise_reported_priority(45)
+        severity = reported_symptom_severity(discomfort=6, change=8, symptoms=["itching"], urgent_selected=False)
+        context = patient_context_snapshot(area="Skin", symptoms=["itching"], previous_treatment="gentle cleanser")
+        cdss = clinical_decision_support(
+            area="Skin", risk=priority, severity=severity, input_validation={"status": "VALID"},
+            classifier={"uncertainty": {"status": "NOT_APPLICABLE_NO_CLASSIFIER"}}, context=context, urgent_selected=False,
+        )
+        intelligence = build_assessment_intelligence(
+            area="Skin",
+            classifier={
+                "available": True,
+                "top_predictions": [{"code": "mel", "label": "Melanoma", "relative_score": 0.73}],
+                "top_prediction": {"relative_score": 0.73},
+                "condition_likelihood": {"available": False, "notice": "Calibration is not configured."},
+                "uncertainty": {"status": "UNCERTAIN"},
+            },
+            priority=priority,
+            severity=severity,
+            input_validation={"status": "VALID"},
+            context=context,
+            cdss=cdss,
+            recommendations={"products": [], "product_guidance": "DEFER_PRODUCT_DECISIONS"},
+        )
+        self.assertEqual(intelligence["knowledge_version"], KNOWLEDGE_VERSION)
+        self.assertEqual(intelligence["finding"]["status"], "MODEL_SUPPORTED_RESEARCH_RANKING_ONLY")
+        self.assertIsNone(intelligence["finding"]["estimated_likelihood"])
+        self.assertEqual(intelligence["reported_concern_priority"]["score"], 45)
+        self.assertEqual(intelligence["doctor"]["specialty"], "Dermatologist")
+        self.assertTrue(any("Melanoma" in reference["title"] for reference in intelligence["knowledge"]["references"]))
+
+    def test_unconfigured_modalities_do_not_receive_ontology_conditions_or_simulated_models(self):
+        priority = normalise_reported_priority(28)
+        severity = reported_symptom_severity(discomfort=0, change=0, symptoms=[], urgent_selected=False)
+        context = patient_context_snapshot(area="Hair", symptoms=[], previous_treatment="")
+        cdss = clinical_decision_support(
+            area="Hair", risk=priority, severity=severity, input_validation={"status": "VALID"},
+            classifier={"uncertainty": {"status": "NOT_APPLICABLE_NO_CLASSIFIER"}}, context=context, urgent_selected=False,
+        )
+        intelligence = build_assessment_intelligence(
+            area="Hair", classifier={"available": False, "uncertainty": {"status": "NOT_APPLICABLE_NO_CLASSIFIER"}},
+            priority=priority, severity=severity, input_validation={"status": "VALID"}, context=context, cdss=cdss,
+            recommendations={"products": [], "product_guidance": "GENERAL_SELF_CARE_ONLY"},
+        )
+        matrix = {item["health_area"]: item for item in model_capability_matrix()}
+        self.assertEqual(intelligence["finding"]["status"], "NO_MODEL_SUPPORTED_FINDING")
+        self.assertFalse(intelligence["knowledge"]["condition_available"])
+        self.assertEqual(matrix["Hair"]["model_supported_conditions"], [])
+        self.assertEqual(matrix["Sweat"]["xai"], "Questionnaire contribution summary; not SHAP")
+
     def test_probability_is_not_reported_concern_priority(self):
         likelihood = calibrated_probabilities([2.0, 0.0], {"available": True, "temperature": 2.0})[0]
         priority = normalise_reported_priority(65)
@@ -142,6 +193,7 @@ class MlContractTests(unittest.TestCase):
         self.assertFalse(result["research_classifier"]["condition_likelihood"]["available"])
         self.assertEqual(result["input_validation"]["normal_appearance"], "NOT_ASSESSED")
         self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
+        self.assertEqual(result["condition_intelligence"]["finding"]["status"], "NO_MODEL_SUPPORTED_FINDING")
 
     def test_clear_declared_hair_photo_returns_quality_context_not_a_disease_label(self):
         from app import app
@@ -182,6 +234,7 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(result["input_type"], "questionnaire")
         self.assertFalse(result["research_classifier"]["available"])
         self.assertEqual(result["model_pipeline"]["attention_map"], "not applicable")
+        self.assertEqual(result["condition_intelligence"]["finding"]["status"], "NO_MODEL_SUPPORTED_FINDING")
 
     def test_context_uses_only_area_relevant_symptoms_and_not_history_as_model_features(self):
         symptoms = normalise_symptoms("Hair", ["hair_loss", "itching", "scalp_pain"])
@@ -222,6 +275,7 @@ class MlContractTests(unittest.TestCase):
             "quality": {"score": 88}, "input_validation": {}, "risk": {}, "pirs": {},
             "screening": {}, "manual_context": {}, "candidate_region": {}, "segmentation": {},
             "recommendations": {}, "care_plan": {}, "explainability": {},
+            "condition_intelligence": {"knowledge_version": "knowledge-v1", "finding": {"status": "NO_MODEL_SUPPORTED_FINDING"}},
             "model_metadata": {"model_version": "model-v1", "dataset_version": "dataset-v1"},
             "model_pipeline": {"model_lineage": {"pipeline_version": "pipeline-v1"}},
             "research_classifier": {
@@ -234,6 +288,7 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(saved["model_version"], "model-v1")
         self.assertEqual(saved["calibration"]["calibration_version"], "calibration-v1")
         self.assertEqual(summary["model_pipeline"]["model_lineage"]["pipeline_version"], "pipeline-v1")
+        self.assertEqual(summary["condition_intelligence"]["knowledge_version"], "knowledge-v1")
 
 
 class ReportTests(unittest.TestCase):

@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -411,13 +411,25 @@ function renderAnalysisDashboard(data) {
   const cdssBlock = cdss.status ? `<p><strong>Clinical decision support:</strong> ${escapeHTML(cdss.status)}. ${escapeHTML(cdss.next_step || cdss.notice || '')}</p>` : '';
   const patientContext = data.patient_context || {};
   const contextBlock = patientContext.context_sources?.length ? `<p><strong>Context scope:</strong> ${escapeHTML(patientContext.context_sources.join(' · '))}. ${escapeHTML(patientContext.image_model_context || '')}</p>` : '';
+  const intelligence = data.condition_intelligence || {};
+  const finding = intelligence.finding || {};
+  const findingBlock = finding.label ? `<p><strong>Possible finding:</strong> ${finding.name ? `${escapeHTML(finding.name)} — ` : ''}${escapeHTML(finding.label)}${Number.isFinite(finding.estimated_likelihood) ? ` Estimated likelihood: ${Math.round(finding.estimated_likelihood * 100)}%.` : ''}${Number.isFinite(finding.relative_score) ? ` Relative model score: ${Math.round(finding.relative_score * 100)}% (not a likelihood).` : ''} ${escapeHTML(finding.notice || '')}</p>` : '';
+  const contributors = (intelligence.reported_context_factors || []).map(factor => `<li><strong>${escapeHTML(factor.label)}</strong> — ${escapeHTML(factor.interpretation)}</li>`).join('');
+  const contributorBlock = `<p><strong>Possible contributors:</strong> ${contributors ? 'These are reported context signals, not confirmed causes.' : 'No specific contributor is inferred from this assessment.'}</p>${contributors ? `<ul>${contributors}</ul>` : ''}`;
+  const followUp = (intelligence.symptom_follow_up || []).map(item => `<li>${escapeHTML(item)}</li>`).join('');
+  const pathway = intelligence.care_pathway || {};
+  const pathwayBlock = pathway.category ? `<p><strong>Care pathway:</strong> ${escapeHTML(pathway.category)}. ${escapeHTML(pathway.next_step || '')} ${escapeHTML(pathway.prescription_status || '')}</p>` : '';
+  const followUpBlock = followUp ? `<p><strong>Follow-up:</strong></p><ul>${followUp}</ul>` : '';
   const lineage = data.model_metadata || classifier;
   const lineageBlock = lineage?.model_version ? `<p><strong>Model lineage:</strong> ${escapeHTML(lineage.model_id || classifier.model_id || 'model')} · ${escapeHTML(lineage.model_version || classifier.model_version)} · calibration ${escapeHTML(classifier.calibration?.calibration_version || 'not configured')}</p>` : '';
-  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.status ? ` (${escapeHTML(data.quality.status)})` : ''}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${severityBlock}${cdssBlock}${contextBlock}${lineageBlock}${pirs}${xaiBlock}`;
+  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.status ? ` (${escapeHTML(data.quality.status)})` : ''}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${findingBlock}${severityBlock}${cdssBlock}${contextBlock}${contributorBlock}${pathwayBlock}${followUpBlock}${lineageBlock}${pirs}${xaiBlock}`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
-  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products || '<li>Product choices are deferred for this assessment.</li>'}</ul></div><p class="recommendation-note"><strong>Medicine safety:</strong> ${escapeHTML(recommendation.medicine_policy || 'No medicine, dose, or diagnosis-specific treatment is suggested from an uploaded image.')} ${escapeHTML(recommendation.product_notice || '')} ${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
+  const followUpGuidance = intelligence.follow_up || {};
+  const doctor = intelligence.doctor || {};
+  const knowledgeReferences = (intelligence.knowledge?.references || []).map(reference => escapeHTML(reference.title)).join(' · ');
+  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Treatment / care pathway</strong><p>${escapeHTML(pathway.category || 'General educational support')}. ${escapeHTML(pathway.next_step || '')}</p></div><div><strong>Expected follow-up</strong><p>${escapeHTML(followUpGuidance.guidance || 'Record a check-in when there is a meaningful change.')} ${escapeHTML(followUpGuidance.timeline || '')}</p></div><div><strong>Professional support</strong><p>${escapeHTML(doctor.specialty || 'Qualified clinician')}. ${escapeHTML(doctor.appointment || '')}</p></div><div><strong>Care categories</strong><ul>${products || '<li>Product choices are deferred for this assessment.</li>'}</ul></div>${knowledgeReferences ? `<p class="recommendation-note"><strong>Knowledge references:</strong> ${knowledgeReferences}</p>` : ''}<p class="recommendation-note"><strong>Medicine safety:</strong> ${escapeHTML(recommendation.medicine_policy || 'No medicine, dose, or diagnosis-specific treatment is suggested from an uploaded image.')} ${escapeHTML(recommendation.product_notice || '')} ${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
 }
 
 async function analyze() {
@@ -475,7 +487,7 @@ async function analyze() {
     $('#modelStatus').textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}% · screening support` : data.model?.status === 'rule_based_prototype' ? 'Questionnaire contribution summary' : 'Model adapter unavailable';
     $('#clinicalStatus').textContent = data.persistence === 'mysql' ? 'Saved to your local account · no image retained' : 'Guest result · not stored';
     $('#saveProgressButton').innerHTML = data.persistence === 'mysql' ? 'Refresh saved reports <span>→</span>' : 'Create account to save <span>→</span>';
-    setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan); updateDoctorSupport(data.risk);
+    setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan); updateDoctorSupport(data.risk, data.condition_intelligence?.doctor);
     if (questionnaire) {
       $('#attentionLabel').textContent = 'Questionnaire summary';
       $('.result-footnote').textContent = 'Questionnaire inputs use a transparent contribution summary. Grad-CAM and image-region visualisation do not apply to tabular input.';
@@ -527,7 +539,8 @@ function openDirectorySearch(locationValue, { appointment = false } = {}) {
   const location = String(locationValue || '').trim();
   if (!location) return toast('Enter a city or area, or use your device location first.');
   state.nearbySearchLocation = location;
-  const query = encodeURIComponent(appointment ? `dermatology clinic appointment options near ${location}` : `dermatologist near ${location}`);
+  const specialty = state.recommendedSpecialty || 'dermatologist';
+  const query = encodeURIComponent(appointment ? `${specialty} appointment options near ${location}` : `${specialty} near ${location}`);
   window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank', 'noopener,noreferrer');
 }
 
@@ -561,13 +574,15 @@ function openAppointmentOptions(locationValue) {
   openDirectorySearch(location, { appointment: true });
 }
 
-function updateDoctorSupport(risk = {}) {
+function updateDoctorSupport(risk = {}, doctor = {}) {
   state.latestRisk = risk;
+  const specialty = doctor.specialty || 'Dermatologist';
+  state.recommendedSpecialty = specialty === 'Dermatologist' ? 'dermatologist' : 'doctor';
   const highPriority = ['HIGH', 'URGENT'].includes(risk.severity);
-  const title = highPriority ? 'Professional review is recommended' : 'Optional professional support';
+  const title = highPriority || doctor.recommended ? 'Professional review is recommended' : 'Optional professional support';
   const copy = highPriority
-    ? 'Your reported-concern priority is high. Use your location to open nearby dermatologist listings with current ratings and contact details. Appointment availability is confirmed only by the clinic or booking provider.'
-    : 'Search Google Maps for current directory details such as ratings, contact options, and directions; verify registration and the listing directly before booking.';
+    ? `Your reported-concern priority is high. Use your location to open nearby ${specialty.toLowerCase()} listings with current ratings and contact details. Appointment availability is confirmed only by the clinic or booking provider.`
+    : `Suggested discussion specialty: ${specialty}. Search Google Maps for current directory details such as ratings, contact options, and directions; verify registration and the listing directly before booking.`;
   const heading = $('#doctorSupportTitle'); const description = $('#doctorSupportCopy');
   if (heading) heading.textContent = title;
   if (description) description.textContent = copy;
@@ -734,7 +749,7 @@ function showSavedReport(assessmentId) {
   $('#qualityScore').textContent = data.quality?.score === null || data.quality?.score === undefined ? data.quality?.label || 'Not applicable' : `${data.quality.score}% · ${data.quality.label}`;
   $('#modelStatus').textContent = data.classification?.available ? 'Research model record retained' : questionnaire ? 'Questionnaire contribution summary' : 'No scoped classifier output';
   $('#clinicalStatus').textContent = 'Saved metadata · no image retained';
-  setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.risk || {});
+  setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.risk || {}, data.condition_intelligence?.doctor);
   $('#progressText').textContent = `Saved ${String(item.created_at).slice(0, 10)}. This report can support a clinician discussion; it does not confirm a diagnosis or treatment response.`;
   $('.result-footnote').textContent = 'This is a saved metadata report. The original image, visual candidate overlay, and Grad-CAM image were intentionally not retained.';
   showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');

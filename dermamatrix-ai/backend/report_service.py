@@ -41,6 +41,11 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     severity = summary.get("severity") or {}
     cdss = summary.get("clinical_decision_support") or {}
     journey = summary.get("journey") or {}
+    intelligence = summary.get("condition_intelligence") or {}
+    finding = intelligence.get("finding") or {}
+    care_pathway = intelligence.get("care_pathway") or {}
+    follow_up = intelligence.get("follow_up") or {}
+    doctor = intelligence.get("doctor") or {}
 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
@@ -72,6 +77,13 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         classification_value += f"<br/><font color='#5C6E80'>Estimated likelihood: {_text(round(float(likelihood) * 100))}% · calibration: {_text(calibration.get('calibration_version'))} · certainty: {_text(uncertainty.get('certainty'))}</font>"
     elif classification.get("available"):
         classification_value += "<br/><font color='#5C6E80'>Research ranking only. Calibration artifact unavailable, so no condition likelihood is shown.</font>"
+    knowledge_finding = _text(finding.get("name"), "No model-supported condition finding")
+    knowledge_finding_note = _text(finding.get("label"), "The condition-knowledge layer did not add a diagnosis.")
+    reported_factors = [
+        f"{factor.get('label', 'Reported context')}: {factor.get('interpretation', '')}"
+        for factor in intelligence.get("reported_context_factors") or []
+    ]
+    references = [reference.get("title", "Source") for reference in (intelligence.get("knowledge") or {}).get("references") or []]
 
     rows = [
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
@@ -110,6 +122,17 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>Segmentation:</b> {_text(segmentation.get('status'), 'Not run')}. {_text(segmentation.get('notice'), '')}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(_text((summary.get("explainability") or {}).get("notice") or (classification.get("explainability") or {}).get("explanation_text"), "No additional explainability artifact was retained."), note),
+        Paragraph("Condition intelligence and context", heading),
+        Paragraph(f"<b>Possible finding:</b> {knowledge_finding}<br/>{knowledge_finding_note}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Reported context factors:</b><br/>{_bullets(reported_factors)}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Care pathway:</b> {_text(care_pathway.get('category'))}. {_text(care_pathway.get('next_step'))}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Follow-up:</b> {_text(follow_up.get('guidance'))} {_text(follow_up.get('timeline'))}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Professional support:</b> {_text(doctor.get('specialty'))}. {_text(doctor.get('appointment'))}", body),
+        Paragraph(f"<b>Knowledge references:</b> {_bullets(references)}", note),
         Paragraph("General guidance for discussion", heading),
         Paragraph(f"<b>CDSS status:</b> {_text(cdss.get('status'))}. {_text(cdss.get('next_step') or cdss.get('notice'))}", body),
         Spacer(1, 1.5 * mm),

@@ -25,6 +25,7 @@ from lesion_classifier import classify_dermoscopic_lesion
 from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
 from assessment_router import public_workflows, route_image_assessment
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
+from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
 from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
 from recommendation_service import build_recommendations
@@ -318,6 +319,21 @@ def priority_payload(priority: dict, label: str) -> dict:
     }
 
 
+def attach_condition_intelligence(response: dict) -> dict:
+    """Attach the versioned knowledge/CDSS view without changing model output."""
+    response["condition_intelligence"] = build_assessment_intelligence(
+        area=response["area"],
+        classifier=response.get("research_classifier", {}),
+        priority=response.get("risk", {}),
+        severity=response.get("severity", {}),
+        input_validation=response.get("input_validation", {}),
+        context=response.get("patient_context", {}),
+        cdss=response.get("clinical_decision_support", {}),
+        recommendations=response.get("recommendations", {}),
+    )
+    return response
+
+
 def stored_analysis_summary(response: dict) -> dict:
     """Persist reproducible result metadata without retaining image pixels or base64 assets."""
     classifier = response.get("research_classifier", {})
@@ -329,7 +345,7 @@ def stored_analysis_summary(response: dict) -> dict:
         "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
         "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
-        "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}),
+        "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}), "condition_intelligence": response.get("condition_intelligence", {}),
         "image_stored": False,
     }
 
@@ -415,6 +431,7 @@ def model_registry():
     return jsonify({
         "shared_components": ["input validation", "reported-concern priority", "care guidance", "progress metadata", "doctor-directory handoff"],
         "health_area_workflows": public_workflows(),
+        "condition_knowledge": {"version": KNOWLEDGE_VERSION, "capability_matrix": model_capability_matrix()},
         "modalities": [
             {"area": "Skin", "input": "dermatoscopic single-lesion image", "adapter": "HAM10000 ResNet-34 research adapter", "available": os.path.isfile(os.path.join(os.path.dirname(__file__), "models", "ham10000_resnet34_research.ptw")), "explainability": "Grad-CAM when the research model runs", "notice": "Research-only; not a diagnosis."},
             {"area": "Hair", "input": "scalp / hair image", "adapter": "Hair/scalp image-model adapter", "available": False, "explainability": "Grad-CAM available after compatible trained weights are configured", "notice": "No trained hair/scalp model is bundled with this deployment."},
@@ -1001,8 +1018,9 @@ def create_assessment():
             "uncertainty": "NOT_APPLICABLE_NO_CLASSIFIER",
             "explainability": "Unavailable because no modality-specific classifier ran",
             "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")},
-        }
+    }
     if not patient_id:
+        attach_condition_intelligence(response)
         response["persistence"] = "not-persisted-guest"
         response["progress_comparison"] = versioned_progress_summary(None, None, area, response)
         response["journey"] = response["progress_comparison"].get("journey")
@@ -1023,6 +1041,7 @@ def create_assessment():
         response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern)
         response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"])
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
+        attach_condition_intelligence(response)
         response["progress_comparison"] = versioned_progress_summary(connection, user_id, area, response)
         response["journey"] = response["progress_comparison"].get("journey")
         timestamp = now()
@@ -1121,6 +1140,7 @@ def create_sweat_assessment():
         "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
     }
     if not patient_id:
+        attach_condition_intelligence(response)
         response["persistence"] = "not-persisted-guest"
         response["progress_comparison"] = versioned_progress_summary(None, None, "Sweat", response)
         response["journey"] = response["progress_comparison"].get("journey")
@@ -1140,6 +1160,7 @@ def create_sweat_assessment():
         response["clinical_decision_support"] = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation=response["input_validation"], classifier=sweat_classifier, context=response["patient_context"], urgent_selected=urgent_concern)
         response["recommendations"] = build_recommendations("Sweat", None, cdss=response["clinical_decision_support"])
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
+        attach_condition_intelligence(response)
         response["progress_comparison"] = versioned_progress_summary(connection, user["id"], "Sweat", response)
         response["journey"] = response["progress_comparison"].get("journey")
         timestamp = now()
