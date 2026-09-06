@@ -9,7 +9,7 @@ The India-aligned guardrails and production requirements are documented in `docs
 ## What an uploaded image can do today
 
 - **Face, hair/scalp, nail, or ordinary skin photo:** image-usability feedback and a non-diagnostic discussion-priority based on what the user reports. It does not identify a deficiency or classify a disease.
-- **Single, in-focus dermatoscopic skin-lesion image:** the optional HAM10000 ResNet-34 research model can show research label probabilities and Grad-CAM attention after the user confirms the capture type. It is not lesion segmentation, a diagnosis, or clinical decision-making.
+- **Single, in-focus dermatoscopic skin-lesion image:** the optional HAM10000 ResNet-34 research model can show a research-label ranking and Grad-CAM attention after the user confirms the capture type. It shows an estimated likelihood only when a version-matched calibration artifact is configured. It is not lesion segmentation, a diagnosis, or clinical decision-making.
 
 See [the model card](docs/model-card.md) and [research-data protocol](docs/research-data-protocol.md) before any model training or evaluation.
 
@@ -85,4 +85,5 @@ The existing `.ml-venv` can be used in place of `.venv` in this workspace. In VS
 - `frontend/` – accessible, responsive web prototype with a complete assessment flow.
 - `backend/` – Flask API, MySQL persistence, and the runnable screening-triage engine.
 - `backend/risk_service.py`, `backend/pirs_service.py`, `backend/report_service.py` – shared priority/PIRS/PDF-report domain boundaries.
+- `backend/assessment_contract.py` – versioned patient-result contract that keeps model likelihood, symptom severity, care priority, disease risk, and urgency separate.
 - `docs/` – model and safety documentation.

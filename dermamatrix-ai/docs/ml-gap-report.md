@@ -22,6 +22,7 @@ Audit date: 2026-09-06. This report describes the repository state; it does not 
 | OOD handling | Missing | No fitted reference distribution/detector is bundled; the app cannot call an image in-domain or OOD. |
 | Model versioning | Partial | Skin model version existed; all actual adapters now expose model/dataset/pipeline/calibration lineage in saved metadata. |
 | ML metadata | Partial | Added a source-controlled runtime registry without claiming unavailable models are ready. |
+| Normalized result contract | Exists | `assessment-result-v1` now persists one patient-safe result object for the UI, saved history, and PDFs. It separates calibrated condition likelihood (only when an artifact exists), self-reported symptom severity, reported-concern care priority, urgency routing, and unavailable disease risk. |
 
 ## Decision
 
@@ -31,3 +32,13 @@ artifact, new clinical-photo classifier, hair model, nail model, segmentation
 model, XGBoost model, or evaluation artifact is added to the application
 repository. Promoting the run without patient-level splits, external
 validation, normal/OOD handling, and clinical governance would be misleading.
+
+## Current capability boundary
+
+The running application does not convert a general face, skin, hair, or nail
+photo into a disease classification. It preserves input-quality/context support
+and general next steps for those routes. The bundled research adapter can run
+only for an explicitly attested dermatoscopic single-lesion image, and it still
+remains research-only. Sweat concerns remain questionnaire-only. A disease-risk
+score remains unavailable until a validated, governed risk model is integrated;
+reported concern priority is retained separately for care-routing purposes.

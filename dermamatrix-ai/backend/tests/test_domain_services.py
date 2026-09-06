@@ -16,6 +16,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from calibration_service import calibrated_probabilities, prediction_uncertainty
+from assessment_contract import ASSESSMENT_RESULT_VERSION, build_assessment_result
 from assessment_router import route_image_assessment
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
@@ -52,6 +53,48 @@ class RiskAndPirsTests(unittest.TestCase):
 
 
 class MlContractTests(unittest.TestCase):
+    def test_normalized_result_keeps_condition_probability_severity_and_risk_separate(self):
+        response = {
+            "area": "Skin", "input_type": "image",
+            "quality": {"status": "GOOD", "label": "Suitable for visual review", "score": 88, "issues": []},
+            "input_validation": {"status": "VALID", "classification_status": "ELIGIBLE_FOR_SCOPED_RESEARCH_CLASSIFIER"},
+            "risk": {"score": 34, "level": "TRACK_AND_REVISIT", "label": "Reported concern priority, not disease risk", "version": "priority-v1"},
+            "severity": {"score": 22, "level": "MILD", "label": "Self-reported symptom severity, not disease severity."},
+            "clinical_decision_support": {"status": "VALID_ASSESSMENT", "next_step": "Use gentle general care and monitor meaningful changes."},
+            "research_classifier": {
+                "available": True, "model_id": "skin-test", "model_version": "v1", "dataset_version": "d1", "pipeline_version": "p1",
+                "top_prediction": {"relative_score": 0.71},
+                "condition_likelihood": {"available": True, "estimated_likelihood": 0.61, "notice": "Calibrated on held-out validation data."},
+                "calibration": {"calibration_version": "c1"}, "uncertainty": {"certainty": "MODERATE"},
+                "attention_map": {"image": "data:image/png;base64,eA=="}, "explainability": {"method": "Grad-CAM", "explanation_text": "Model attention only."},
+            },
+            "segmentation": {"available": False, "status": "NOT_RUN"}, "candidate_region": {},
+            "condition_intelligence": {"finding": {"status": "MODEL_SUPPORTED_CALIBRATED_RESEARCH_LABEL", "name": "Test label", "notice": "Research-only; not a diagnosis."}, "reported_context_factors": [], "model_scope": {}},
+            "recommendations": {}, "care_plan": {}, "model_metadata": {}, "medical_disclaimer": "Not a diagnosis.",
+        }
+        result = build_assessment_result(response)
+        self.assertEqual(result["contract_version"], ASSESSMENT_RESULT_VERSION)
+        self.assertEqual(result["condition"]["estimated_likelihood"], 0.61)
+        self.assertEqual(result["severity"]["level"], "MILD")
+        self.assertEqual(result["care_priority"]["score"], 34)
+        self.assertFalse(result["disease_risk"]["available"])
+        self.assertIsNone(result["disease_risk"]["score"])
+
+    def test_normalized_result_never_fabricates_a_general_photo_condition_or_risk(self):
+        result = build_assessment_result({
+            "area": "Hair", "input_type": "image", "quality": {"label": "Suitable for visual review"},
+            "input_validation": {"status": "VALID", "classification_status": "NO_COMPATIBLE_CLASSIFIER_CONFIGURED"},
+            "risk": {"score": 18, "level": "TRACK_AND_REVISIT"}, "severity": {"level": "MILD"},
+            "clinical_decision_support": {"status": "VALID_ASSESSMENT"},
+            "research_classifier": {"available": False, "reason": "No trained hair model is configured."},
+            "condition_intelligence": {"finding": {"status": "NO_MODEL_SUPPORTED_FINDING"}, "reported_context_factors": [], "model_scope": {}},
+            "segmentation": {}, "candidate_region": {}, "recommendations": {}, "care_plan": {},
+        })
+        self.assertFalse(result["condition"]["available"])
+        self.assertIsNone(result["condition"]["estimated_likelihood"])
+        self.assertFalse(result["disease_risk"]["available"])
+        self.assertEqual(result["care_priority"]["score"], 18)
+
     def test_logout_clears_the_signed_browser_session(self):
         """A later guest/login view cannot recover a signed-out Flask session."""
         from app import app
@@ -288,6 +331,9 @@ class MlContractTests(unittest.TestCase):
         self.assertFalse(result["research_classifier"]["available"])
         self.assertEqual(result["model_pipeline"]["attention_map"], "not applicable")
         self.assertEqual(result["condition_intelligence"]["finding"]["status"], "NO_MODEL_SUPPORTED_FINDING")
+        self.assertEqual(result["assessment_result"]["input"]["type"], "questionnaire")
+        self.assertFalse(result["assessment_result"]["condition"]["available"])
+        self.assertFalse(result["assessment_result"]["disease_risk"]["available"])
 
     def test_context_uses_only_area_relevant_symptoms_and_not_history_as_model_features(self):
         symptoms = normalise_symptoms("Hair", ["hair_loss", "itching", "scalp_pain"])
@@ -329,6 +375,7 @@ class MlContractTests(unittest.TestCase):
             "screening": {}, "manual_context": {}, "candidate_region": {}, "segmentation": {},
             "recommendations": {}, "care_plan": {}, "explainability": {},
             "condition_intelligence": {"knowledge_version": "knowledge-v1", "finding": {"status": "NO_MODEL_SUPPORTED_FINDING"}},
+            "assessment_result": {"contract_version": ASSESSMENT_RESULT_VERSION, "disease_risk": {"available": False}},
             "model_metadata": {"model_version": "model-v1", "dataset_version": "dataset-v1"},
             "model_pipeline": {"model_lineage": {"pipeline_version": "pipeline-v1"}},
             "research_classifier": {
@@ -342,6 +389,7 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(saved["calibration"]["calibration_version"], "calibration-v1")
         self.assertEqual(summary["model_pipeline"]["model_lineage"]["pipeline_version"], "pipeline-v1")
         self.assertEqual(summary["condition_intelligence"]["knowledge_version"], "knowledge-v1")
+        self.assertEqual(summary["assessment_result"]["contract_version"], ASSESSMENT_RESULT_VERSION)
 
 
 class ReportTests(unittest.TestCase):

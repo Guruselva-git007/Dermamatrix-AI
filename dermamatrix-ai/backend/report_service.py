@@ -30,6 +30,7 @@ def _bullets(values: list[object] | None) -> str:
 def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     """Create a concise, printable discussion brief from one stored assessment."""
     summary = assessment.get("summary") or {}
+    result = summary.get("assessment_result") or {}
     screening = summary.get("screening") or {}
     risk = summary.get("risk") or {}
     pirs = summary.get("pirs") or {}
@@ -46,6 +47,13 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     care_pathway = intelligence.get("care_pathway") or {}
     follow_up = intelligence.get("follow_up") or {}
     doctor = intelligence.get("doctor") or {}
+
+    result_condition = result.get("condition") or {}
+    result_severity = result.get("severity") or {}
+    result_risk = result.get("disease_risk") or {}
+    result_priority = result.get("care_priority") or {}
+    result_urgency = result.get("urgency") or {}
+    result_input = result.get("input") or {}
 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
@@ -66,8 +74,12 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     note = ParagraphStyle("DermaNote", parent=body, fontSize=8, leading=11, textColor=colors.HexColor("#5C6E80"))
 
     created_at = str(assessment.get("created_at", ""))[:19].replace("T", " ")
-    risk_value = f"{_text(risk.get('score'), '—')}/100 · {_text(risk.get('level'), 'UNCERTAIN')}"
-    pirs_value = f"{_text(pirs.get('score'), '—')}/100 · {_text(pirs.get('band'), 'UNCERTAIN')}"
+    priority_value = f"{_text(result_priority.get('score', risk.get('score')), '—')}/100 · {_text(result_priority.get('level', risk.get('level')), 'NOT ASSESSED')}"
+    disease_risk_value = (
+        f"{_text(result_risk.get('score'))}/100 · {_text(result_risk.get('level'))}"
+        if result_risk.get("available") and result_risk.get("score") is not None
+        else "Not available — no validated disease-risk model is configured"
+    )
     prediction = classification.get("top_prediction") or {}
     classification_value = _text(prediction.get("condition"), "No scoped disease classification was run") if classification.get("available") else "No scoped disease classification was run"
     likelihood = prediction.get("calibrated_probability")
@@ -77,8 +89,14 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         classification_value += f"<br/><font color='#5C6E80'>Estimated likelihood: {_text(round(float(likelihood) * 100))}% · calibration: {_text(calibration.get('calibration_version'))} · certainty: {_text(uncertainty.get('certainty'))}</font>"
     elif classification.get("available"):
         classification_value += "<br/><font color='#5C6E80'>Research ranking only. Calibration artifact unavailable, so no condition likelihood is shown.</font>"
-    knowledge_finding = _text(finding.get("name"), "No model-supported condition finding")
-    knowledge_finding_note = _text(finding.get("label"), "The condition-knowledge layer did not add a diagnosis.")
+    knowledge_finding = _text(result_condition.get("name") or finding.get("name"), "No model-supported condition finding")
+    knowledge_finding_note = _text(result_condition.get("notice") or finding.get("label"), "The condition-knowledge layer did not add a diagnosis.")
+    result_likelihood = result_condition.get("estimated_likelihood")
+    likelihood_value = f"{round(float(result_likelihood) * 100)}% calibrated research-model likelihood" if result_likelihood is not None else "Not available"
+    severity_value = result_severity.get("level") or severity.get("level") or "Not assessed"
+    severity_note = result_severity.get("notice") or severity.get("label") or "No symptom severity was assessed."
+    input_quality = (result_input.get("quality") or {}).get("label") or quality.get("label")
+    urgency_value = result_urgency.get("level") or "ROUTINE MONITORING"
     reported_factors = [
         f"{factor.get('label', 'Reported context')}: {factor.get('interpretation', '')}"
         for factor in intelligence.get("reported_context_factors") or []
@@ -89,10 +107,13 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
         [Paragraph("Assessment date", eyebrow), Paragraph(_text(created_at), body)],
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
-        [Paragraph("Reported-concern priority", eyebrow), Paragraph(risk_value, body)],
-        [Paragraph("Reported symptom severity", eyebrow), Paragraph(f"{_text(severity.get('level'))} · {_text(severity.get('label'))}", body)],
-        [Paragraph("PIRS record", eyebrow), Paragraph(pirs_value, body)],
-        [Paragraph("Image / input readiness", eyebrow), Paragraph(_text(quality.get("label")), body)],
+        [Paragraph("Possible finding", eyebrow), Paragraph(knowledge_finding, body)],
+        [Paragraph("Estimated likelihood", eyebrow), Paragraph(_text(likelihood_value), body)],
+        [Paragraph("Disease risk", eyebrow), Paragraph(_text(disease_risk_value), body)],
+        [Paragraph("Reported symptom severity", eyebrow), Paragraph(f"{_text(severity_value)} · {_text(severity_note)}", body)],
+        [Paragraph("Care priority", eyebrow), Paragraph(f"{priority_value}<br/><font color='#5C6E80'>Reported concern priority, not disease risk.</font>", body)],
+        [Paragraph("Urgency and next step", eyebrow), Paragraph(f"{_text(urgency_value)} · {_text(result_urgency.get('notice') or cdss.get('next_step'))}", body)],
+        [Paragraph("Image / input readiness", eyebrow), Paragraph(_text(input_quality), body)],
         [Paragraph("Account", eyebrow), Paragraph(_text(account.get("full_name")), body)],
     ]
     table = Table(rows, colWidths=[50 * mm, 120 * mm], hAlign="LEFT")
@@ -112,7 +133,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph("Generated from locally stored assessment metadata. Uploaded images and visual overlays are not retained in this prototype.", note),
         Spacer(1, 4 * mm),
         table,
-        Paragraph("Screening summary", heading),
+        Paragraph("Assessment summary", heading),
         Paragraph(_text(screening.get("title")), body),
         Spacer(1, 1.5 * mm),
         Paragraph(_text(screening.get("summary")), body),
@@ -122,7 +143,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>Segmentation:</b> {_text(segmentation.get('status'), 'Not run')}. {_text(segmentation.get('notice'), '')}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(_text((summary.get("explainability") or {}).get("notice") or (classification.get("explainability") or {}).get("explanation_text"), "No additional explainability artifact was retained."), note),
-        Paragraph("Condition intelligence and context", heading),
+        Paragraph("Evidence and context", heading),
         Paragraph(f"<b>Possible finding:</b> {knowledge_finding}<br/>{knowledge_finding_note}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Reported context factors:</b><br/>{_bullets(reported_factors)}", body),

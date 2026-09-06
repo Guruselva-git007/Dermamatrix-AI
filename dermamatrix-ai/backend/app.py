@@ -24,6 +24,7 @@ from model_service import run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
 from assessment_router import public_workflows, route_image_assessment
+from assessment_contract import build_assessment_result
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
 from longitudinal_service import build_progress_comparison
@@ -320,7 +321,7 @@ def priority_payload(priority: dict, label: str) -> dict:
 
 
 def attach_condition_intelligence(response: dict) -> dict:
-    """Attach the versioned knowledge/CDSS view without changing model output."""
+    """Attach the knowledge view and normalized, patient-safe result."""
     response["condition_intelligence"] = build_assessment_intelligence(
         area=response["area"],
         classifier=response.get("research_classifier", {}),
@@ -331,6 +332,7 @@ def attach_condition_intelligence(response: dict) -> dict:
         cdss=response.get("clinical_decision_support", {}),
         recommendations=response.get("recommendations", {}),
     )
+    response["assessment_result"] = build_assessment_result(response)
     return response
 
 
@@ -345,7 +347,7 @@ def stored_analysis_summary(response: dict) -> dict:
         "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
         "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
-        "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}), "condition_intelligence": response.get("condition_intelligence", {}),
+        "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}), "condition_intelligence": response.get("condition_intelligence", {}), "assessment_result": response.get("assessment_result", {}),
         "image_stored": False,
     }
 
