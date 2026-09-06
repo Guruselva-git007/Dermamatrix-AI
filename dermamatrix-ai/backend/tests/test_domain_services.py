@@ -52,6 +52,21 @@ class RiskAndPirsTests(unittest.TestCase):
 
 
 class MlContractTests(unittest.TestCase):
+    def test_logout_clears_the_signed_browser_session(self):
+        """A later guest/login view cannot recover a signed-out Flask session."""
+        from app import app
+
+        client = app.test_client()
+        with client.session_transaction() as browser_session:
+            browser_session["user_id"] = 7
+            browser_session["patient_id"] = "DMX-OWNER"
+        response = client.post("/api/auth/logout")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.get_json()["authenticated"])
+        session_response = client.get("/api/auth/session")
+        self.assertEqual(session_response.status_code, 200)
+        self.assertFalse(session_response.get_json()["authenticated"])
+
     def test_account_data_requires_the_matching_signed_session(self):
         from app import app, user_for_patient
 

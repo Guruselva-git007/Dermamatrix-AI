@@ -235,9 +235,13 @@ async function loginAccount(event) {
   button.disabled = false;
 }
 
-function continueAsGuest() {
+async function continueAsGuest() {
+  // Guest mode must not leave a previously authenticated server session available
+  // for a later reload in the same browser.
+  try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { /* guest mode remains available offline */ }
   localStorage.removeItem('dermamatrix_profile'); state.profile = null; state.isGuest = true;
-  state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null;
+  state.assessmentId = null; state.latestRisk = null; state.recommendedSpecialty = 'dermatologist'; state.nearbySearchLocation = '';
+  state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; resetImage();
   $('#profileName').textContent = 'Guest workspace'; $('#profileMeta').textContent = 'Nothing saved'; updateDashboardIdentity(); renderProgress(); hideAuthGate();
   toast('Guest workspace opened. Create an account to save reports and routines.');
 }
@@ -709,7 +713,8 @@ async function clearLocalProfile() {
   try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { /* local sign-out still continues */ }
   localStorage.removeItem('dermamatrix_profile'); state.profile = null; state.isGuest = false;
   $('#profileName').textContent = 'Guest workspace'; $('#profileMeta').textContent = 'Sign in to save';
-  state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; updateDashboardIdentity(); renderProgress();
+  state.assessmentId = null; state.latestRisk = null; state.recommendedSpecialty = 'dermatologist'; state.nearbySearchLocation = '';
+  state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; resetImage(); updateDashboardIdentity(); renderProgress();
   showAuthGate('login'); setAuthMessage('You have been signed out.', true);
 }
 
