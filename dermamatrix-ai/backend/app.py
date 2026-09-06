@@ -26,7 +26,7 @@ from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
 from assessment_router import public_workflows, route_image_assessment
 from assessment_contract import build_assessment_result
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
-from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
+from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
 from recommendation_service import build_recommendations, catalog_for_area
@@ -913,6 +913,28 @@ def products():
         "policy": "No prescription medicine, diagnosis-specific treatment, dosage, paid ranking, retailer availability, price, rating, or review is provided by this prototype.",
         "pharmacy_notice": "Before using a suggested product or routine, consult an RMP or pharmacist and use a licensed pharmacy.",
     })
+
+
+@app.get("/api/knowledge/conditions")
+def knowledge_conditions():
+    """List source-linked education topics without treating them as model classes."""
+    area = request.args.get("area", "").strip().title()
+    if area and area not in {"Skin", "Hair", "Nails", "Sweat"}:
+        return jsonify({"error": "Choose Skin, Hair, Nails, or Sweat."}), 400
+    return jsonify({
+        "items": educational_condition_catalog(area or None),
+        "knowledge_version": KNOWLEDGE_VERSION,
+        "notice": "These are educational condition guides, not image-model classes or diagnoses.",
+    })
+
+
+@app.get("/api/knowledge/conditions/<topic_id>")
+def knowledge_condition(topic_id: str):
+    """Return structured, sourced condition education selected by the person."""
+    topic = educational_condition_topic(topic_id)
+    if not topic:
+        return jsonify({"error": "Condition guide not found."}), 404
+    return jsonify({"topic": topic, "knowledge_version": KNOWLEDGE_VERSION})
 
 
 @app.post("/api/assessments")

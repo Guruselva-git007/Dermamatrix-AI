@@ -26,6 +26,7 @@ For local configuration, copy `backend/.env.example` to `backend/.env`, then add
 - `POST /api/auth/login` / `POST /api/auth/logout` – local account session controls
 - `GET /api/auth/session` – restores the signed local browser session
 - `GET /api/products` – returns gated, non-medicinal personal-care discovery categories and transparent external handoffs
+- `GET /api/knowledge/conditions` and `GET /api/knowledge/conditions/<id>` – source-linked educational guides that are never represented as image-model predictions
 - `POST /api/assessments` – accepts `image`, `area`, `duration`, `discomfort`, and `change` as multipart form data
 - `POST /api/sweat-assessments` – accepts structured sweat questionnaire data only; it never accepts an image
 - `GET /api/reports/<assessment_id>/download` – generates an account-scoped PDF discussion brief from stored assessment metadata

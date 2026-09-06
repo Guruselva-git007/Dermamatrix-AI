@@ -910,16 +910,16 @@ async function hydrateProfile() {
 }
 
 const discoveryItems = [
-  { category: 'skin', icon: '◌', type: 'SKIN ESSENTIAL', name: 'Barrier moisturiser', copy: 'A simple, fragrance-conscious option to discuss for everyday dryness or barrier comfort.', keywords: 'barrier moisture dry gentle sensitive skin comfort' },
-  { category: 'skin', icon: '☼', type: 'SKIN ESSENTIAL', name: 'Daily sun protection', copy: 'Explore broad-spectrum sun protection choices with a clinician or pharmacist for your skin needs.', keywords: 'sun sunscreen uv broad spectrum protection pigmentation' },
-  { category: 'skin', icon: '◍', type: 'SKIN ESSENTIAL', name: 'Gentle cleanser', copy: 'A minimal cleanser category for a routine review; stop use if irritation develops.', keywords: 'cleanser gentle wash irritation routine' },
-  { category: 'hair', icon: '〰', type: 'HAIR + SCALP', name: 'Gentle scalp cleanser', copy: 'A product category to discuss for routine scalp cleansing and comfort.', keywords: 'hair scalp shampoo cleanser flakes comfort' },
-  { category: 'hair', icon: '⌁', type: 'HAIR + SCALP', name: 'Hair-care basics', copy: 'Review heat, traction, and product build-up habits before adding new products.', keywords: 'hair care breakage traction heat routine' },
-  { category: 'hair', icon: '✦', type: 'HAIR + SCALP', name: 'Scalp care routine', copy: 'Use a clinician discussion to decide whether a scalp concern needs examination.', keywords: 'scalp itch comfort routine dermatologist' },
-  { category: 'vitamins', icon: 'D', type: 'SUPPLEMENT INFO', name: 'Vitamin D information', copy: 'Ask a clinician whether testing or supplementation is relevant to your history. No self-dosing.', keywords: 'vitamin d sunlight test deficiency bone wellbeing use case' },
-  { category: 'vitamins', icon: 'B', type: 'SUPPLEMENT INFO', name: 'Vitamin B12 information', copy: 'Discuss testing when a clinician considers it appropriate for your symptoms and history.', keywords: 'vitamin b12 energy diet test nutrition use case' },
-  { category: 'vitamins', icon: 'Fe', type: 'SUPPLEMENT INFO', name: 'Iron & folate information', copy: 'Testing and professional advice come before starting iron or folate products.', keywords: 'iron folate blood test nutrition tablet use case' },
-  { category: 'vitamins', icon: 'Bi', type: 'SUPPLEMENT INFO', name: 'Biotin information', copy: 'Hair and nail changes have many causes; ask a pharmacist about medicine interactions.', keywords: 'biotin hair nails supplement interaction pharmacist' }
+  { category: 'skin', icon: '◌', type: 'SKIN ESSENTIAL', name: 'Barrier moisturiser', copy: 'A simple, fragrance-conscious option to discuss for everyday dryness or barrier comfort.', keywords: 'barrier moisture dry gentle sensitive skin comfort eczema', knowledgeId: 'atopic-dermatitis' },
+  { category: 'skin', icon: '☼', type: 'SKIN ESSENTIAL', name: 'Daily sun protection', copy: 'Explore broad-spectrum sun protection choices with a clinician or pharmacist for your skin needs.', keywords: 'sun sunscreen uv broad spectrum protection pigmentation acne', knowledgeId: 'acne' },
+  { category: 'skin', icon: '◍', type: 'SKIN ESSENTIAL', name: 'Gentle cleanser', copy: 'A minimal cleanser category for a routine review; stop use if irritation develops.', keywords: 'cleanser gentle wash irritation routine acne', knowledgeId: 'acne' },
+  { category: 'hair', icon: '〰', type: 'HAIR + SCALP', name: 'Gentle scalp cleanser', copy: 'A product category to discuss for routine scalp cleansing and comfort.', keywords: 'hair scalp shampoo cleanser flakes comfort dandruff', knowledgeId: 'seborrheic-dermatitis' },
+  { category: 'hair', icon: '⌁', type: 'HAIR + SCALP', name: 'Hair-care basics', copy: 'Review heat, traction, and product build-up habits before adding new products.', keywords: 'hair care breakage traction heat routine thinning', knowledgeId: 'pattern-hair-loss' },
+  { category: 'hair', icon: '✦', type: 'HAIR + SCALP', name: 'Scalp care routine', copy: 'Use a clinician discussion to decide whether a scalp concern needs examination.', keywords: 'scalp itch comfort routine dermatologist dandruff', knowledgeId: 'seborrheic-dermatitis' },
+  { category: 'vitamins', icon: 'D', type: 'SUPPLEMENT INFO', name: 'Vitamin D information', copy: 'Ask a clinician whether testing or supplementation is relevant to your history. No self-dosing.', keywords: 'vitamin d sunlight test deficiency bone wellbeing use case nail', knowledgeId: 'nail-change-deficiency' },
+  { category: 'vitamins', icon: 'B', type: 'SUPPLEMENT INFO', name: 'Vitamin B12 information', copy: 'Discuss testing when a clinician considers it appropriate for your symptoms and history.', keywords: 'vitamin b12 energy diet test nutrition use case nail', knowledgeId: 'nail-change-deficiency' },
+  { category: 'vitamins', icon: 'Fe', type: 'SUPPLEMENT INFO', name: 'Iron & folate information', copy: 'Testing and professional advice come before starting iron or folate products.', keywords: 'iron folate blood test nutrition tablet use case nail', knowledgeId: 'nail-change-deficiency' },
+  { category: 'vitamins', icon: 'Bi', type: 'SUPPLEMENT INFO', name: 'Biotin information', copy: 'Hair and nail changes have many causes; ask a pharmacist about medicine interactions.', keywords: 'biotin hair nails supplement interaction pharmacist deficiency', knowledgeId: 'nail-change-deficiency' }
 ];
 
 function commerceDestinationMarkup(product, className = 'catalog-destination') {
@@ -944,7 +944,42 @@ function commerceCard(product) {
 }
 
 function topicCard(item) {
-  return `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-discuss-product="${item.name}">Explore topic →</button></article>`;
+  return `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-knowledge-topic="${item.knowledgeId}">Learn about this →</button></article>`;
+}
+
+function knowledgeList(items, emptyMessage) {
+  const values = (items || []).filter(Boolean);
+  return values.length ? `<ul>${values.map(item => `<li>${escapeHTML(String(item))}</li>`).join('')}</ul>` : `<p>${escapeHTML(emptyMessage)}</p>`;
+}
+
+function knowledgeMedicationCards(items) {
+  if (!items?.length) return '<p>No medication topic is shown for this guide. Discuss persistent changes with a qualified clinician.</p>';
+  return items.map(item => `<div class="knowledge-medication"><strong>${escapeHTML(item.name)}</strong><small>${escapeHTML(item.access)}</small><p>${escapeHTML(item.note)}</p></div>`).join('');
+}
+
+async function openKnowledgeTopic(topicId) {
+  let panel = $('#knowledgeTopicPanel');
+  if (!panel) {
+    panel = document.createElement('section');
+    panel.id = 'knowledgeTopicPanel';
+    panel.className = 'knowledge-topic-panel';
+    $('#careContext').insertAdjacentElement('afterend', panel);
+  }
+  panel.hidden = false;
+  panel.innerHTML = '<p class="eyebrow">CONDITION GUIDE</p><p>Loading source-linked information…</p>';
+  try {
+    const payload = await requestJSON(`/api/knowledge/conditions/${encodeURIComponent(topicId)}`, {}, 10000);
+    const topic = payload.topic || {};
+    const references = (topic.evidence_references || []).map(reference => {
+      const url = supportedExternalUrl(reference.url);
+      return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener">${escapeHTML(reference.title)} ↗</a>` : escapeHTML(reference.title || 'Source');
+    }).join(' · ');
+    panel.innerHTML = `<div class="knowledge-topic-head"><div><p class="eyebrow">EDUCATIONAL CONDITION GUIDE</p><h3>${escapeHTML(topic.name || 'Condition guide')}</h3><p>${escapeHTML(topic.description || '')}</p></div><button class="text-button" type="button" data-close-knowledge>Close</button></div><div class="knowledge-topic-grid"><article><strong>Common features</strong>${knowledgeList(topic.visual_features, 'Features can overlap with other conditions.')}</article><article><strong>What can contribute</strong>${knowledgeList(topic.common_contributors, 'A clinician can help identify relevant contributors.')}</article><article><strong>Care to discuss</strong>${knowledgeList(topic.care_options, 'Discuss suitable care with a clinician or pharmacist.')}</article><article><strong>When to seek care</strong>${knowledgeList(topic.red_flags, 'Seek care if the concern persists, changes, or worries you.')}</article></div><section class="knowledge-treatment"><strong>Medication topics to discuss</strong>${knowledgeMedicationCards(topic.medication_topics)}</section><div class="knowledge-topic-grid"><article><strong>Routine</strong>${knowledgeList(topic.daily_routine, 'No routine is suggested.')}</article><article><strong>Diet & lifestyle</strong>${knowledgeList(topic.diet_lifestyle, 'Use a balanced diet and avoid self-treating a presumed deficiency.')}</article></div><p class="knowledge-notice">${escapeHTML(topic.medical_notice || '')} ${escapeHTML(topic.medication_notice || '')}</p>${references ? `<p class="knowledge-sources"><strong>Sources:</strong> ${references}</p>` : ''}`;
+    panel.querySelector('[data-close-knowledge]')?.addEventListener('click', () => { panel.hidden = true; });
+    panel.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
+  } catch {
+    panel.innerHTML = '<p class="eyebrow">CONDITION GUIDE</p><p>Information could not be loaded right now. Please try again.</p>';
+  }
 }
 
 function renderDiscoveryCatalog() {
@@ -961,7 +996,7 @@ function renderDiscoveryCatalog() {
   $('#productCatalog').innerHTML = visible.length
     ? visible.map(item => item.kind === 'commerce' ? commerceCard(item.product) : topicCard(item.item)).join('')
     : '<div class="catalog-empty">No matching information. Try “barrier”, “scalp”, “nail”, or “vitamin”.</div>';
-  $$('[data-discuss-product]').forEach(button => { button.onclick = () => toast(`${button.dataset.discussProduct}: discuss suitability with an RMP or pharmacist first.`); });
+  $$('[data-knowledge-topic]').forEach(button => { button.onclick = () => openKnowledgeTopic(button.dataset.knowledgeTopic); });
 }
 
 async function loadCommerceCatalog({ force = false } = {}) {

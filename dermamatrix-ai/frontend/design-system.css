@@ -312,6 +312,23 @@ main { background: transparent; }
 .commerce-alternatives a { color: var(--dm-blue-strong); font-size: 11px; text-decoration: none; }
 .commerce-affiliate-label { color: var(--dm-faint); font-size: 10px; }
 .catalog-disclaimer { max-width: 760px; margin: 24px 0 0; color: var(--dm-muted); font-size: 13px; line-height: 1.5; }
+.knowledge-topic-panel { margin: 0 0 24px; padding: 22px 0; border-top: 1px solid var(--dm-line); border-bottom: 1px solid var(--dm-line); }
+.knowledge-topic-head { display: flex; align-items: start; justify-content: space-between; gap: 18px; }
+.knowledge-topic-head h3 { margin: 5px 0 7px; color: var(--dm-ink); font-size: 22px; }
+.knowledge-topic-head p:not(.eyebrow) { max-width: 740px; margin: 0; color: var(--dm-muted); line-height: 1.55; }
+.knowledge-topic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; margin-top: 19px; }
+.knowledge-topic-grid article { padding: 0 0 15px; border-bottom: 1px solid var(--dm-line); }
+.knowledge-topic-grid strong, .knowledge-treatment > strong { color: var(--dm-ink); font-size: 13px; }
+.knowledge-topic-grid ul { display: grid; gap: 6px; margin: 9px 0 0; padding-left: 18px; color: var(--dm-muted); font-size: 12px; line-height: 1.45; }
+.knowledge-topic-grid p, .knowledge-treatment > p { margin: 9px 0 0; color: var(--dm-muted); font-size: 12px; line-height: 1.45; }
+.knowledge-treatment { margin-top: 19px; padding: 16px; border: 1px solid var(--dm-line); border-radius: var(--dm-radius-sm); background: var(--dm-bg-soft); }
+.knowledge-medication { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--dm-line); }
+.knowledge-medication:first-of-type { border-top: 0; }
+.knowledge-medication strong, .knowledge-medication small { display: block; }
+.knowledge-medication small { margin-top: 3px; color: var(--dm-blue); font-size: 10px; }
+.knowledge-medication p { margin: 5px 0 0; color: var(--dm-muted); font-size: 12px; line-height: 1.45; }
+.knowledge-notice, .knowledge-sources { margin: 15px 0 0; color: var(--dm-faint); font-size: 11px; line-height: 1.5; }
+.knowledge-sources a { color: var(--dm-blue-strong); text-decoration: none; }
 
 /* Doctor search */
 .support-heading { max-width: 720px; }
@@ -615,6 +632,8 @@ body[data-theme="dark"] .auth-guest { background: var(--dm-bg-soft); border-colo
   .patient-guidance-grid > article:nth-child(odd), .patient-guidance-grid > article:nth-child(even), .patient-support-grid article:first-child, .patient-support-grid article + article { padding-left: 0; padding-right: 0; border-right: 0; }
   .patient-support-grid article:first-child { border-bottom: 1px solid var(--dm-line); }
   .patient-what-next { padding-left: 18px; }
+  .knowledge-topic-head { align-items: flex-start; flex-direction: column; }
+  .knowledge-topic-grid { grid-template-columns: 1fr; gap: 14px; }
 }
 
 @media (max-width: 1180px) {

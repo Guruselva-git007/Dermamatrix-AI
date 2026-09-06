@@ -56,6 +56,10 @@ The browser uses an explicit assessment state machine (`IDLE`, `CATEGORY_SELECTE
 
 `backend/risk_service.py` provides shared `LOW`, `MODERATE`, `HIGH`, `URGENT`, and `UNCERTAIN` semantics. `backend/pirs_service.py` is a transparent, configurable prototype aggregation; it is explicitly **not clinically validated**. The model boundary stays honest: only the optional dermatoscopic HAM10000 research adapter can produce a research label/Grad-CAM, and only when its real weights and required capture attestation are present. Hair, nail, segmentation, and sweat ML adapters remain unavailable until compatible validated models are configured.
 
+## Source-linked condition guides
+
+The Care Discovery page can load structured educational guides for common concerns including acne, eczema, psoriasis, fungal infection, seborrheic dermatitis, pattern hair loss, alopecia areata, nail fungus, nail changes that may warrant testing, blue nails, and excessive sweating. Guides are served by the backend knowledge boundary and include evidence links, general care context, medication discussion categories, red flags, and clinician-first notices. They are intentionally **not** image-model classes: opening a guide never changes an assessment result or infers a diagnosis from a photo.
+
 ## History and reports
 
 Completed assessments are persisted only for the authenticated account. Guest assessments are returned for the current screen only; neither uploaded images nor guest assessment metadata are retained. Uploaded image pixels are never stored.

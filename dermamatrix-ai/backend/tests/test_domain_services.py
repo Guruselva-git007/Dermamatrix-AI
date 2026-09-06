@@ -19,7 +19,7 @@ from calibration_service import calibrated_probabilities, prediction_uncertainty
 from assessment_contract import ASSESSMENT_RESULT_VERSION, build_assessment_result
 from assessment_router import route_image_assessment
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
-from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
+from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from commerce_service import materialize_product, resolve_product_destination
 from longitudinal_service import build_progress_comparison
 from dataset_registry import DATASET_REGISTRY
@@ -446,6 +446,35 @@ class CommerceBoundaryTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["domain"], "Nails")
         self.assertIn("commerce", payload["items"][0])
         self.assertIn("No prescription medicine", payload["policy"])
+
+
+class KnowledgeBoundaryTests(unittest.TestCase):
+    def test_common_condition_guides_are_structured_but_not_model_classes(self):
+        acne = educational_condition_topic("acne")
+        self.assertEqual(acne["status"], "EDUCATION_ONLY_NOT_A_MODEL_CLASS")
+        self.assertTrue(acne["medication_topics"])
+        self.assertTrue(acne["evidence_references"])
+        self.assertIn("not confirm a diagnosis", acne["medical_notice"])
+        self.assertEqual({item["id"] for item in educational_condition_catalog("Nails")}, {"onychomycosis", "nail-change-deficiency", "blue-nails"})
+
+    def test_guides_keep_single_items_as_lists_and_use_relevant_sources(self):
+        blue_nails = educational_condition_topic("blue-nails")
+        self.assertEqual(blue_nails["visual_features"], ["Blue or purple color change of nail or surrounding tissue"])
+        self.assertEqual(blue_nails["diet_lifestyle"], ["Seek prompt care instead of supplementing if symptoms are concerning"])
+        self.assertIn("medlineplus.gov/ency/article/003215", blue_nails["evidence_references"][0]["url"])
+        self.assertIn("nhs.uk/conditions/excessive-sweating-hyperhidrosis", educational_condition_topic("hyperhidrosis")["evidence_references"][0]["url"])
+
+    def test_education_api_never_represents_topics_as_image_predictions(self):
+        from app import app
+
+        client = app.test_client()
+        index = client.get("/api/knowledge/conditions?area=Hair")
+        self.assertEqual(index.status_code, 200)
+        self.assertEqual({item["id"] for item in index.get_json()["items"]}, {"seborrheic-dermatitis", "pattern-hair-loss", "alopecia-areata"})
+        detail = client.get("/api/knowledge/conditions/acne")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.get_json()["topic"]["status"], "EDUCATION_ONLY_NOT_A_MODEL_CLASS")
+        self.assertEqual(client.get("/api/knowledge/conditions/not-real").status_code, 404)
 
 
 class ReportTests(unittest.TestCase):
