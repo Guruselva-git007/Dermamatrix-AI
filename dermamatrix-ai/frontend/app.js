@@ -1,21 +1,38 @@
 const AssessmentState = Object.freeze({
-  IDLE: 'IDLE', CATEGORY_SELECTED: 'CATEGORY_SELECTED', INPUT_REQUIRED: 'INPUT_REQUIRED',
-  INPUT_VALIDATING: 'INPUT_VALIDATING', PREPROCESSING: 'PREPROCESSING', ANALYZING: 'ANALYZING',
-  RESULT_READY: 'RESULT_READY', ERROR: 'ERROR'
+  IDLE: 'IDLE', CATEGORY_SELECTED: 'CATEGORY_SELECTED', INPUT_REQUIRED: 'INPUT_REQUIRED', UPLOADING: 'UPLOADING',
+  INPUT_VALIDATING: 'INPUT_VALIDATING', PREPROCESSING: 'PREPROCESSING', ANALYZING: 'ANALYZING', GENERATING_EXPLANATION: 'GENERATING_EXPLANATION',
+  FINALIZING: 'FINALIZING', RESULT_READY: 'RESULT_READY', LOW_CONFIDENCE: 'LOW_CONFIDENCE', INVALID_IMAGE: 'INVALID_IMAGE', OOD_IMAGE: 'OOD_IMAGE', ERROR: 'ERROR'
 });
 const assessmentTransitions = Object.freeze({
   IDLE: [AssessmentState.CATEGORY_SELECTED],
-  CATEGORY_SELECTED: [AssessmentState.INPUT_REQUIRED, AssessmentState.CATEGORY_SELECTED],
-  INPUT_REQUIRED: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_VALIDATING],
+  CATEGORY_SELECTED: [AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.CATEGORY_SELECTED],
+  INPUT_REQUIRED: [AssessmentState.CATEGORY_SELECTED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
+  UPLOADING: [AssessmentState.INPUT_REQUIRED, AssessmentState.ERROR],
   INPUT_VALIDATING: [AssessmentState.PREPROCESSING, AssessmentState.ERROR],
   PREPROCESSING: [AssessmentState.ANALYZING, AssessmentState.ERROR],
-  ANALYZING: [AssessmentState.RESULT_READY, AssessmentState.ERROR],
-  RESULT_READY: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.INPUT_VALIDATING],
-  ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.INPUT_VALIDATING]
+  ANALYZING: [AssessmentState.GENERATING_EXPLANATION, AssessmentState.ERROR],
+  GENERATING_EXPLANATION: [AssessmentState.FINALIZING, AssessmentState.ERROR],
+  FINALIZING: [AssessmentState.RESULT_READY, AssessmentState.LOW_CONFIDENCE, AssessmentState.INVALID_IMAGE, AssessmentState.OOD_IMAGE, AssessmentState.ERROR],
+  RESULT_READY: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
+  LOW_CONFIDENCE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
+  INVALID_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
+  OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
+  ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
 const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
+const areaInputProfiles = Object.freeze({
+  Skin: [
+    ['face_skin', 'Face skin'], ['body_skin', 'Body skin'], ['affected_skin', 'Affected skin close-up'], ['dermoscopic_lesion', 'Dermatoscopic single lesion'],
+  ],
+  Hair: [
+    ['scalp', 'Scalp'], ['hair_loss_area', 'Hair-loss / thinning area'], ['hair_scalp_close_up', 'Hair / scalp close-up'],
+  ],
+  Nails: [
+    ['fingernail', 'Fingernail'], ['toenail', 'Toenail'], ['nail_close_up', 'Nail / surrounding-area close-up'],
+  ],
+});
 const areaSymptoms = Object.freeze({
   Skin: [['itching', 'Itching'], ['pain', 'Pain'], ['redness', 'Redness'], ['swelling', 'Swelling'], ['scaling', 'Scaling'], ['bleeding', 'Bleeding'], ['discharge', 'Discharge'], ['spreading', 'Spreading / enlarging']],
   Hair: [['hair_loss', 'Hair loss / thinning'], ['sudden_onset', 'Sudden onset'], ['scalp_itching', 'Scalp itching'], ['scalp_scaling', 'Scalp scaling'], ['scalp_pain', 'Scalp pain'], ['recent_stress', 'Recent illness or stress'], ['family_history', 'Family history reported']],
@@ -30,6 +47,13 @@ function renderAreaSymptoms(area) {
   container.innerHTML = options.length
     ? options.map(([value, label]) => `<label><input type="checkbox" name="symptoms" value="${value}" /> ${label}</label>`).join('')
     : '<small>The dedicated sweat questionnaire below collects the relevant symptom details.</small>';
+}
+
+function renderImageContexts(area) {
+  const select = $('#imageContext');
+  const contexts = areaInputProfiles[area] || [];
+  select.innerHTML = contexts.map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+  select.closest('label').hidden = !contexts.length;
 }
 
 function transitionAssessment(nextState, detail = '') {
@@ -72,7 +96,7 @@ function selectArea(area) {
   $$('.area-choice button').forEach(button => button.classList.toggle('selected', button.dataset.area === area));
   const sweat = area === 'Sweat';
   const labels = {
-    Skin: { title: 'Start with a skin image', status: 'Skin research model: dermatoscopic single-lesion images only.', upload: 'Upload a clear dermatoscopic image', copy: 'The research model accepts attested, in-focus dermatoscopic lesion images only.' },
+    Skin: { title: 'Start with a skin image', status: 'Skin photos receive image-quality and context support. The scoped lesion research classifier runs only for an attested dermatoscopic single lesion.', upload: 'Upload a clear skin image', copy: 'Choose face skin, body skin, affected-area close-up, or dermatoscopic lesion. Ordinary photos are never forced into the lesion classifier.' },
     Hair: { title: 'Start with a scalp or hair image', status: 'Hair/scalp model adapter: no trained weights are configured in this deployment.', upload: 'Upload a clear scalp or hair image', copy: 'Image-quality feedback and shared screening support are available; no hair disorder label is generated.' },
     Nails: { title: 'Start with a nail image', status: 'Nail model adapter: no trained weights are configured in this deployment.', upload: 'Upload a clear nail image', copy: 'Image-quality feedback and shared screening support are available; no nail disorder label is generated.' },
     Sweat: { title: 'Assess a sweat pattern', status: 'Sweat tabular adapter: transparent questionnaire rules are active; no validated XGBoost model is configured.', upload: '', copy: '' },
@@ -89,8 +113,7 @@ function selectArea(area) {
   $('#sweatWorkflow').hidden = !sweat;
   $('#uploadStepTitle').textContent = labels.upload;
   $('#uploadStepCopy').textContent = labels.copy;
-  $('#imageContext').closest('label').hidden = area !== 'Skin';
-  if (area !== 'Skin') $('#imageContext').value = 'general_photo';
+  renderImageContexts(area);
   $('#consentCopy').textContent = sweat
     ? 'I consent to use this questionnaire for screening support and understand it does not provide a diagnosis.'
     : 'I have consent to upload this image and understand this tool provides screening support, not a diagnosis.';
@@ -112,8 +135,10 @@ function selectArea(area) {
 
 function setImage(file) {
   if (state.area === 'Sweat') return toast('Sweat patterns use the questionnaire instead of an image.');
-  if (!file || !file.type.startsWith('image/')) return toast('Choose a JPG, PNG, or WEBP image.');
+  const supported = /\.(jpe?g|png|webp)$/i.test(file?.name || '');
+  if (!file || !supported) return toast('Choose a JPG, PNG, or WEBP image.');
   if (file.size > 10 * 1024 * 1024) return toast('Choose an image smaller than 10 MB.');
+  transitionAssessment(AssessmentState.UPLOADING, 'PREPARING IMAGE PREVIEW');
   if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
   state.file = file; state.imageUrl = URL.createObjectURL(file);
   const zone = $('#dropZone'); zone.style.backgroundImage = `url("${state.imageUrl}")`; zone.classList.add('has-image');
@@ -421,8 +446,19 @@ async function analyze() {
       $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
       data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
     }
+    transitionAssessment(AssessmentState.GENERATING_EXPLANATION, 'PREPARING EXPLANATION');
+    transitionAssessment(AssessmentState.FINALIZING, 'FINALIZING RESULT');
+    const inputStatus = data.input_validation?.status;
+    const oodStatus = data.research_classifier?.uncertainty?.ood_status;
+    const finalState = inputStatus === 'LOW_QUALITY' || ['INVALID', 'UNSUPPORTED'].includes(inputStatus)
+      ? AssessmentState.INVALID_IMAGE
+      : oodStatus === 'OUT_OF_DISTRIBUTION'
+        ? AssessmentState.OOD_IMAGE
+        : data.research_classifier?.uncertainty?.status === 'LOW_CONFIDENCE'
+          ? AssessmentState.LOW_CONFIDENCE
+          : AssessmentState.RESULT_READY;
     finishProcessing(true);
-    transitionAssessment(AssessmentState.RESULT_READY, 'RESULT READY');
+    transitionAssessment(finalState, finalState === AssessmentState.INVALID_IMAGE ? 'IMAGE NEEDS IMPROVEMENT' : finalState === AssessmentState.LOW_CONFIDENCE ? 'LOW-CONFIDENCE RESULT' : 'RESULT READY');
     state.assessmentId = data.assessment_id;
     const score = data.risk.score;
     const questionnaire = data.input_type === 'questionnaire';
@@ -890,7 +926,6 @@ async function initialiseApp() {
   restoreSettings();
   restoreTheme();
   renderDiscoveryCatalog();
-  $('#imageContext').querySelector('option[value="general_photo"]').textContent = 'General skin, hair, or nail photo';
   selectArea(state.area);
   resetRoutineForm();
   $('#checkinDate').value = currentDate();

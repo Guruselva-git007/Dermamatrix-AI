@@ -23,6 +23,7 @@ from werkzeug.utils import secure_filename
 from model_service import run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
+from assessment_router import public_workflows, route_image_assessment
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
@@ -317,23 +318,6 @@ def priority_payload(priority: dict, label: str) -> dict:
     }
 
 
-def research_model_status(area: str, image_context: str, dermoscopy_attested: bool, image_features: dict) -> tuple[bool, str]:
-    """Guard research inference to its published image domain."""
-    if area == "Hair":
-        return False, "No trained hair/scalp classification model is configured. This image receives quality feedback and shared screening support only."
-    if area == "Nails":
-        return False, "No trained nail classification model is configured. This image receives quality feedback and shared screening support only."
-    if area != "Skin":
-        return False, "This input is not eligible for the dermatoscopic skin-lesion research model."
-    if image_context != "dermoscopic_lesion":
-        return False, "Choose a dermatoscopic lesion image only if a dermatoscope was used."
-    if not dermoscopy_attested:
-        return False, "Confirm that this is a single, in-focus dermatoscopic lesion image before research inference."
-    if not image_features["usable_for_research_model"]:
-        return False, "Retake the image before research inference: " + " ".join(image_features["issues"])
-    return True, "Eligible for research-only dermatoscopic lesion inference."
-
-
 def stored_analysis_summary(response: dict) -> dict:
     """Persist reproducible result metadata without retaining image pixels or base64 assets."""
     classifier = response.get("research_classifier", {})
@@ -430,6 +414,7 @@ def model_registry():
     """Expose real module readiness without claiming that missing models are available."""
     return jsonify({
         "shared_components": ["input validation", "reported-concern priority", "care guidance", "progress metadata", "doctor-directory handoff"],
+        "health_area_workflows": public_workflows(),
         "modalities": [
             {"area": "Skin", "input": "dermatoscopic single-lesion image", "adapter": "HAM10000 ResNet-34 research adapter", "available": os.path.isfile(os.path.join(os.path.dirname(__file__), "models", "ham10000_resnet34_research.ptw")), "explainability": "Grad-CAM when the research model runs", "notice": "Research-only; not a diagnosis."},
             {"area": "Hair", "input": "scalp / hair image", "adapter": "Hair/scalp image-model adapter", "available": False, "explainability": "Grad-CAM available after compatible trained weights are configured", "notice": "No trained hair/scalp model is bundled with this deployment."},
@@ -927,8 +912,6 @@ def create_assessment():
     except Exception:
         return jsonify({"error": "The selected file could not be read as an image."}), 422
     area = request.form.get("area", "Skin").strip()[:30] or "Skin"
-    if area not in {"Skin", "Hair", "Nails"}:
-        return jsonify({"error": "Choose Skin, Hair & scalp, Nail health, or use the separate Sweat questionnaire."}), 400
     try:
         duration = int(request.form.get("duration", 0)); discomfort = int(request.form.get("discomfort", 0)); change = int(request.form.get("change", 0))
     except ValueError:
@@ -937,15 +920,22 @@ def create_assessment():
     if request.form.get("image_consent") != "true":
         return jsonify({"error": "Confirm that you have consent to upload this image for screening support."}), 400
     urgent_concern = request.form.get("urgent_concern") == "true"
-    model_output = run_screening_model(duration, discomfort, change, quality, image_features, urgent_concern)
     image_context = request.form.get("image_context", "general_photo").strip()
     dermoscopy_attested = request.form.get("dermoscopy_attestation") == "true"
-    can_run_research_model, research_reason = research_model_status(area, image_context, dermoscopy_attested, image_features)
+    route = route_image_assessment(area=area, image_context=image_context, dermoscopy_attested=dermoscopy_attested, image_features=image_features)
+    if not route["accepted"]:
+        return jsonify({"error": route["error"], "input_validation": {"status": route["status"]}}), 400
+    model_output = run_screening_model(duration, discomfort, change, quality, image_features, urgent_concern)
+    can_run_research_model, research_reason = route["run_research_classifier"], route["notice"]
     assessment_metadata = model_metadata(SKIN_MODEL_ID if area == "Skin" else "hair-model-adapter" if area == "Hair" else "nail-model-adapter")
     validation = {
-        "status": "LOW_QUALITY" if image_features["issues"] else "VALID_RELEVANT" if can_run_research_model else "UNCERTAIN",
-        "category_relevance": "Attested dermatoscopic single-lesion image; eligible for the scoped research path." if can_run_research_model else "Category relevance is not automatically verified in this deployment, so no general-photo disease classification is produced.",
-        "relevance_status": "ATTESTED_DERMOSCOPIC_SCOPE" if can_run_research_model else "RELEVANCE_MODEL_NOT_CONFIGURED",
+        "status": route["status"],
+        "image_context": route["image_context"],
+        "image_context_label": route["image_context_label"],
+        "workflow": route["workflow"],
+        "category_relevance": route["notice"],
+        "relevance_status": route["relevance_status"],
+        "classification_status": route["classification_status"],
         "normal_appearance": "NOT_ASSESSED",
         "notice": "A usable image is not evidence of a condition. The app does not infer normality or disease from an unsupported input.",
     }
@@ -958,7 +948,7 @@ def create_assessment():
         "pipeline_version": assessment_metadata.get("pipeline_version"),
         "condition_likelihood": {"available": False, "status": "NOT_RUN", "estimated_likelihood": None, "notice": "No classifier ran for this input, so no condition likelihood is available."},
         "calibration": {"available": False, "status": "NOT_RUN", "calibration_version": None},
-        "uncertainty": {"status": "UNCERTAIN", "certainty": "NOT_AVAILABLE", "ood_status": "OOD_NOT_EVALUATED", "notice": "No classifier ran, so uncertainty and OOD cannot be assessed."},
+        "uncertainty": {"status": "UNCERTAIN" if route["status"] == "LOW_QUALITY" else "NOT_APPLICABLE_NO_CLASSIFIER", "certainty": "NOT_AVAILABLE", "ood_status": "OOD_NOT_EVALUATED", "notice": "No classifier ran, so condition uncertainty and OOD cannot be assessed."},
     }
     candidate_region = unavailable_candidate_region(research_reason)
     segmentation = {"available": False, "status": "not_run", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": research_reason}
@@ -966,6 +956,9 @@ def create_assessment():
         candidate_region = extract_visual_candidate_region(image_bytes)
         segmentation = segment_dermoscopic_lesion(image_bytes)
         research_classifier = classify_dermoscopic_lesion(image_bytes)
+        if not research_classifier.get("available"):
+            validation["classification_status"] = "RESEARCH_CLASSIFIER_NOT_AVAILABLE"
+            validation["notice"] = "The image met the declared dermatoscopic research route, but no approved research-model weights are configured in this deployment. No condition label was generated."
     manual_symptoms = normalise_symptoms(area, request.form.getlist("symptoms"))
     previous_treatment = request.form.get("previous_treatment", "").strip()[:500]
     risk_score = model_output["risk_score"]
@@ -987,15 +980,17 @@ def create_assessment():
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": severity, "clinical_decision_support": cdss, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"input_validation": validation["status"], "category_relevance": validation["category_relevance"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": severity, "clinical_decision_support": cdss, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
         "recommendations": build_recommendations(area, research_classifier, cdss=cdss), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
     }
     if area in {"Hair", "Nails"}:
         modality = "Hair/scalp" if area == "Hair" else "Nail"
         response["modality_score"] = {"score": quality, "label": "Image readiness score, not a hair/nail health score or diagnosis."}
         response["model_pipeline"] = {
+            "workflow": route["workflow"],
             "image_quality_gate": "completed",
-            "category_relevance": "RELEVANCE_MODEL_NOT_CONFIGURED",
+            "category_relevance": validation["category_relevance"],
+            "anatomical_relevance": validation["relevance_status"],
             "preprocessing": "RGB conversion and image-quality evaluation",
             "candidate_region": f"{modality} region detector not configured",
             "segmentation": "not configured",

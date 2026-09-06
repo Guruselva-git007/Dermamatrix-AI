@@ -7,7 +7,7 @@ import sys
 import unittest
 from io import BytesIO
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,6 +15,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from calibration_service import calibrated_probabilities, prediction_uncertainty
+from assessment_router import route_image_assessment
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from longitudinal_service import build_progress_comparison
 from dataset_registry import DATASET_REGISTRY
@@ -49,6 +50,34 @@ class RiskAndPirsTests(unittest.TestCase):
 
 
 class MlContractTests(unittest.TestCase):
+    def test_health_area_router_never_routes_general_images_to_lesion_classifier(self):
+        clear_image = {"status": "GOOD", "usable_for_research_model": True}
+        skin = route_image_assessment(area="Skin", image_context="face_skin", dermoscopy_attested=False, image_features=clear_image)
+        hair = route_image_assessment(area="Hair", image_context="scalp", dermoscopy_attested=False, image_features=clear_image)
+        nail = route_image_assessment(area="Nails", image_context="toenail", dermoscopy_attested=False, image_features=clear_image)
+        self.assertTrue(skin["accepted"])
+        self.assertFalse(skin["run_research_classifier"])
+        self.assertFalse(hair["run_research_classifier"])
+        self.assertFalse(nail["run_research_classifier"])
+        self.assertEqual(skin["relevance_status"], "USER_DECLARED_CONTEXT_NOT_AUTOMATICALLY_VERIFIED")
+
+    def test_only_attested_dermoscopic_skin_route_can_enter_research_classifier(self):
+        route = route_image_assessment(
+            area="Skin", image_context="dermoscopic_lesion", dermoscopy_attested=True,
+            image_features={"status": "GOOD", "usable_for_research_model": True},
+        )
+        self.assertTrue(route["accepted"])
+        self.assertTrue(route["run_research_classifier"])
+        self.assertEqual(route["classification_status"], "ELIGIBLE_FOR_SCOPED_RESEARCH_CLASSIFIER")
+
+    def test_router_rejects_an_image_context_from_the_wrong_area(self):
+        route = route_image_assessment(
+            area="Nails", image_context="face_skin", dermoscopy_attested=False,
+            image_features={"status": "GOOD", "usable_for_research_model": True},
+        )
+        self.assertFalse(route["accepted"])
+        self.assertEqual(route["status"], "UNSUPPORTED")
+
     def test_temperature_calibration_produces_probability_only_with_valid_artifact(self):
         calibration = {"available": True, "temperature": 2.0, "calibration_version": "qa-cal-v1"}
         likelihoods = calibrated_probabilities([2.0, 0.0], calibration)
@@ -113,6 +142,36 @@ class MlContractTests(unittest.TestCase):
         self.assertFalse(result["research_classifier"]["condition_likelihood"]["available"])
         self.assertEqual(result["input_validation"]["normal_appearance"], "NOT_ASSESSED")
         self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
+
+    def test_clear_declared_hair_photo_returns_quality_context_not_a_disease_label(self):
+        from app import app
+
+        image = Image.new("RGB", (640, 640), color=(222, 232, 246))
+        draw = ImageDraw.Draw(image)
+        for coordinate in range(0, 640, 16):
+            draw.line((coordinate, 0, coordinate, 639), fill=(56, 100, 170), width=3)
+            draw.line((0, coordinate, 639, coordinate), fill=(56, 100, 170), width=3)
+        payload = BytesIO()
+        image.save(payload, format="PNG")
+
+        response = app.test_client().post("/api/assessments", data={
+            "image": (BytesIO(payload.getvalue()), "clear-hair-context.png"),
+            "area": "Hair",
+            "image_context": "scalp",
+            "image_consent": "true",
+            "duration": "0",
+            "discomfort": "0",
+            "change": "0",
+        }, content_type="multipart/form-data")
+        result = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(result["input_validation"]["status"], {"VALID", "ACCEPTABLE"})
+        self.assertEqual(result["input_validation"]["relevance_status"], "USER_DECLARED_CONTEXT_NOT_AUTOMATICALLY_VERIFIED")
+        self.assertEqual(result["input_validation"]["classification_status"], "NO_COMPATIBLE_CLASSIFIER_CONFIGURED")
+        self.assertFalse(result["research_classifier"]["available"])
+        self.assertFalse(result["research_classifier"]["condition_likelihood"]["available"])
+        self.assertEqual(result["model_pipeline"]["classification"], "Hair/scalp disorder classifier not configured")
 
     def test_sweat_path_is_questionnaire_only(self):
         from app import app

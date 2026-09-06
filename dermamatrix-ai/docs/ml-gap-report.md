@@ -4,13 +4,13 @@ Audit date: 2026-09-06. This report describes the repository state; it does not 
 
 | Feature | Status | Evidence / action |
 | --- | --- | --- |
-| Skin model | Partial | Optional HAM10000 ResNet-34 dermoscopic research adapter exists; weights are not committed or installed. Retained and given lineage/calibration gates. |
+| Skin model | Partial | Optional HAM10000 ResNet-34 dermoscopic research adapter exists. This workstation has a Git-ignored local research weight file; source control does not distribute weights. It remains limited to attested dermoscopic single-lesion inputs and has lineage/calibration gates. |
 | Hair model | Missing | No governed dataset, weights, evaluation, or inference model. Kept unavailable. |
 | Nail model | Missing | No governed dataset, weights, evaluation, or inference model. Kept unavailable. |
 | Sweat model | Partial | Transparent questionnaire rules exist; no supervised tabular model. Kept rule-based. |
 | Dataset pipeline | Partial | Added a governed SCIN manifest adapter, explicit licence acknowledgement, manifest-bound acquisition, case-group leakage check, and external offline training script. Raw data and artifacts remain out of Git and out of app inference. |
 | Image quality | Exists | Resolution, exposure, and edge-variance gate exists; output now has `GOOD`/`ACCEPTABLE`/`LOW_QUALITY` status. |
-| Image relevance | Partial | Dermoscopic skin route requires explicit capture attestation; no trained anatomy/relevance model exists. Hair/nail relevance remains unavailable. |
+| Image relevance | Partial | The Health Area Router validates the user-declared body-area context, rejects cross-area inputs, and requires dermoscopic capture attestation before the scoped skin-research route. No trained anatomy/relevance model exists, so declared context is never presented as automatic anatomical verification. |
 | Probability calibration | Missing | Added strict temperature-scaling artifact loader; no artifact is supplied, so no condition likelihood is shown. |
 | Risk score | Exists, prototype | Reported-concern priority is separate from likelihood and is now versioned/factorized. It is not clinical disease risk. |
 | PIRS | Exists, prototype | Preserved and versioned; transparent and not clinically validated. |
