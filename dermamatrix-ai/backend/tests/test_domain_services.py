@@ -17,7 +17,9 @@ if BACKEND_DIR not in sys.path:
 from calibration_service import calibrated_probabilities, prediction_uncertainty
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from longitudinal_service import build_progress_comparison
-from ml_evaluation import multiclass_metrics, validate_patient_level_splits
+from dataset_registry import DATASET_REGISTRY
+from ml_evaluation import multiclass_metrics, validate_grouped_splits, validate_patient_level_splits
+from model_metadata import model_metadata
 from pirs_service import calculate_pirs
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
@@ -72,6 +74,21 @@ class MlContractTests(unittest.TestCase):
             {"patient_id": "p1", "split": "test"},
         ])
         self.assertEqual(len(errors), 1)
+
+    def test_case_group_splits_are_checked_without_claiming_patient_ids(self):
+        errors = validate_grouped_splits([
+            {"group_id": "scin-case-1", "split": "train"},
+            {"group_id": "scin-case-1", "split": "test"},
+        ], "group_id")
+        self.assertEqual(len(errors), 1)
+        self.assertIn("group_id scin-case-1", errors[0])
+
+    def test_rejected_scin_experiment_cannot_appear_as_a_runtime_model(self):
+        experiment = DATASET_REGISTRY["experiments"]["scin_clinical_resnet18_20260906"]
+        metadata = model_metadata("scin-clinical-resnet18-experiment")
+        self.assertEqual(experiment["decision"], "REJECTED_FOR_APPLICATION_INFERENCE")
+        self.assertEqual(metadata["status"], "REJECTED_FOR_APPLICATION_INFERENCE")
+        self.assertIn("not loaded", metadata["limitations"])
 
     def test_evaluation_metrics_include_calibration_and_per_class_values(self):
         metrics = multiclass_metrics([0, 1, 0, 1], [[.8, .2], [.1, .9], [.7, .3], [.2, .8]], ["a", "b"])

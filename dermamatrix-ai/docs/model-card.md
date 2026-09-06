@@ -7,6 +7,16 @@
 | Reported-concern prioritisation | User-selected duration, discomfort, recent change, and image usability | A discussion-priority label | Demonstration logic; not trained, not a diagnosis or risk prediction model |
 | HAM10000 ResNet-34 | One in-focus **dermatoscopic** image of one skin lesion | Research label ranking, Grad-CAM attention, and a calibrated likelihood only when an independent-validation artifact is configured | Research-only; not validated or deployed as a medical device |
 
+## Rejected research experiment
+
+An external SCIN clinical-photo ResNet-18 experiment was run on 212 strictly
+filtered, case-grouped images (Eczema versus Urticaria only). The independent
+32-image test produced balanced accuracy 0.520243, macro-F1 0.51952, and
+AUROC 0.477733. It was calibrated with validation-only temperature scaling but
+is `REJECTED_FOR_APPLICATION_INFERENCE`: the checkpoint and calibration file
+remain outside Git and are not loaded by the Flask service. This is a valuable
+negative baseline, not an app capability or a medical performance claim.
+
 The HAM10000 component does **not** run on a face/selfie, hair/scalp image, nail image, sweat-gland concern, or a normal camera image. The user must choose dermatoscopic lesion mode, confirm the capture method, and pass the usability gate before it is called. Grad-CAM is an attention visualisation, not lesion segmentation and not a medical finding.
 
 ## Known limitations

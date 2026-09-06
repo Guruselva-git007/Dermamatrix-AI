@@ -15,4 +15,9 @@ Do not upload patient faces, hair/scalp images, nail images, or identifiable cli
 3. Preserve patient-level splits and evaluate only on a held-out external dataset. Never report training accuracy as clinical performance.
 4. Link a run to `docs/model-card.md`, including the data version, label mapping, preprocessing, metrics, calibration, failures, and subgroup results.
 
-The project deliberately has no bulk-downloader: automated harvesting may violate source terms and bulk datasets are several gigabytes. The current downloadable research weight is installed by `backend/scripts/download_research_model.sh` and is sufficient to run the narrowly scoped dermatoscopic research path.
+The SCIN adapter is intentionally **manifest-bound**, not a general-purpose
+bulk downloader. It requires explicit licence acknowledgement and downloads
+only images already selected by `prepare_scin_clinical_manifest.py`; its output
+must remain outside Git. The current downloadable research weight is installed
+by `backend/scripts/download_research_model.sh` and is sufficient to run the
+narrowly scoped dermatoscopic research path.

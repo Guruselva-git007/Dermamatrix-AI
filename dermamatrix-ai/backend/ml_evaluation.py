@@ -29,16 +29,21 @@ def softmax(logits: np.ndarray) -> np.ndarray:
     return values / values.sum(axis=1, keepdims=True)
 
 
-def validate_patient_level_splits(rows: Sequence[dict]) -> list[str]:
-    """Return leakage errors when a patient appears in more than one split."""
+def validate_grouped_splits(rows: Sequence[dict], group_key: str = "patient_id") -> list[str]:
+    """Return leakage errors when one supplied group occurs in multiple splits."""
     locations: dict[str, set[str]] = {}
     for row in rows:
-        patient_id = str(row.get("patient_id", "")).strip()
+        group_id = str(row.get(group_key, "")).strip()
         split = str(row.get("split", "")).strip().lower()
-        if not patient_id or not split:
+        if not group_id or not split:
             continue
-        locations.setdefault(patient_id, set()).add(split)
-    return [f"Patient {patient_id} appears in multiple splits: {', '.join(sorted(splits))}" for patient_id, splits in locations.items() if len(splits) > 1]
+        locations.setdefault(group_id, set()).add(split)
+    return [f"{group_key} {group_id} appears in multiple splits: {', '.join(sorted(splits))}" for group_id, splits in locations.items() if len(splits) > 1]
+
+
+def validate_patient_level_splits(rows: Sequence[dict]) -> list[str]:
+    """Return leakage errors when a patient appears in more than one split."""
+    return validate_grouped_splits(rows, "patient_id")
 
 
 def expected_calibration_error(probabilities: np.ndarray, labels: np.ndarray, bins: int = 15) -> float:
