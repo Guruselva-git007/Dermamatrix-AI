@@ -324,6 +324,7 @@ function showCarePlan(plan) {
     box = document.createElement('div'); box.id = 'careRecommendation'; box.className = 'care-recommendation';
     $('#carePlanSlot').append(box);
   }
+  box.hidden = true;
   box.innerHTML = `<span>✚</span><p><strong>${escapeHTML(plan.heading)}</strong><br>${escapeHTML(plan.next_step)}<br><em>${escapeHTML(plan.routine_guardrail)}</em><br><em>${escapeHTML(plan.diet_guidance)}</em></p>`;
 }
 
@@ -354,19 +355,89 @@ function classifierPredictions(classifier) {
   return [];
 }
 
+function readableStatus(value, fallback = 'Not available') {
+  if (value === undefined || value === null || value === '') return fallback;
+  const readable = String(value).replace(/[_-]+/g, ' ').toLowerCase();
+  return readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
+function normaliseAssessmentPresentation(data) {
+  const classifier = data.research_classifier || data.classification || {};
+  const prediction = classifierPredictions(classifier)[0];
+  const likelihood = classifier.condition_likelihood || {};
+  const severity = data.severity || {};
+  const priority = data.risk || {};
+  const quality = data.quality || {};
+  const cdss = data.clinical_decision_support || {};
+  const carePlan = data.care_plan || {};
+  const finding = data.condition_intelligence?.finding || {};
+  const questionnaire = data.input_type === 'questionnaire';
+  const hasClassifierFinding = Boolean(classifier.available && prediction && (finding.name || prediction.label));
+  const likelihoodAvailable = Boolean(likelihood.available && Number.isFinite(prediction?.calibratedProbability));
+
+  return {
+    questionnaire,
+    classifier,
+    prediction,
+    likelihood,
+    severity,
+    priority,
+    quality,
+    finding,
+    primaryLabel: hasClassifierFinding ? 'Possible research finding' : 'Assessment summary',
+    primaryTitle: hasClassifierFinding ? (finding.name || prediction.label) : (data.screening?.title || 'Assessment summary'),
+    primaryDescription: hasClassifierFinding
+      ? (likelihoodAvailable
+        ? 'This research-only screening result is not a diagnosis and needs independent clinical assessment.'
+        : 'This is the highest-ranked research label. A calibrated likelihood is not available, and it is not a diagnosis.')
+      : (data.screening?.summary || 'No model-supported condition finding is available for this assessment.'),
+    confidence: {
+      value: likelihoodAvailable ? `${Math.round(prediction.calibratedProbability * 100)}%` : 'Not available',
+      note: likelihoodAvailable ? 'Calibrated research-model likelihood.' : 'A calibrated condition likelihood is not available for this assessment.',
+    },
+    severity: {
+      value: severity.level || 'Not assessed',
+      note: severity.level ? 'Based on the details you reported.' : 'No symptom severity was assessed.',
+    },
+    quality: {
+      value: quality.label || (questionnaire ? 'Questionnaire complete' : 'Not assessed'),
+      note: quality.issues?.length ? quality.issues.join(' ') : questionnaire ? 'No image was used for this assessment.' : 'Used to determine whether this image could be reviewed.',
+    },
+    priority: {
+      score: Number.isFinite(priority.score) ? Math.max(0, Math.min(100, priority.score)) : null,
+      level: priority.level ? readableStatus(priority.level) : 'Not assessed',
+      note: 'Reported concern priority — not disease risk or condition likelihood.',
+    },
+    nextAction: cdss.next_step || carePlan.next_step || 'No next action is available for this assessment.',
+    scope: questionnaire
+      ? 'This assessment used your questionnaire responses. It did not use image classification.'
+      : classifier.available
+        ? 'A configured research image model was used for this declared image type.'
+        : 'This assessment reviewed image quality and reported context. It did not assign a condition.',
+  };
+}
+
+function technicalEvidenceSection(title, rows) {
+  const availableRows = rows.filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (!availableRows.length) return '';
+  return `<section class="technical-evidence-section"><h4>${escapeHTML(title)}</h4><dl>${availableRows.map(([label, value]) => `<div><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(String(value))}</dd></div>`).join('')}</dl></section>`;
+}
+
 function setResearchAttention(researchClassifier) {
   const research = $('#researchResult');
   const map = $('#attentionMap');
+  research.hidden = true;
+  map.hidden = true;
   if (!researchClassifier?.available) {
     $('#researchHeading').textContent = 'Image scope';
-    $('#researchPrediction').textContent = researchClassifier?.reason || 'General photos receive visual-quality feedback and screening support only. They are not disease-classified.';
-    research.hidden = false; map.hidden = true; $('#attentionLabel').textContent = 'Image preview'; return;
+    $('#researchPrediction').textContent = researchClassifier?.reason || 'No condition classifier was used for this assessment.';
+    $('#attentionLabel').textContent = 'Image preview'; return;
   }
   const top = classifierPredictions(researchClassifier)[0];
   if (!top) {
     $('#researchHeading').textContent = 'Research model record';
     $('#researchPrediction').textContent = 'A model record is available, but no prediction detail was retained in this report.';
-    research.hidden = false; map.hidden = true; return;
+    return;
   }
   const likelihood = researchClassifier.condition_likelihood || {};
   const uncertainty = researchClassifier.uncertainty || {};
@@ -376,10 +447,10 @@ function setResearchAttention(researchClassifier) {
     : `${top.label} is the highest-ranked research label. No estimated likelihood is shown because a version-matched calibration artifact is unavailable. ${researchClassifier.confidence_notice || 'This is not a diagnosis.'}`;
   if (!researchClassifier.attention_map?.image) {
     $('#attentionLabel').textContent = 'Saved report · attention image not retained';
-    map.hidden = true; research.hidden = false; return;
+    return;
   }
-  $('#attentionLabel').textContent = 'Grad-CAM research attention — not lesion segmentation';
-  map.src = researchClassifier.attention_map.image; map.hidden = false; research.hidden = false;
+  $('#attentionLabel').textContent = 'Image preview';
+  map.src = researchClassifier.attention_map.image;
 }
 
 function setSegmentation(candidateRegion, segmentation) {
@@ -402,85 +473,107 @@ function renderResultOverview(data) {
     overview.id = 'resultOverview'; overview.className = 'result-overview';
     $('#findingText').insertAdjacentElement('afterend', overview);
   }
-  const classifier = data.research_classifier || data.classification || {};
-  const likelihood = classifier.condition_likelihood || {};
-  const prediction = classifierPredictions(classifier)[0];
-  const uncertainty = classifier.uncertainty || {};
-  const severity = data.severity || {};
-  const risk = data.risk || {};
-  const riskScore = Number.isFinite(risk.score) ? Math.max(0, Math.min(100, risk.score)) : null;
-  const likelihoodText = likelihood.available && Number.isFinite(prediction?.calibratedProbability)
-    ? `${Math.round(prediction.calibratedProbability * 100)}%`
-    : 'Not available';
-  const severityText = severity.level || 'Not reported';
-  const certaintyText = uncertainty.certainty || (classifier.available ? 'Not available' : 'Not assessed');
-  overview.style.setProperty('--result-score', `${riskScore ?? 0}%`);
-  overview.innerHTML = `<div class="result-priority"><div class="priority-gauge" aria-label="Reported concern priority ${riskScore === null ? 'not available' : `${riskScore} out of 100`}"><span>${riskScore === null ? '—' : riskScore}</span><small>/100</small></div><div><small>REPORTED PRIORITY</small><strong>Score</strong><p>Separate from condition likelihood.</p></div></div><div class="result-metrics"><div><small>ESTIMATED LIKELIHOOD</small><strong>${escapeHTML(likelihoodText)}</strong><p>${likelihood.available ? 'Calibrated model output' : 'Not shown without calibration'}</p></div><div><small>SYMPTOM SEVERITY</small><strong>${escapeHTML(severityText)}</strong><p>Based on reported context</p></div><div><small>ASSESSMENT CERTAINTY</small><strong>${escapeHTML(certaintyText)}</strong><p>Model uncertainty where available</p></div></div>`;
+  const presentation = normaliseAssessmentPresentation(data);
+  overview.style.setProperty('--result-score', `${presentation.priority.score ?? 0}%`);
+  overview.innerHTML = `<div class="result-priority"><div class="priority-gauge" aria-label="Reported concern priority ${presentation.priority.score === null ? 'not assessed' : `${presentation.priority.score} out of 100`}"><span>${presentation.priority.score === null ? '—' : presentation.priority.score}</span><small>/100</small></div><div><small>CARE PRIORITY</small><strong>${escapeHTML(presentation.priority.level)}</strong><p>${escapeHTML(presentation.priority.note)}</p></div></div><div class="result-metrics"><div><small>CONFIDENCE</small><strong>${escapeHTML(presentation.confidence.value)}</strong><p>${escapeHTML(presentation.confidence.note)}</p></div><div><small>REPORTED SYMPTOM SEVERITY</small><strong>${escapeHTML(presentation.severity.value)}</strong><p>${escapeHTML(presentation.severity.note)}</p></div><div><small>ASSESSMENT INPUT</small><strong>${escapeHTML(presentation.quality.value)}</strong><p>${escapeHTML(presentation.quality.note)}</p></div></div><section class="next-action"><div><small>WHAT TO DO NEXT</small><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(presentation.scope)}</p></div></section>`;
 }
 
 function renderAnalysisDashboard(data) {
+  const presentation = normaliseAssessmentPresentation(data);
+  const { classifier, prediction, likelihood, priority, quality } = presentation;
+  const metadata = data.model_metadata || {};
+  const pipeline = data.model_pipeline || {};
+  const recommendation = data.recommendations || {};
   const segmentation = data.segmentation || {};
   const candidateRegion = data.candidate_region || {};
-  const classifier = data.research_classifier || data.classification || {};
-  const predictionsList = classifierPredictions(classifier);
-  const likelihood = classifier.condition_likelihood || {};
-  const uncertainty = classifier.uncertainty || {};
-  const predictions = classifier.available && predictionsList.length
-    ? likelihood.available
-      ? predictionsList.map(item => `${escapeHTML(item.label)} ${Math.round(item.calibratedProbability * 100)}%`).join(' · ')
-      : `${escapeHTML(predictionsList[0].label)} (research ranking only; calibrated likelihood unavailable)`
-    : 'No disease classification run for this image type.';
-  const confidence = classifier.available && predictionsList.length
-    ? likelihood.available
-      ? `Estimated likelihood is calibrated with ${escapeHTML(classifier.calibration?.method || 'the configured method')}. Assessment certainty: ${escapeHTML(uncertainty.certainty || 'not available')}. ${escapeHTML(classifier.confidence_notice || 'Not a diagnosis.')}`
-      : `${escapeHTML(likelihood.notice || classifier.calibration?.notice || 'Calibration is unavailable, so raw model scores are not displayed as condition likelihoods.')} ${escapeHTML(uncertainty.notice || '')}`
-    : '';
-  const region = segmentation.available ? `Model segmentation: ${segmentation.affected_area_percent}% of frame.` : candidateRegion.available && candidateRegion.reliable ? `Visual candidate region: ${candidateRegion.affected_area_percent}% of frame. This is not trained model segmentation.` : segmentation.message || candidateRegion.message || 'No visual-region extraction run.';
-  const explainability = classifier.available ? (classifier.explainability?.explanation_text || 'Grad-CAM highlights image regions contributing to the research classifier.') : 'Explainability is available only when the scoped research classifier runs.';
-  const questionnaireExplanation = (data.explainability?.features || []).map(item => `<li>${escapeHTML(item.feature)}: ${escapeHTML(item.value)} (${escapeHTML(item.points)} priority points)</li>`).join('');
   const validation = data.input_validation || {};
-  const validationBlock = validation.status ? `<p><strong>Input validation:</strong> ${escapeHTML(validation.status)}. ${escapeHTML(validation.category_relevance || validation.notice || '')}</p>` : '';
-  const xaiBlock = questionnaireExplanation
-    ? `<p><strong>Questionnaire explanation:</strong> ${escapeHTML(data.explainability.notice || '')}</p><ul>${questionnaireExplanation}</ul>`
-    : `<p><strong>Why the AI looked there:</strong> ${escapeHTML(explainability)}</p>`;
-  const pirs = data.pirs?.score === undefined ? '' : `<p><strong>Shared PIRS:</strong> ${escapeHTML(data.pirs.score)}/100 — ${escapeHTML(data.pirs.label)}<br/><em>${escapeHTML(data.pirs.explanation || '')}</em></p>`;
-  const severity = data.severity || {};
-  const severityBlock = severity.level ? `<p><strong>Reported symptom severity:</strong> ${escapeHTML(severity.level)} · ${escapeHTML(severity.label || 'Self-reported context only.')}</p>` : '';
-  const cdss = data.clinical_decision_support || {};
-  const cdssBlock = cdss.status ? `<p><strong>Clinical decision support:</strong> ${escapeHTML(cdss.status)}. ${escapeHTML(cdss.next_step || cdss.notice || '')}</p>` : '';
-  const patientContext = data.patient_context || {};
-  const contextBlock = patientContext.context_sources?.length ? `<p><strong>Context scope:</strong> ${escapeHTML(patientContext.context_sources.join(' · '))}. ${escapeHTML(patientContext.image_model_context || '')}</p>` : '';
+  const uncertainty = classifier.uncertainty || {};
+  const calibration = classifier.calibration || {};
+  const questionnaireFeatures = data.explainability?.features || [];
+  const attentionImage = classifier.attention_map?.image || classifier.explainability?.heatmap;
+  const classifierName = classifier.model || metadata.model_name || data.model?.name || null;
+  const modelStatus = classifier.available
+    ? 'Ran for this assessment'
+    : presentation.questionnaire
+      ? 'No image classifier; questionnaire pathway used'
+      : 'No compatible classifier ran for this input';
+  const segmentationStatus = segmentation.available
+    ? `Completed${Number.isFinite(segmentation.affected_area_percent) ? ` · ${segmentation.affected_area_percent}% of frame` : ''}`
+    : candidateRegion.available && candidateRegion.reliable
+      ? `Visual candidate region only${Number.isFinite(candidateRegion.affected_area_percent) ? ` · ${candidateRegion.affected_area_percent}% of frame` : ''}`
+      : segmentation.message || candidateRegion.message || 'Not run';
+  const predictionValue = classifier.available && prediction
+    ? likelihood.available && Number.isFinite(prediction.calibratedProbability)
+      ? `${prediction.label} · ${Math.round(prediction.calibratedProbability * 100)}% calibrated likelihood`
+      : `${prediction.label} · research ranking only`
+    : 'Not run';
+  const visualExplanation = attentionImage && state.imageUrl
+    ? `<section class="technical-visual-explanation"><h4>Visual explanation</h4><p>Highlighted areas indicate regions that contributed to this research-model output. They are not a lesion boundary or diagnosis.</p><div class="explainability-comparison"><figure><img src="${escapeHTML(state.imageUrl)}" alt="Original submitted image" /><figcaption>Original submitted image</figcaption></figure><figure><img src="${escapeHTML(attentionImage)}" alt="Grad-CAM research attention map" /><figcaption>Grad-CAM attention map</figcaption></figure></div></section>`
+    : '<p class="technical-unavailable">Visual explanation is not available for this assessment.</p>';
+  const featureRows = questionnaireFeatures.map(feature => `${feature.feature}: ${feature.value} (${feature.points} points)`).join(' · ');
+  const technicalGroups = [
+    technicalEvidenceSection('Model', [
+      ['Status', modelStatus],
+      ['Model', classifierName || metadata.model_name || data.model?.name || 'Not configured'],
+      ['Architecture', metadata.architecture],
+      ['Version', classifier.model_version || metadata.model_version || data.model?.version],
+      ['Input modality', metadata.input_modality],
+    ]),
+    technicalEvidenceSection('Image processing', [
+      ['Input validation', validation.status],
+      ['Image quality', `${quality.label || 'Not available'}${quality.status ? ` · ${quality.status}` : ''}`],
+      ['Preprocessing', pipeline.preprocessing],
+      ['Category relevance', pipeline.category_relevance || validation.category_relevance],
+    ]),
+    technicalEvidenceSection('Segmentation and region', [
+      ['Status', segmentationStatus],
+      ['Configured model', segmentation.model],
+      ['Pipeline record', pipeline.segmentation],
+    ]),
+    technicalEvidenceSection('Classification', [
+      ['Status', modelStatus],
+      ['Output', predictionValue],
+      ['Calibration', calibration.status || pipeline.calibration],
+      ['Uncertainty', uncertainty.status || pipeline.uncertainty],
+    ]),
+    technicalEvidenceSection('Explainability', [
+      ['Method', data.explainability?.method || classifier.explainability?.method || (attentionImage ? 'Grad-CAM' : 'Not available')],
+      ['Status', data.explainability?.status || (attentionImage ? 'Available' : pipeline.explainability)],
+      ['Input contributions', featureRows || undefined],
+    ]),
+    technicalEvidenceSection('Priority and tracking', [
+      ['Reported concern priority', Number.isFinite(priority.score) ? `${priority.score}/100 · ${priority.level}` : 'Not assessed'],
+      ['Priority method', priority.method],
+      ['Priority validation', priority.validation_status],
+      ['PIRS', data.pirs?.score === undefined ? undefined : `${data.pirs.score}/100 · ${data.pirs.validation_status || 'status unavailable'}`],
+      ['PIRS method', data.pirs?.method],
+    ]),
+    technicalEvidenceSection('Recommendation configuration', [
+      ['Research-model note', recommendation.research_note],
+    ]),
+    technicalEvidenceSection('Technical metadata', [
+      ['Assessment type', data.input_type],
+      ['Inference timestamp', data.created_at],
+      ['Model ID', classifier.model_id || metadata.model_id],
+      ['Dataset version', classifier.dataset_version || metadata.dataset_version],
+      ['Pipeline version', classifier.pipeline_version || metadata.pipeline_version],
+      ['Persistence', data.persistence],
+    ]),
+  ].join('');
+  const evidenceFocus = presentation.questionnaire
+    ? `${questionnaireFeatures.length} questionnaire factors were considered.`
+    : classifier.available
+      ? 'A configured research-model path produced this result.'
+      : 'No condition classifier ran for this assessment.';
+  $('#analysisPipeline').innerHTML = `<div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(quality.label || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed'))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${classifier.available ? 'Research output available' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div><details class="technical-details"><summary>AI Evidence &amp; Technical Details</summary><div class="technical-details-content">${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
   const intelligence = data.condition_intelligence || {};
-  const finding = intelligence.finding || {};
-  const findingBlock = finding.label ? `<p><strong>Possible finding:</strong> ${finding.name ? `${escapeHTML(finding.name)} — ` : ''}${escapeHTML(finding.label)}${Number.isFinite(finding.estimated_likelihood) ? ` Estimated likelihood: ${Math.round(finding.estimated_likelihood * 100)}%.` : ''}${Number.isFinite(finding.relative_score) ? ` Relative model score: ${Math.round(finding.relative_score * 100)}% (not a likelihood).` : ''} ${escapeHTML(finding.notice || '')}</p>` : '';
-  const contributors = (intelligence.reported_context_factors || []).map(factor => `<li><strong>${escapeHTML(factor.label)}</strong> — ${escapeHTML(factor.interpretation)}</li>`).join('');
-  const contributorBlock = `<p><strong>Possible contributors:</strong> ${contributors ? 'These are reported context signals, not confirmed causes.' : 'No specific contributor is inferred from this assessment.'}</p>${contributors ? `<ul>${contributors}</ul>` : ''}`;
-  const followUp = (intelligence.symptom_follow_up || []).map(item => `<li>${escapeHTML(item)}</li>`).join('');
   const pathway = intelligence.care_pathway || {};
-  const pathwayBlock = pathway.category ? `<p><strong>Care pathway:</strong> ${escapeHTML(pathway.category)}. ${escapeHTML(pathway.next_step || '')} ${escapeHTML(pathway.prescription_status || '')}</p>` : '';
-  const followUpBlock = followUp ? `<p><strong>Follow-up:</strong></p><ul>${followUp}</ul>` : '';
-  const lineage = data.model_metadata || classifier;
-  const lineageBlock = lineage?.model_version ? `<p><strong>Model lineage:</strong> ${escapeHTML(lineage.model_id || classifier.model_id || 'model')} · ${escapeHTML(lineage.model_version || classifier.model_version)} · calibration ${escapeHTML(classifier.calibration?.calibration_version || 'not configured')}</p>` : '';
-  const quality = data.quality || {};
-  const reviewScope = data.input_type === 'questionnaire'
-    ? 'Your questionnaire responses were reviewed.'
-    : classifier.available
-      ? 'A scoped research image model was available for this image path.'
-      : 'This image path received quality and context screening only.';
-  const evidenceFocus = questionnaireExplanation
-    ? `${data.explainability?.features?.length || 0} response factors were considered.`
-    : classifier.available
-      ? 'Visual attention is shown only when the configured model produced it.'
-      : 'No image-classification evidence is available for this image path.';
-  const technicalDetails = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(quality.label || 'Not available')}${quality.status ? ` (${escapeHTML(quality.status)})` : ''}${quality.issues?.length ? ` — ${escapeHTML(quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${findingBlock}${severityBlock}${cdssBlock}${contextBlock}${contributorBlock}${pathwayBlock}${followUpBlock}${lineageBlock}${pirs}${xaiBlock}`;
-  $('#analysisPipeline').innerHTML = `<div class="evidence-summary"><article><small>IMAGE QUALITY</small><strong>${escapeHTML(quality.label || 'Not available')}</strong><p>${quality.issues?.length ? escapeHTML(quality.issues.join(' ')) : 'Used to determine whether the input could be reviewed.'}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${data.input_type === 'questionnaire' ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(reviewScope)}</p></article><article><small>WHY THIS RESULT</small><strong>${classifier.available ? 'Model evidence available' : 'Screening scope recorded'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div><details class="technical-details"><summary>Technical details</summary><div>${technicalDetails}</div></details>`;
-  const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
   const followUpGuidance = intelligence.follow_up || {};
   const doctor = intelligence.doctor || {};
   const knowledgeReferences = (intelligence.knowledge?.references || []).map(reference => escapeHTML(reference.title)).join(' · ');
-  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Treatment / care pathway</strong><p>${escapeHTML(pathway.category || 'General educational support')}. ${escapeHTML(pathway.next_step || '')}</p></div><div><strong>Expected follow-up</strong><p>${escapeHTML(followUpGuidance.guidance || 'Record a check-in when there is a meaningful change.')} ${escapeHTML(followUpGuidance.timeline || '')}</p></div><div><strong>Professional support</strong><p>${escapeHTML(doctor.specialty || 'Qualified clinician')}. ${escapeHTML(doctor.appointment || '')}</p></div><div><strong>Care categories</strong><ul>${products || '<li>Product choices are deferred for this assessment.</li>'}</ul></div>${knowledgeReferences ? `<p class="recommendation-note"><strong>Knowledge references:</strong> ${knowledgeReferences}</p>` : ''}<p class="recommendation-note"><strong>Medicine safety:</strong> ${escapeHTML(recommendation.medicine_policy || 'No medicine, dose, or diagnosis-specific treatment is suggested from an uploaded image.')} ${escapeHTML(recommendation.product_notice || '')} ${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
+  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care pathway</strong><p>${escapeHTML(readableStatus(pathway.category || 'General educational support'))}. ${escapeHTML(pathway.next_step || '')}</p></div><div><strong>Expected follow-up</strong><p>${escapeHTML(followUpGuidance.guidance || 'Record a check-in when there is a meaningful change.')}</p></div><div><strong>Professional support</strong><p>${escapeHTML(doctor.specialty || 'Qualified clinician')}. ${escapeHTML(doctor.appointment || '')}</p></div><div><strong>Care categories</strong><ul>${products || '<li>Product choices are deferred for this assessment.</li>'}</ul></div>${knowledgeReferences ? `<p class="recommendation-note"><strong>Knowledge references:</strong> ${knowledgeReferences}</p>` : ''}<p class="recommendation-note"><strong>Medicine safety:</strong> ${escapeHTML(recommendation.medicine_policy || 'No medicine, dose, or diagnosis-specific treatment is suggested from an uploaded image.')} ${escapeHTML(recommendation.product_notice || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
 }
 
 async function analyze() {
@@ -525,17 +618,17 @@ async function analyze() {
     state.assessmentId = data.assessment_id;
     const score = data.risk.score;
     const questionnaire = data.input_type === 'questionnaire';
+    const presentation = normaliseAssessmentPresentation(data);
     $('.segmentation-stage').classList.toggle('sweat-summary', questionnaire);
     $('#resultImage').hidden = questionnaire;
     if (questionnaire) $('#resultImage').removeAttribute('src');
     else $('#resultImage').src = state.imageUrl;
-    $('#resultRisk').textContent = data.risk.level;
+    $('#resultRisk').textContent = presentation.primaryLabel.toUpperCase();
     const severityClass = { LOW: 'low', MODERATE: 'moderate', HIGH: 'high', URGENT: 'urgent' }[data.risk.severity] || (score < 40 ? 'low' : 'moderate');
     $('#resultRisk').className = `risk-label ${severityClass}`;
-    $('#findingTitle').textContent = data.screening.title; $('#findingText').textContent = data.screening.summary; renderResultOverview(data);
+    $('#findingTitle').textContent = presentation.primaryTitle; $('#findingText').textContent = presentation.primaryDescription; renderResultOverview(data);
     $('#qualityScore').textContent = Number.isFinite(data.quality?.score) ? `${data.quality.score}% · ${data.quality.label}` : data.quality?.label || 'Not applicable';
-    const confidence = data.model?.confidence;
-    $('#modelStatus').textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}% · screening support` : data.model?.status === 'rule_based_prototype' ? 'Questionnaire contribution summary' : 'Model adapter unavailable';
+    $('#modelStatus').textContent = presentation.scope;
     $('#clinicalStatus').textContent = data.persistence === 'mysql' ? 'Saved to your local account · no image retained' : 'Guest result · not stored';
     $('#saveProgressButton').innerHTML = data.persistence === 'mysql' ? 'Refresh saved reports <span>→</span>' : 'Create account to save <span>→</span>';
     setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan); updateDoctorSupport(data.risk, data.condition_intelligence?.doctor);
@@ -836,17 +929,18 @@ function showSavedReport(assessmentId) {
   if (!item) return toast('This saved report is no longer available.');
   const data = { ...item.summary, research_classifier: item.summary?.classification || {} };
   const questionnaire = data.input_type === 'questionnaire';
+  const presentation = normaliseAssessmentPresentation(data);
   state.assessmentId = assessmentId;
   $('.segmentation-stage').classList.toggle('sweat-summary', questionnaire);
   $('#resultImage').hidden = true; $('#resultImage').removeAttribute('src'); $('#segmentationOverlay').hidden = true; $('#attentionMap').hidden = true;
-  $('#resultRisk').textContent = data.risk?.level || 'SAVED REPORT';
+  $('#resultRisk').textContent = presentation.primaryLabel.toUpperCase();
   const severityClass = { LOW: 'low', MODERATE: 'moderate', HIGH: 'high', URGENT: 'urgent' }[data.risk?.severity] || ((data.risk?.score || 0) < 40 ? 'low' : 'moderate');
   $('#resultRisk').className = `risk-label ${severityClass}`;
-  $('#findingTitle').textContent = data.screening?.title || 'Saved screening summary';
-  $('#findingText').textContent = data.screening?.summary || 'This report contains saved screening metadata only.';
+  $('#findingTitle').textContent = presentation.primaryTitle;
+  $('#findingText').textContent = presentation.primaryDescription;
   renderResultOverview(data);
   $('#qualityScore').textContent = data.quality?.score === null || data.quality?.score === undefined ? data.quality?.label || 'Not applicable' : `${data.quality.score}% · ${data.quality.label}`;
-  $('#modelStatus').textContent = data.classification?.available ? 'Research model record retained' : questionnaire ? 'Questionnaire contribution summary' : 'No scoped classifier output';
+  $('#modelStatus').textContent = presentation.scope;
   $('#clinicalStatus').textContent = 'Saved metadata · no image retained';
   setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.risk || {}, data.condition_intelligence?.doctor);
   $('#progressText').textContent = `Saved ${String(item.created_at).slice(0, 10)}. This report can support a clinician discussion; it does not confirm a diagnosis or treatment response.`;
