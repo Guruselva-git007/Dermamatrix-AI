@@ -38,6 +38,9 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     segmentation = summary.get("segmentation") or {}
     recommendations = summary.get("recommendations") or {}
     care_plan = summary.get("care_plan") or {}
+    severity = summary.get("severity") or {}
+    cdss = summary.get("clinical_decision_support") or {}
+    journey = summary.get("journey") or {}
 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
@@ -75,6 +78,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         [Paragraph("Assessment date", eyebrow), Paragraph(_text(created_at), body)],
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
         [Paragraph("Reported-concern priority", eyebrow), Paragraph(risk_value, body)],
+        [Paragraph("Reported symptom severity", eyebrow), Paragraph(f"{_text(severity.get('level'))} · {_text(severity.get('label'))}", body)],
         [Paragraph("PIRS record", eyebrow), Paragraph(pirs_value, body)],
         [Paragraph("Image / input readiness", eyebrow), Paragraph(_text(quality.get("label")), body)],
         [Paragraph("Account", eyebrow), Paragraph(_text(account.get("full_name")), body)],
@@ -107,11 +111,14 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Spacer(1, 1.5 * mm),
         Paragraph(_text((summary.get("explainability") or {}).get("notice") or (classification.get("explainability") or {}).get("explanation_text"), "No additional explainability artifact was retained."), note),
         Paragraph("General guidance for discussion", heading),
+        Paragraph(f"<b>CDSS status:</b> {_text(cdss.get('status'))}. {_text(cdss.get('next_step') or cdss.get('notice'))}", body),
+        Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Next step:</b> {_text(care_plan.get('next_step'))}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Routine:</b><br/>{_bullets((recommendations.get('routine') or {}).get('morning'))}<br/>{_bullets((recommendations.get('routine') or {}).get('evening'))}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Wellbeing:</b><br/>{_bullets(recommendations.get('diet'))}", body),
+        Paragraph(f"<b>Ongoing query:</b> {_text(journey.get('journey_id'), 'Not saved as an ongoing query')} · baseline {_text(journey.get('baseline_date'))}", note),
         Paragraph("Important safety notice", heading),
         Paragraph("This educational college-project prototype is not a medical device. It does not diagnose disease, prescribe medicine, or replace a registered medical practitioner. Discuss new routines, products, supplements, symptoms, and treatment decisions with a qualified clinician or pharmacist.", body),
     ]

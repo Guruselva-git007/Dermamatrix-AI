@@ -16,6 +16,21 @@ const assessmentTransitions = Object.freeze({
 const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
+const areaSymptoms = Object.freeze({
+  Skin: [['itching', 'Itching'], ['pain', 'Pain'], ['redness', 'Redness'], ['swelling', 'Swelling'], ['scaling', 'Scaling'], ['bleeding', 'Bleeding'], ['discharge', 'Discharge'], ['spreading', 'Spreading / enlarging']],
+  Hair: [['hair_loss', 'Hair loss / thinning'], ['sudden_onset', 'Sudden onset'], ['scalp_itching', 'Scalp itching'], ['scalp_scaling', 'Scalp scaling'], ['scalp_pain', 'Scalp pain'], ['recent_stress', 'Recent illness or stress'], ['family_history', 'Family history reported']],
+  Nails: [['nail_change', 'Colour or texture change'], ['thickening', 'Thickening'], ['nail_pain', 'Pain'], ['nail_separation', 'Nail separation / lifting'], ['trauma', 'Recent trauma'], ['previous_infection', 'Previous infection reported']],
+  Sweat: [],
+});
+
+function renderAreaSymptoms(area) {
+  const container = $('#symptomChips');
+  if (!container) return;
+  const options = areaSymptoms[area] || [];
+  container.innerHTML = options.length
+    ? options.map(([value, label]) => `<label><input type="checkbox" name="symptoms" value="${value}" /> ${label}</label>`).join('')
+    : '<small>The dedicated sweat questionnaire below collects the relevant symptom details.</small>';
+}
 
 function transitionAssessment(nextState, detail = '') {
   const allowed = assessmentTransitions[state.assessmentState] || [];
@@ -69,6 +84,7 @@ function selectArea(area) {
     ? 'Use symptoms, context, and daily impact for a transparent questionnaire summary and general guidance.'
     : 'Upload a clear image for transparent quality feedback, scoped model outputs when eligible, and structured care guidance.';
   $('#moduleStatus').textContent = labels.status;
+  renderAreaSymptoms(area);
   $('#imageWorkflow').hidden = sweat;
   $('#sweatWorkflow').hidden = !sweat;
   $('#uploadStepTitle').textContent = labels.upload;
@@ -364,13 +380,19 @@ function renderAnalysisDashboard(data) {
     ? `<p><strong>Questionnaire explanation:</strong> ${escapeHTML(data.explainability.notice || '')}</p><ul>${questionnaireExplanation}</ul>`
     : `<p><strong>Why the AI looked there:</strong> ${escapeHTML(explainability)}</p>`;
   const pirs = data.pirs?.score === undefined ? '' : `<p><strong>Shared PIRS:</strong> ${escapeHTML(data.pirs.score)}/100 — ${escapeHTML(data.pirs.label)}<br/><em>${escapeHTML(data.pirs.explanation || '')}</em></p>`;
+  const severity = data.severity || {};
+  const severityBlock = severity.level ? `<p><strong>Reported symptom severity:</strong> ${escapeHTML(severity.level)} · ${escapeHTML(severity.label || 'Self-reported context only.')}</p>` : '';
+  const cdss = data.clinical_decision_support || {};
+  const cdssBlock = cdss.status ? `<p><strong>Clinical decision support:</strong> ${escapeHTML(cdss.status)}. ${escapeHTML(cdss.next_step || cdss.notice || '')}</p>` : '';
+  const patientContext = data.patient_context || {};
+  const contextBlock = patientContext.context_sources?.length ? `<p><strong>Context scope:</strong> ${escapeHTML(patientContext.context_sources.join(' · '))}. ${escapeHTML(patientContext.image_model_context || '')}</p>` : '';
   const lineage = data.model_metadata || classifier;
   const lineageBlock = lineage?.model_version ? `<p><strong>Model lineage:</strong> ${escapeHTML(lineage.model_id || classifier.model_id || 'model')} · ${escapeHTML(lineage.model_version || classifier.model_version)} · calibration ${escapeHTML(classifier.calibration?.calibration_version || 'not configured')}</p>` : '';
-  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.status ? ` (${escapeHTML(data.quality.status)})` : ''}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${lineageBlock}${pirs}${xaiBlock}`;
+  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.status ? ` (${escapeHTML(data.quality.status)})` : ''}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${severityBlock}${cdssBlock}${contextBlock}${lineageBlock}${pirs}${xaiBlock}`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
-  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products}</ul></div><p class="recommendation-note"><strong>Medicine safety:</strong> ${escapeHTML(recommendation.medicine_policy || 'No medicine, dose, or diagnosis-specific treatment is suggested from an uploaded image.')} ${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
+  $('#recommendationPanel').innerHTML = `${section('Morning', recommendation.routine?.morning)}${section('Evening', recommendation.routine?.evening)}${section('Diet & nutrients', recommendation.diet)}${section('Supplements', recommendation.supplements)}<div><strong>Care categories</strong><ul>${products || '<li>Product choices are deferred for this assessment.</li>'}</ul></div><p class="recommendation-note"><strong>Medicine safety:</strong> ${escapeHTML(recommendation.medicine_policy || 'No medicine, dose, or diagnosis-specific treatment is suggested from an uploaded image.')} ${escapeHTML(recommendation.product_notice || '')} ${escapeHTML(recommendation.research_note || '')} ${escapeHTML(recommendation.affiliate_disclosure || '')}</p>`;
 }
 
 async function analyze() {

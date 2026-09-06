@@ -15,6 +15,8 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from calibration_service import calibrated_probabilities, prediction_uncertainty
+from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
+from longitudinal_service import build_progress_comparison
 from ml_evaluation import multiclass_metrics, validate_patient_level_splits
 from pirs_service import calculate_pirs
 from report_service import build_assessment_report_pdf, build_history_report_pdf
@@ -104,6 +106,37 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(result["input_type"], "questionnaire")
         self.assertFalse(result["research_classifier"]["available"])
         self.assertEqual(result["model_pipeline"]["attention_map"], "not applicable")
+
+    def test_context_uses_only_area_relevant_symptoms_and_not_history_as_model_features(self):
+        symptoms = normalise_symptoms("Hair", ["hair_loss", "itching", "scalp_pain"])
+        context = patient_context_snapshot(area="Hair", symptoms=symptoms, previous_treatment="gentle cleanser", history={"past_history": "reported", "current_history": "reported"})
+        self.assertEqual(symptoms, ["hair_loss", "scalp_pain"])
+        self.assertNotIn("past_history", context)
+        self.assertIn("unimodal", context["image_model_context"])
+
+    def test_cdss_defers_products_for_uncertain_input(self):
+        severity = reported_symptom_severity(discomfort=0, change=0, symptoms=[], urgent_selected=False)
+        context = patient_context_snapshot(area="Skin", symptoms=[], previous_treatment="")
+        cdss = clinical_decision_support(
+            area="Skin", risk=normalise_reported_priority(28), severity=severity,
+            input_validation={"status": "LOW_QUALITY"}, classifier={"uncertainty": {"status": "UNCERTAIN"}}, context=context, urgent_selected=False,
+        )
+        self.assertEqual(cdss["status"], "UNCERTAIN")
+        self.assertEqual(cdss["product_guidance"], "DEFER_PRODUCT_DECISIONS")
+
+    def test_longitudinal_likelihood_requires_matching_model_and_calibration_lineage(self):
+        old_summary = {
+            "risk": {"score": 55, "version": "reported-concern-priority-v1.2"},
+            "classification": {"model_id": "skin", "model_version": "v1", "pipeline_version": "p1", "calibration": {"calibration_version": "c1"}, "condition_likelihood": {"available": True, "estimated_likelihood": 0.6}},
+        }
+        current = {
+            "assessment_id": "new", "created_at": "2026-09-06T10:00:00Z", "risk": {"score": 31, "version": "reported-concern-priority-v1.2"},
+            "research_classifier": {"model_id": "skin", "model_version": "v2", "pipeline_version": "p1", "calibration": {"calibration_version": "c1"}, "condition_likelihood": {"available": True, "estimated_likelihood": 0.4}},
+        }
+        comparison = build_progress_comparison(user_id=7, area="Skin", current=current, historical=[{"assessment_id": "old", "created_at": "2026-09-01T10:00:00Z", "summary": old_summary}])
+        self.assertEqual(comparison["comparison"]["risk_change"], -24)
+        self.assertFalse(comparison["comparison"]["model_lineage_compatible"])
+        self.assertIsNone(comparison["comparison"]["likelihood_change"])
 
     def test_assessment_summary_retains_model_and_calibration_lineage(self):
         from app import stored_analysis_summary

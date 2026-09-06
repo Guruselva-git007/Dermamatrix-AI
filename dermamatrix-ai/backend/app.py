@@ -23,6 +23,8 @@ from werkzeug.utils import secure_filename
 from model_service import run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
+from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
+from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
 from recommendation_service import build_recommendations
 from report_service import build_assessment_report_pdf, build_history_report_pdf
@@ -339,7 +341,7 @@ def stored_analysis_summary(response: dict) -> dict:
     candidate = response.get("candidate_region", {})
     return {
         "created_at": response["created_at"], "area": response["area"], "input_type": response.get("input_type", "image"), "quality": response["quality"], "input_validation": response.get("input_validation", {}), "risk": response["risk"], "pirs": response.get("pirs", {}), "model_metadata": response.get("model_metadata", {}), "model_pipeline": response.get("model_pipeline", {}),
-        "screening": response["screening"], "manual_context": response["manual_context"],
+        "screening": response["screening"], "manual_context": response["manual_context"], "patient_context": response.get("patient_context", {}), "severity": response.get("severity", {}), "clinical_decision_support": response.get("clinical_decision_support", {}), "progress_comparison": response.get("progress_comparison", {}), "journey": response.get("journey"),
         "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
         "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
@@ -348,16 +350,21 @@ def stored_analysis_summary(response: dict) -> dict:
     }
 
 
-def previous_progress_summary(connection: pymysql.Connection, user_id: int | None, area: str) -> dict:
-    """Return an honest longitudinal status; no healing inference is made from this prototype."""
+def versioned_progress_summary(connection: pymysql.Connection, user_id: int | None, area: str, current: dict) -> dict:
+    """Extend the existing saved-analysis history without creating a second history system."""
     if not user_id:
-        return {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Create a profile before saving analysis history. This result can still be saved as a local snapshot."}
+        return build_progress_comparison(user_id=None, area=area, current=current, historical=[])
     with connection.cursor() as cursor:
-        cursor.execute("SELECT result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at DESC LIMIT 1", (user_id, area))
-        previous = cursor.fetchone()
-    if not previous:
-        return {"status": "insufficient_evidence", "previous_analysis": None, "summary": "This is the first saved analysis for this area. A future upload can be placed alongside it, but the app does not infer healing or cure."}
-    return {"status": "insufficient_evidence", "previous_analysis": previous["created_at"].isoformat() if hasattr(previous["created_at"], "isoformat") else str(previous["created_at"]), "summary": "A previous analysis exists. A validated longitudinal model is not configured, so the app does not label image change as improving, stable, or worsening."}
+        cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at ASC, id ASC", (user_id, area))
+        records = cursor.fetchall()
+    historical = []
+    for record in records:
+        try:
+            summary = json.loads(record["result_json"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            summary = {}
+        historical.append({"assessment_id": record["assessment_id"], "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]), "summary": summary})
+    return build_progress_comparison(user_id=user_id, area=area, current=current, historical=historical)
 
 
 def clinician_first_care_plan(risk_score: int) -> dict:
@@ -959,10 +966,13 @@ def create_assessment():
         candidate_region = extract_visual_candidate_region(image_bytes)
         segmentation = segment_dermoscopic_lesion(image_bytes)
         research_classifier = classify_dermoscopic_lesion(image_bytes)
-    manual_symptoms = [value for value in request.form.getlist("symptoms") if value in {"itching", "pain", "redness", "swelling", "scaling", "hair_loss", "nail_change"}]
+    manual_symptoms = normalise_symptoms(area, request.form.getlist("symptoms"))
     previous_treatment = request.form.get("previous_treatment", "").strip()[:500]
     risk_score = model_output["risk_score"]
     priority = reported_priority(area, risk_score, urgent_concern)
+    severity = reported_symptom_severity(discomfort=discomfort, change=change, symptoms=manual_symptoms, urgent_selected=urgent_concern)
+    patient_context = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment)
+    cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern)
     pirs = calculate_pirs(
         area=area,
         priority=priority,
@@ -977,8 +987,8 @@ def create_assessment():
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"input_validation": validation["status"], "category_relevance": validation["category_relevance"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
-        "recommendations": build_recommendations(area, research_classifier), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if not urgent_concern else "general_care_only",
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": severity, "clinical_decision_support": cdss, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"input_validation": validation["status"], "category_relevance": validation["category_relevance"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else "not run", "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available outside dermatoscopic lesion research", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
+        "recommendations": build_recommendations(area, research_classifier, cdss=cdss), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
     }
     if area in {"Hair", "Nails"}:
         modality = "Hair/scalp" if area == "Hair" else "Nail"
@@ -999,7 +1009,8 @@ def create_assessment():
         }
     if not patient_id:
         response["persistence"] = "not-persisted-guest"
-        response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Guest results are not stored. Create an account before analysing to save future report metadata."}
+        response["progress_comparison"] = versioned_progress_summary(None, None, area, response)
+        response["journey"] = response["progress_comparison"].get("journey")
         return jsonify(response)
 
     connection = None
@@ -1009,7 +1020,16 @@ def create_assessment():
         if not user:
             return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
         user_id = user["id"]
-        response["progress_comparison"] = previous_progress_summary(connection, user_id, area)
+        history = account_history(connection, user_id)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user_id, area))
+            previous_count = int(cursor.fetchone()["count"])
+        response["patient_context"] = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment, history=history, previous_assessment_count=previous_count)
+        response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern)
+        response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"])
+        response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
+        response["progress_comparison"] = versioned_progress_summary(connection, user_id, area, response)
+        response["journey"] = response["progress_comparison"].get("journey")
         timestamp = now()
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1025,7 +1045,7 @@ def create_assessment():
         if connection:
             connection.rollback()
         response["persistence"] = "not-persisted-mysql-unavailable"
-        response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Analysis metadata could not be saved because MySQL is unavailable."}
+        response["progress_comparison"] = {"status": "NOT_SAVED", "summary": "Analysis metadata could not be saved because MySQL is unavailable.", "journey": None}
     finally:
         if connection:
             connection.close()
@@ -1047,6 +1067,15 @@ def create_sweat_assessment():
     risk_score = max(sweat["risk_score"], 65) if urgent_concern else sweat["risk_score"]
     priority = reported_priority("Sweat", risk_score, urgent_concern)
     assessment_metadata = model_metadata("sweat-questionnaire-v1")
+    sweat_symptoms = normalise_symptoms("Sweat", [
+        "excessive_sweating" if pattern == "excessive" else "reduced_sweating" if pattern == "reduced" else "",
+        "daily_impact" if payload.get("daily_impact") else "",
+        "medication_change" if payload.get("medication_change") else "",
+    ])
+    severity = reported_symptom_severity(discomfort=0, change=0, symptoms=sweat_symptoms, urgent_selected=urgent_concern)
+    patient_context = patient_context_snapshot(area="Sweat", symptoms=sweat_symptoms, previous_treatment="")
+    sweat_classifier = {"available": False, "uncertainty": {"status": "NOT_AVAILABLE_NO_VALIDATED_TABULAR_MODEL"}}
+    cdss = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation={"status": "VALID_RELEVANT"}, classifier=sweat_classifier, context=patient_context, urgent_selected=urgent_concern)
     pirs = calculate_pirs(
         area="Sweat",
         priority=priority,
@@ -1066,10 +1095,13 @@ def create_sweat_assessment():
         "risk": priority_payload(priority, "Questionnaire-based reported-concern priority, not disease risk"),
         "pirs": pirs,
         "screening": {"title": priority["title"], "summary": sweat["summary"] if not urgent_concern else priority["summary"]},
-        "manual_context": {"symptoms": [], "previous_treatment": "", "sweat_questionnaire": {"pattern": pattern, "body_location": str(payload.get("body_location", "")).strip()[:120]}},
+        "manual_context": {"symptoms": sweat_symptoms, "previous_treatment": "", "sweat_questionnaire": {"pattern": pattern, "body_location": str(payload.get("body_location", "")).strip()[:120]}},
+        "patient_context": patient_context,
+        "severity": severity,
+        "clinical_decision_support": cdss,
         "candidate_region": unavailable_candidate_region("Questionnaire inputs do not have an image region."),
         "segmentation": {"available": False, "status": "not_applicable", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": "Segmentation is not applicable to questionnaire input."},
-        "research_classifier": {"available": False, "reason": "No image classifier runs for the sweat questionnaire."},
+        "research_classifier": {"available": False, "reason": "No image classifier runs for the sweat questionnaire.", "uncertainty": sweat_classifier["uncertainty"]},
         "model": sweat["engine"],
         "model_metadata": assessment_metadata,
         "explainability": sweat["explainability"],
@@ -1085,17 +1117,18 @@ def create_sweat_assessment():
             "attention_map": "not applicable",
             "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")},
         },
-        "recommendations": build_recommendations("Sweat", None),
+        "recommendations": build_recommendations("Sweat", None, cdss=cdss),
         "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.",
         "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete",
         "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None,
         "persistence": "mysql",
         "care_plan": clinician_first_care_plan(risk_score),
-        "commerce_eligibility": "general_care_only",
+        "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
     }
     if not patient_id:
         response["persistence"] = "not-persisted-guest"
-        response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Guest questionnaire results are not stored. Create an account before reviewing a future assessment to save report metadata."}
+        response["progress_comparison"] = versioned_progress_summary(None, None, "Sweat", response)
+        response["journey"] = response["progress_comparison"].get("journey")
         return jsonify(response)
 
     connection = None
@@ -1104,7 +1137,16 @@ def create_sweat_assessment():
         user = user_for_patient(connection, patient_id)
         if not user:
             return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
-        response["progress_comparison"] = previous_progress_summary(connection, user["id"], "Sweat")
+        history = account_history(connection, user["id"])
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user["id"], "Sweat"))
+            previous_count = int(cursor.fetchone()["count"])
+        response["patient_context"] = patient_context_snapshot(area="Sweat", symptoms=sweat_symptoms, previous_treatment="", history=history, previous_assessment_count=previous_count)
+        response["clinical_decision_support"] = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation=response["input_validation"], classifier=sweat_classifier, context=response["patient_context"], urgent_selected=urgent_concern)
+        response["recommendations"] = build_recommendations("Sweat", None, cdss=response["clinical_decision_support"])
+        response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
+        response["progress_comparison"] = versioned_progress_summary(connection, user["id"], "Sweat", response)
+        response["journey"] = response["progress_comparison"].get("journey")
         timestamp = now()
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1120,7 +1162,7 @@ def create_sweat_assessment():
         if connection:
             connection.rollback()
         response["persistence"] = "not-persisted-mysql-unavailable"
-        response["progress_comparison"] = {"status": "insufficient_evidence", "previous_analysis": None, "summary": "Questionnaire history could not be saved because MySQL is unavailable."}
+        response["progress_comparison"] = {"status": "NOT_SAVED", "summary": "Questionnaire history could not be saved because MySQL is unavailable.", "journey": None}
     finally:
         if connection:
             connection.close()

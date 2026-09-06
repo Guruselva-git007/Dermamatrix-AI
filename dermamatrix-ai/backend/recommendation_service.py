@@ -27,8 +27,8 @@ PRODUCT_CATALOG = [
 ]
 
 
-def build_recommendations(area: str, research_classifier: dict | None) -> dict:
-    """Return data-backed general care; never infer treatment from a research label."""
+def build_recommendations(area: str, research_classifier: dict | None, *, cdss: dict | None = None) -> dict:
+    """Return general care only when the CDSS has not deferred product decisions."""
     items = PRODUCT_CATALOG[:2]
     if area == "Hair":
         items = [PRODUCT_CATALOG[2]]
@@ -42,14 +42,18 @@ def build_recommendations(area: str, research_classifier: dict | None) -> dict:
     if research_classifier and research_classifier.get("available"):
         research_note = "The research classifier output is shown for clinician discussion only; products and routine are not selected from its label."
     products = []
-    for item in items:
-        product = {key: value for key, value in item.items() if key != "affiliate_env"}
-        product["url"] = os.getenv(item["affiliate_env"], "")
-        products.append(product)
+    product_guidance = (cdss or {}).get("product_guidance", "GENERAL_SELF_CARE_ONLY")
+    if product_guidance == "GENERAL_SELF_CARE_ONLY":
+        for item in items:
+            product = {key: value for key, value in item.items() if key != "affiliate_env"}
+            product["url"] = os.getenv(item["affiliate_env"], "")
+            products.append(product)
     return {
         "scope": "General wellbeing and personal-care education",
         "research_note": research_note,
         "medicine_policy": "No medicine, prescription treatment, dose, or diagnosis-specific product is suggested from an uploaded image. A normal-looking or usable image is not interpreted as a treatment decision.",
+        "product_guidance": product_guidance,
+        "product_notice": "Product choices are deferred until professional discussion because this assessment is uncertain or needs professional evaluation." if product_guidance != "GENERAL_SELF_CARE_ONLY" else "Only general personal-care categories are shown; they are not selected from a diagnosis or research label.",
         "affiliate_disclosure": "A partner link is shown only when configured. It never changes analysis or medical suitability.",
         **GENERAL_WELLBEING,
         "products": products,
