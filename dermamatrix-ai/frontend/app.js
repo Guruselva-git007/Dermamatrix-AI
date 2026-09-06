@@ -508,7 +508,7 @@ function renderAnalysisDashboard(data) {
       : `${prediction.label} · research ranking only`
     : 'Not run';
   const visualExplanation = attentionImage && state.imageUrl
-    ? `<section class="technical-visual-explanation"><h4>Visual explanation</h4><p>Highlighted areas indicate regions that contributed to this research-model output. They are not a lesion boundary or diagnosis.</p><div class="explainability-comparison"><figure><img src="${escapeHTML(state.imageUrl)}" alt="Original submitted image" /><figcaption>Original submitted image</figcaption></figure><figure><img src="${escapeHTML(attentionImage)}" alt="Grad-CAM research attention map" /><figcaption>Grad-CAM attention map</figcaption></figure></div></section>`
+    ? `<section class="technical-visual-explanation"><h4>Visual explanation</h4><p>Highlighted areas indicate regions that contributed to this research-model output. They are not a lesion boundary or diagnosis.</p><div class="explainability-comparison"><figure><img data-technical-src="${escapeHTML(state.imageUrl)}" alt="Original submitted image" /><figcaption>Original submitted image</figcaption></figure><figure><img data-technical-src="${escapeHTML(attentionImage)}" alt="Grad-CAM research attention map" /><figcaption>Grad-CAM attention map</figcaption></figure></div></section>`
     : '<p class="technical-unavailable">Visual explanation is not available for this assessment.</p>';
   const featureRows = questionnaireFeatures.map(feature => `${feature.feature}: ${feature.value} (${feature.points} points)`).join(' · ');
   const technicalGroups = [
@@ -566,6 +566,14 @@ function renderAnalysisDashboard(data) {
       ? 'A configured research-model path produced this result.'
       : 'No condition classifier ran for this assessment.';
   $('#analysisPipeline').innerHTML = `<div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(quality.label || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed'))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${classifier.available ? 'Research output available' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div><details class="technical-details"><summary>AI Evidence &amp; Technical Details</summary><div class="technical-details-content">${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
+  const technicalDetails = $('#analysisPipeline .technical-details');
+  technicalDetails?.addEventListener('toggle', () => {
+    if (!technicalDetails.open) return;
+    technicalDetails.querySelectorAll('img[data-technical-src]').forEach((image) => {
+      image.src = image.dataset.technicalSrc;
+      image.removeAttribute('data-technical-src');
+    });
+  });
   const intelligence = data.condition_intelligence || {};
   const pathway = intelligence.care_pathway || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
@@ -645,7 +653,13 @@ async function analyze() {
     if (data.urgent_notice) toast(data.urgent_notice);
     showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
     $('#stepCount').textContent = questionnaire ? 'STEP 2 OF 2' : 'STEP 3 OF 3';
-  } catch (error) { finishProcessing(false); transitionAssessment(AssessmentState.ERROR, 'ASSESSMENT UNAVAILABLE'); toast(error.message || 'Unable to review this image.'); }
+  } catch (error) {
+    finishProcessing(false);
+    transitionAssessment(AssessmentState.ERROR, 'ASSESSMENT UNAVAILABLE');
+    const message = error?.message || '';
+    const internalFailure = /\b(?:ReferenceError|TypeError|SyntaxError)\b|is not defined|Failed to fetch|NetworkError/i.test(message);
+    toast(internalFailure ? 'We couldn’t complete this assessment. Check your information and try again.' : message || 'We couldn’t complete this assessment. Check your information and try again.');
+  }
   button.disabled = false; button.innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
 }
 
