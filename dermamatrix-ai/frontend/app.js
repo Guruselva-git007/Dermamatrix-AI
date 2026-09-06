@@ -935,12 +935,16 @@ function editRoutine(routineId) {
 async function saveRoutine(event) {
   event.preventDefault();
   if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving routines.'); }
+  const submitButton = event.currentTarget.querySelector('[type="submit"]');
+  if (submitButton.disabled) return;
   const payload = { patient_id: state.profile.patient_id, condition_label: $('#conditionLabel').value, routine_name: $('#routineName').value, start_date: $('#routineStartDate').value, notes: $('#routineNotes').value };
   const editingId = $('#editingRoutineId').value;
+  submitButton.disabled = true;
   try {
     await requestJSON(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     resetRoutineForm(); await loadProgress({ force: true }); toast(editingId ? 'Routine updated.' : 'Routine added.');
   } catch (error) { toast(error.message || 'Could not save this routine.'); }
+  finally { submitButton.disabled = false; }
 }
 
 async function deleteRoutine(routineId) {
@@ -954,13 +958,17 @@ async function deleteRoutine(routineId) {
 async function saveCheckin(event) {
   event.preventDefault();
   if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving check-ins.'); }
+  const submitButton = event.currentTarget.querySelector('[type="submit"]');
+  if (submitButton.disabled) return;
   const file = $('#checkinImage').files[0];
   const payload = { patient_id: state.profile.patient_id, routine_id: $('#checkinRoutine').value, checkin_date: $('#checkinDate').value, reported_trend: $('#checkinTrend').value, discomfort: $('#checkinDiscomfort').value, change: $('#checkinChange').value, note: $('#checkinNote').value };
+  submitButton.disabled = true;
   try {
     const data = await requestJSON('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     event.currentTarget.reset(); $('#checkinDate').value = currentDate(); await loadProgress({ force: true });
     toast(file ? `${data.progress_label}. The comparison image was not stored.` : `${data.progress_label}. Check-in saved.`);
   } catch (error) { toast(error.message || 'Could not save this check-in.'); }
+  finally { submitButton.disabled = false; }
 }
 
 function updateImageContext() {

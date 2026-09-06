@@ -78,6 +78,17 @@ class MlContractTests(unittest.TestCase):
         finally:
             response.close()
 
+    def test_oversized_upload_is_rejected_before_analysis(self):
+        from app import MAX_FILE_BYTES, app
+
+        response = app.test_client().post(
+            "/api/assessments",
+            data={"image": (BytesIO(b"x" * (MAX_FILE_BYTES + 1)), "too-large.png")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.get_json()["error"], "The image is larger than 10 MB.")
+
     def test_health_area_router_never_routes_general_images_to_lesion_classifier(self):
         clear_image = {"status": "GOOD", "usable_for_research_model": True}
         skin = route_image_assessment(area="Skin", image_context="face_skin", dermoscopy_attested=False, image_features=clear_image)
