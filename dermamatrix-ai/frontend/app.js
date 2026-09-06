@@ -93,7 +93,11 @@ function selectArea(area) {
   if (areaChanged) resetImage();
   state.area = area;
   transitionAssessment(AssessmentState.CATEGORY_SELECTED, `${area.toUpperCase()} SELECTED`);
-  $$('.area-choice button').forEach(button => button.classList.toggle('selected', button.dataset.area === area));
+  $$('.area-choice button').forEach(button => {
+    const selected = button.dataset.area === area;
+    button.classList.toggle('selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
   const sweat = area === 'Sweat';
   const labels = {
     Skin: { title: 'Start with a skin image', status: 'Skin photos receive image-quality and context support. The scoped lesion research classifier runs only for an attested dermatoscopic single lesion.', upload: 'Upload a clear skin image', copy: 'Choose face skin, body skin, affected-area close-up, or dermatoscopic lesion. Ordinary photos are never forced into the lesion classifier.' },
@@ -103,10 +107,10 @@ function selectArea(area) {
   }[area];
   $('#screenTitle').textContent = labels.title;
   $('#screenTitle').nextElementSibling.textContent = sweat ? 'Complete the questionnaire, then review a transparent summary.' : 'Choose one area, then upload a clear image.';
-  $('#home h1').textContent = sweat ? 'Assess a sweat pattern.' : 'Analyze an image.';
+  $('#home h1').textContent = sweat ? 'Assess a sweat pattern.' : 'Check My Health.';
   $('#home p:last-child').textContent = sweat
     ? 'Use symptoms, context, and daily impact for a transparent questionnaire summary and general guidance.'
-    : 'Upload a clear image for transparent quality feedback, scoped model outputs when eligible, and structured care guidance.';
+    : 'Upload a clear image for quality feedback, scoped model outputs when eligible, and structured care guidance.';
   $('#moduleStatus').textContent = labels.status;
   renderAreaSymptoms(area);
   $('#imageWorkflow').hidden = sweat;
@@ -266,10 +270,10 @@ function installProcessingOverlay() {
 }
 
 function processingStages(area) {
-  if (area === 'Skin') return ['Validating submitted image details', 'Running the server-side image assessment', 'Preparing the structured result'];
-  if (area === 'Hair') return ['Validating submitted image details', 'Running the server-side hair/scalp adapter check', 'Preparing the structured result'];
-  if (area === 'Nails') return ['Validating submitted image details', 'Running the server-side nail adapter check', 'Preparing the structured result'];
-  return ['Validating questionnaire responses', 'Running the transparent questionnaire engine', 'Preparing the structured result'];
+  if (area === 'Skin') return ['Image received', 'Image-quality check', 'Input relevance and preprocessing', 'Configured model and explanation path', 'Reported-priority and structured summary'];
+  if (area === 'Hair') return ['Image received', 'Image-quality check', 'Hair/scalp relevance and preprocessing', 'Configured model-path check', 'Reported-priority and structured summary'];
+  if (area === 'Nails') return ['Image received', 'Image-quality check', 'Nail relevance and preprocessing', 'Configured model-path check', 'Reported-priority and structured summary'];
+  return ['Questionnaire received', 'Response validation', 'Transparent contribution summary', 'Reported-priority calculation', 'Preparing structured guidance'];
 }
 
 function openProcessing(area) {
@@ -297,11 +301,17 @@ function showPage(page, { syncHistory = true } = {}) {
   const target = allowed.includes(page) ? page : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
   $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
-  const titles = { dashboard: 'Dashboard', home: 'Analyze image', progress: 'My reports', products: 'Care guidance', support: 'Doctor directory', settings: 'Settings' };
+  const titles = { dashboard: 'Home', home: 'Check My Health', progress: 'My Journey', products: 'Care Hub', support: 'Find a Doctor', settings: 'Settings' };
   $('#workspaceTitle').textContent = titles[target];
   if (target === 'progress' || target === 'dashboard') loadProgress();
   if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
   window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
+}
+
+function startAreaAssessment(area) {
+  selectArea(area);
+  showPage('home');
+  window.setTimeout(() => $('#screenTitle')?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' }), 120);
 }
 
 function showCarePlan(plan) {
@@ -377,6 +387,31 @@ function setSegmentation(candidateRegion, segmentation) {
     return;
   }
   overlay.hidden = true;
+}
+
+function renderResultOverview(data) {
+  const findings = $('.findings');
+  if (!findings) return;
+  let overview = $('#resultOverview');
+  if (!overview) {
+    overview = document.createElement('section');
+    overview.id = 'resultOverview'; overview.className = 'result-overview';
+    $('#findingText').insertAdjacentElement('afterend', overview);
+  }
+  const classifier = data.research_classifier || data.classification || {};
+  const likelihood = classifier.condition_likelihood || {};
+  const prediction = classifierPredictions(classifier)[0];
+  const uncertainty = classifier.uncertainty || {};
+  const severity = data.severity || {};
+  const risk = data.risk || {};
+  const riskScore = Number.isFinite(risk.score) ? Math.max(0, Math.min(100, risk.score)) : null;
+  const likelihoodText = likelihood.available && Number.isFinite(prediction?.calibratedProbability)
+    ? `${Math.round(prediction.calibratedProbability * 100)}%`
+    : 'Not available';
+  const severityText = severity.level || 'Not reported';
+  const certaintyText = uncertainty.certainty || (classifier.available ? 'Not available' : 'Not assessed');
+  overview.style.setProperty('--result-score', `${riskScore ?? 0}%`);
+  overview.innerHTML = `<div class="result-priority"><div class="priority-gauge" aria-label="Reported concern priority ${riskScore === null ? 'not available' : `${riskScore} out of 100`}"><span>${riskScore === null ? '—' : riskScore}</span><small>/100</small></div><div><small>REPORTED PRIORITY</small><strong>Score</strong><p>Separate from condition likelihood.</p></div></div><div class="result-metrics"><div><small>ESTIMATED LIKELIHOOD</small><strong>${escapeHTML(likelihoodText)}</strong><p>${likelihood.available ? 'Calibrated model output' : 'Not shown without calibration'}</p></div><div><small>SYMPTOM SEVERITY</small><strong>${escapeHTML(severityText)}</strong><p>Based on reported context</p></div><div><small>ASSESSMENT CERTAINTY</small><strong>${escapeHTML(certaintyText)}</strong><p>Model uncertainty where available</p></div></div>`;
 }
 
 function renderAnalysisDashboard(data) {
@@ -481,7 +516,7 @@ async function analyze() {
     $('#resultRisk').textContent = data.risk.level;
     const severityClass = { LOW: 'low', MODERATE: 'moderate', HIGH: 'high', URGENT: 'urgent' }[data.risk.severity] || (score < 40 ? 'low' : 'moderate');
     $('#resultRisk').className = `risk-label ${severityClass}`;
-    $('#findingTitle').textContent = data.screening.title; $('#findingText').textContent = data.screening.summary;
+    $('#findingTitle').textContent = data.screening.title; $('#findingText').textContent = data.screening.summary; renderResultOverview(data);
     $('#qualityScore').textContent = Number.isFinite(data.quality?.score) ? `${data.quality.score}% · ${data.quality.label}` : data.quality?.label || 'Not applicable';
     const confidence = data.model?.confidence;
     $('#modelStatus').textContent = Number.isFinite(confidence) ? `${Math.round(confidence * 100)}% · screening support` : data.model?.status === 'rule_based_prototype' ? 'Questionnaire contribution summary' : 'Model adapter unavailable';
@@ -514,7 +549,7 @@ async function saveProgress() {
   try {
     await loadProgress({ force: true });
     $('#clinicalStatus').textContent = 'Saved to your local account · no image retained';
-    toast('Saved assessment metadata is available in My reports. Uploaded images are not kept.');
+    toast('Saved assessment metadata is available in My Journey. Uploaded images are not kept.');
   } catch (error) {
     toast(error.message || 'Unable to refresh your saved reports.');
   }
@@ -586,6 +621,10 @@ function updateDoctorSupport(risk = {}, doctor = {}) {
   const heading = $('#doctorSupportTitle'); const description = $('#doctorSupportCopy');
   if (heading) heading.textContent = title;
   if (description) description.textContent = copy;
+  const directoryCopy = $('#directorySpecialtyCopy');
+  if (directoryCopy) directoryCopy.textContent = doctor.specialty
+    ? `Recommended discussion specialty: ${specialty}. Search Maps for current contact details, ratings, availability, and booking options; verify the listing and credentials directly.`
+    : 'Search for a dermatologist or another specialist recommended by your latest assessment. Directory information is provided directly by Maps and clinics.';
 }
 
 async function saveProfile(event) {
@@ -644,7 +683,7 @@ function renderDiscoveryCatalog() {
     const matchesCategory = state.productFilter === 'all' || item.category === state.productFilter;
     return matchesCategory && (!query || `${item.name} ${item.copy} ${item.keywords}`.toLowerCase().includes(query));
   });
-  $('#productCatalog').innerHTML = visible.length ? visible.map(item => `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-discuss-product="${item.name}">View discussion points →</button></article>`).join('') : '<div class="catalog-empty">No matching topics. Try “barrier”, “scalp”, or “vitamin”.</div>';
+  $('#productCatalog').innerHTML = visible.length ? visible.map(item => `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-discuss-product="${item.name}">Explore topic →</button></article>`).join('') : '<div class="catalog-empty">No matching topics. Try “barrier”, “scalp”, or “vitamin”.</div>';
   $$('[data-discuss-product]').forEach(button => { button.onclick = () => toast(`${button.dataset.discussProduct}: discuss suitability with an RMP or pharmacist first.`); });
 }
 
@@ -685,8 +724,32 @@ function updateDashboardIdentity() {
 
 function renderDashboard() {
   const analyses = state.analyses || [];
+  const routines = state.routines || [];
+  const checkins = state.checkins || [];
+  const latestAnalysis = analyses[0];
+  const latestCheckin = checkins[0];
+  const latestRisk = latestAnalysis?.summary?.risk;
+  const latestFinding = latestAnalysis?.summary?.condition_intelligence?.finding;
+  const snapshot = $('#dashboardSnapshot');
+  if (snapshot) {
+    const cards = [];
+    if (latestAnalysis) {
+      const result = latestFinding?.name || latestAnalysis.summary?.classification?.top_prediction?.condition || 'Screening summary saved';
+      cards.push(`<article class="snapshot-card"><span>◌</span><div><small>LATEST ASSESSMENT</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div><button class="text-button" data-dashboard-nav="progress">View →</button></article>`);
+      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>REPORTED PRIORITY</small><strong>${latestRisk?.score === undefined ? 'Not available' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(latestRisk.level || 'recorded')}`}</strong><p>Priority is separate from condition likelihood.</p></div></article>`);
+    }
+    if (routines.length) {
+      cards.push(`<article class="snapshot-card"><span>◔</span><div><small>ACTIVE ROUTINES</small><strong>${routines.length} ${routines.length === 1 ? 'routine' : 'routines'} in progress</strong><p>${escapeHTML(routines[0].routine_name)}${routines.length > 1 ? ` + ${routines.length - 1} more` : ''}</p></div><button class="text-button" data-dashboard-nav="progress">Manage →</button></article>`);
+    }
+    if (latestCheckin) {
+      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>LATEST CHECK-IN</small><strong>${escapeHTML(latestCheckin.reported_trend)}</strong><p>Self-reported on ${escapeHTML(latestCheckin.checkin_date)} · not a healing score.</p></div></article>`);
+    }
+    snapshot.innerHTML = cards.length
+      ? cards.slice(0, 4).join('')
+      : '<article class="snapshot-card snapshot-empty"><span>◌</span><div><small>FIRST STEP</small><strong>Your first assessment starts here</strong><p>Choose skin, hair, nails, or sweating to begin a structured screening summary.</p></div><button class="text-button" data-dashboard-nav="home">Check My Health →</button></article>';
+  }
   $('#dashboardActivity').innerHTML = !analyses.length
-    ? '<p class="empty-state">No saved analyses yet. Start with a clear image when you are ready.</p>'
+    ? '<p class="empty-state">No saved activity yet. Your assessments, routines, and follow-ups will appear here after you save them.</p>'
     : analyses.slice(0, 4).map(item => {
       const classification = item.summary?.classification || {};
       const prediction = classification.top_prediction;
@@ -696,6 +759,20 @@ function renderDashboard() {
         : 'No scoped classifier output';
       return `<article class="dashboard-record"><span>◌</span><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.area)} · ${escapeHTML(meta)}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`;
     }).join('');
+  const nextStep = $('#nextStepCard');
+  if (nextStep) {
+    const highPriority = ['HIGH', 'URGENT'].includes(latestRisk?.severity);
+    if (highPriority) {
+      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Professional review is recommended</h2><p>Use the doctor finder to open current local specialist listings. Clinic availability and booking are confirmed outside DermaMatrix.</p><button class="button primary" data-dashboard-nav="support">Find a Doctor <span>→</span></button>';
+    } else if (latestAnalysis && routines.length === 0) {
+      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Turn your result into a routine</h2><p>Add a clinician-recorded routine and log meaningful changes over time. This app does not infer recovery between entries.</p><button class="button primary" data-dashboard-nav="progress">Open My Journey <span>→</span></button>';
+    } else if (latestCheckin) {
+      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Keep your story up to date</h2><p>Your latest self-reported check-in is saved. Add another only when there is a meaningful change.</p><button class="button primary" data-dashboard-nav="progress">View My Journey <span>→</span></button>';
+    } else {
+      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Start a focused assessment</h2><p>Get image-quality feedback and a structured screening summary. Uploaded images are not retained.</p><button class="button primary" data-dashboard-nav="home">Check My Health <span>→</span></button>';
+    }
+  }
+  $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(button.dataset.dashboardNav); });
 }
 
 function resetRoutineForm() {
@@ -746,6 +823,7 @@ function showSavedReport(assessmentId) {
   $('#resultRisk').className = `risk-label ${severityClass}`;
   $('#findingTitle').textContent = data.screening?.title || 'Saved screening summary';
   $('#findingText').textContent = data.screening?.summary || 'This report contains saved screening metadata only.';
+  renderResultOverview(data);
   $('#qualityScore').textContent = data.quality?.score === null || data.quality?.score === undefined ? data.quality?.label || 'Not applicable' : `${data.quality.score}% · ${data.quality.label}`;
   $('#modelStatus').textContent = data.classification?.available ? 'Research model record retained' : questionnaire ? 'Questionnaire contribution summary' : 'No scoped classifier output';
   $('#clinicalStatus').textContent = 'Saved metadata · no image retained';
@@ -895,6 +973,7 @@ function updateImageContext() {
 $$('.area-choice button').forEach(button => { button.onclick = () => selectArea(button.dataset.area); });
 $$('[data-page-nav]').forEach(link => { link.onclick = event => { event.preventDefault(); showPage(link.dataset.pageNav); }; });
 $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(button.dataset.dashboardNav); });
+$$('[data-dashboard-area]').forEach(button => { button.onclick = () => startAreaAssessment(button.dataset.dashboardArea); });
 $('#imageInput').onchange = event => setImage(event.target.files[0]);
 $('#imageContext').onchange = updateImageContext;
 const drop = $('#dropZone');
@@ -949,6 +1028,11 @@ async function initialiseApp() {
   accountSetting.querySelector('h3').textContent = 'Account';
   accountSetting.querySelector('p').textContent = 'End this browser session without deleting your local records.';
   $('#profileModal .profile-actions [data-close-profile]').textContent = 'Cancel';
+  $('#resultTitle').textContent = 'Your assessment';
+  $('[data-result-tab="care"]').textContent = 'Care Hub';
+  $('[data-result-tab="progress"]').textContent = 'Track progress';
+  $('[data-result-tab="support"]').textContent = 'Find a doctor';
+  $('#viewCareButton').textContent = 'View Care Hub';
   const authenticated = await restoreAuthentication();
   if (authenticated) await hydrateProfile();
   await loadProgress();
