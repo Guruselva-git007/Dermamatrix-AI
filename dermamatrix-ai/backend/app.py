@@ -1198,7 +1198,7 @@ def mysql_unavailable(_error):
 @app.after_request
 def prevent_stale_local_assets(response):
     """Keep the local demo browser from retaining an old client after a live update."""
-    if request.path in {"/", "/index.html", "/app.js", "/reference.css", "/flow.css"}:
+    if request.path in {"/", "/index.html"} or request.path.endswith((".css", ".js")):
         response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 

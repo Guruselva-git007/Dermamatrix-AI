@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 from io import BytesIO
+from unittest.mock import Mock
 
 from PIL import Image, ImageDraw
 
@@ -51,6 +52,32 @@ class RiskAndPirsTests(unittest.TestCase):
 
 
 class MlContractTests(unittest.TestCase):
+    def test_account_data_requires_the_matching_signed_session(self):
+        from app import app, user_for_patient
+
+        connection = Mock()
+        with app.test_request_context("/"):
+            self.assertIsNone(user_for_patient(connection, "DMX-OTHER"))
+        connection.cursor.assert_not_called()
+
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["user_id"] = 7
+            session["patient_id"] = "DMX-OWNER"
+            self.assertIsNone(user_for_patient(connection, "DMX-OTHER"))
+        connection.cursor.assert_not_called()
+
+    def test_local_css_is_not_cached_after_a_live_update(self):
+        from app import app
+
+        response = app.test_client().get("/experience.css")
+        try:
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
+        finally:
+            response.close()
+
     def test_health_area_router_never_routes_general_images_to_lesion_classifier(self):
         clear_image = {"status": "GOOD", "usable_for_research_model": True}
         skin = route_image_assessment(area="Skin", image_context="face_skin", dermoscopy_attested=False, image_features=clear_image)
