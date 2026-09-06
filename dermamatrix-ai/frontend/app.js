@@ -100,17 +100,17 @@ function selectArea(area) {
   });
   const sweat = area === 'Sweat';
   const labels = {
-    Skin: { title: 'Start with a skin image', status: 'Skin photos receive image-quality and context support. The scoped lesion research classifier runs only for an attested dermatoscopic single lesion.', upload: 'Upload a clear skin image', copy: 'Choose face skin, body skin, affected-area close-up, or dermatoscopic lesion. Ordinary photos are never forced into the lesion classifier.' },
-    Hair: { title: 'Start with a scalp or hair image', status: 'Hair/scalp model adapter: no trained weights are configured in this deployment.', upload: 'Upload a clear scalp or hair image', copy: 'Image-quality feedback and shared screening support are available; no hair disorder label is generated.' },
-    Nails: { title: 'Start with a nail image', status: 'Nail model adapter: no trained weights are configured in this deployment.', upload: 'Upload a clear nail image', copy: 'Image-quality feedback and shared screening support are available; no nail disorder label is generated.' },
-    Sweat: { title: 'Assess a sweat pattern', status: 'Sweat tabular adapter: transparent questionnaire rules are active; no validated XGBoost model is configured.', upload: '', copy: '' },
+    Skin: { title: 'Check your skin', status: 'AI-assisted image screening. The research lesion model is limited to attested dermatoscopic single lesions.', upload: 'Add a clear skin image', copy: 'Face, body, affected-area, or dermatoscopic lesion photo.' },
+    Hair: { title: 'Check hair & scalp', status: 'Image-quality screening is available. A hair/scalp classifier is not configured in this deployment.', upload: 'Add a clear hair or scalp image', copy: 'Choose the image type that best matches your concern.' },
+    Nails: { title: 'Check your nails', status: 'Image-quality screening is available. A nail classifier is not configured in this deployment.', upload: 'Add a clear nail image', copy: 'Choose the image type that best matches your concern.' },
+    Sweat: { title: 'Assess a sweat pattern', status: 'Short screening questionnaire · not a diagnosis.', upload: '', copy: '' },
   }[area];
   $('#screenTitle').textContent = labels.title;
-  $('#screenTitle').nextElementSibling.textContent = sweat ? 'Complete the questionnaire, then review a transparent summary.' : 'Choose one area, then upload a clear image.';
+  $('#screenTitle').nextElementSibling.textContent = sweat ? 'Complete a short health assessment.' : 'Add a clear image, then review your summary.';
   $('#home h1').textContent = sweat ? 'Assess a sweat pattern.' : 'Check My Health.';
   $('#home p:last-child').textContent = sweat
-    ? 'Use symptoms, context, and daily impact for a transparent questionnaire summary and general guidance.'
-    : 'Upload a clear image for quality feedback, scoped model outputs when eligible, and structured care guidance.';
+    ? 'Complete a short questionnaire for a structured screening summary.'
+    : 'Add a clear image for screening support and next-step guidance.';
   $('#moduleStatus').textContent = labels.status;
   renderAreaSymptoms(area);
   $('#imageWorkflow').hidden = sweat;
@@ -119,11 +119,11 @@ function selectArea(area) {
   $('#uploadStepCopy').textContent = labels.copy;
   renderImageContexts(area);
   $('#consentCopy').textContent = sweat
-    ? 'I consent to use this questionnaire for screening support and understand it does not provide a diagnosis.'
-    : 'I have consent to upload this image and understand this tool provides screening support, not a diagnosis.';
+    ? 'I consent to this screening questionnaire and understand it is not a diagnosis.'
+    : 'I have consent to upload this image for AI-assisted screening, not diagnosis.';
   $('#reviewStepCopy').textContent = sweat
-    ? 'Review a transparent questionnaire summary and general guidance.'
-    : 'Step 3: Review your image with transparent AI scope and guidance.';
+    ? 'Review your screening summary and next steps.'
+    : 'Review your image summary and next steps.';
   $('#analyzeButton').innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
   $('#analyzeButton').disabled = sweat ? false : !state.file;
   if (sweat) {
@@ -461,7 +461,19 @@ function renderAnalysisDashboard(data) {
   const followUpBlock = followUp ? `<p><strong>Follow-up:</strong></p><ul>${followUp}</ul>` : '';
   const lineage = data.model_metadata || classifier;
   const lineageBlock = lineage?.model_version ? `<p><strong>Model lineage:</strong> ${escapeHTML(lineage.model_id || classifier.model_id || 'model')} · ${escapeHTML(lineage.model_version || classifier.model_version)} · calibration ${escapeHTML(classifier.calibration?.calibration_version || 'not configured')}</p>` : '';
-  $('#analysisPipeline').innerHTML = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(data.quality.label)}${data.quality.status ? ` (${escapeHTML(data.quality.status)})` : ''}${data.quality.issues?.length ? ` — ${escapeHTML(data.quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${findingBlock}${severityBlock}${cdssBlock}${contextBlock}${contributorBlock}${pathwayBlock}${followUpBlock}${lineageBlock}${pirs}${xaiBlock}`;
+  const quality = data.quality || {};
+  const reviewScope = data.input_type === 'questionnaire'
+    ? 'Your questionnaire responses were reviewed.'
+    : classifier.available
+      ? 'A scoped research image model was available for this image path.'
+      : 'This image path received quality and context screening only.';
+  const evidenceFocus = questionnaireExplanation
+    ? `${data.explainability?.features?.length || 0} response factors were considered.`
+    : classifier.available
+      ? 'Visual attention is shown only when the configured model produced it.'
+      : 'No image-classification evidence is available for this image path.';
+  const technicalDetails = `${validationBlock}<p><strong>Quality:</strong> ${escapeHTML(quality.label || 'Not available')}${quality.status ? ` (${escapeHTML(quality.status)})` : ''}${quality.issues?.length ? ` — ${escapeHTML(quality.issues.join(' '))}` : ''}</p><p><strong>Region:</strong> ${escapeHTML(region)}</p><p><strong>Classification:</strong> ${predictions}</p>${confidence ? `<p><strong>Likelihood & uncertainty:</strong> ${confidence}</p>` : ''}${findingBlock}${severityBlock}${cdssBlock}${contextBlock}${contributorBlock}${pathwayBlock}${followUpBlock}${lineageBlock}${pirs}${xaiBlock}`;
+  $('#analysisPipeline').innerHTML = `<div class="evidence-summary"><article><small>IMAGE QUALITY</small><strong>${escapeHTML(quality.label || 'Not available')}</strong><p>${quality.issues?.length ? escapeHTML(quality.issues.join(' ')) : 'Used to determine whether the input could be reviewed.'}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${data.input_type === 'questionnaire' ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(reviewScope)}</p></article><article><small>WHY THIS RESULT</small><strong>${classifier.available ? 'Model evidence available' : 'Screening scope recorded'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div><details class="technical-details"><summary>Technical details</summary><div>${technicalDetails}</div></details>`;
   const recommendation = data.recommendations || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
   const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
@@ -751,10 +763,10 @@ function renderDashboard() {
     }
     snapshot.innerHTML = cards.length
       ? cards.slice(0, 4).join('')
-      : '<article class="snapshot-card snapshot-empty"><span>◌</span><div><small>FIRST STEP</small><strong>Your first assessment starts here</strong><p>Choose skin, hair, nails, or sweating to begin a structured screening summary.</p></div><button class="text-button" data-dashboard-nav="home">Check My Health →</button></article>';
+      : '<article class="snapshot-card snapshot-empty"><span>◌</span><div><small>FIRST STEP</small><strong>Your journey starts here</strong><p>Complete an assessment to begin.</p></div><button class="text-button" data-dashboard-nav="home">Check My Health →</button></article>';
   }
   $('#dashboardActivity').innerHTML = !analyses.length
-    ? '<p class="empty-state">No saved activity yet. Your assessments, routines, and follow-ups will appear here after you save them.</p>'
+    ? '<p class="empty-state">No assessments yet. Complete your first assessment to begin your timeline.</p>'
     : analyses.slice(0, 4).map(item => {
       const classification = item.summary?.classification || {};
       const prediction = classification.top_prediction;
@@ -768,13 +780,17 @@ function renderDashboard() {
   if (nextStep) {
     const highPriority = ['HIGH', 'URGENT'].includes(latestRisk?.severity);
     if (highPriority) {
-      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Professional review is recommended</h2><p>Use the doctor finder to open current local specialist listings. Clinic availability and booking are confirmed outside DermaMatrix.</p><button class="button primary" data-dashboard-nav="support">Find a Doctor <span>→</span></button>';
+      nextStep.hidden = false;
+      nextStep.innerHTML = '<p class="eyebrow">NEXT STEP</p><h2>Professional review is recommended</h2><p>Find current specialist listings near you.</p><button class="button primary" data-dashboard-nav="support">Find a Doctor <span>→</span></button>';
     } else if (latestAnalysis && routines.length === 0) {
-      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Turn your result into a routine</h2><p>Add a clinician-recorded routine and log meaningful changes over time. This app does not infer recovery between entries.</p><button class="button primary" data-dashboard-nav="progress">Open My Journey <span>→</span></button>';
+      nextStep.hidden = false;
+      nextStep.innerHTML = '<p class="eyebrow">NEXT STEP</p><h2>Start a routine</h2><p>Track a clinician-recorded care plan over time.</p><button class="button primary" data-dashboard-nav="progress">Open My Journey <span>→</span></button>';
     } else if (latestCheckin) {
-      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Keep your story up to date</h2><p>Your latest self-reported check-in is saved. Add another only when there is a meaningful change.</p><button class="button primary" data-dashboard-nav="progress">View My Journey <span>→</span></button>';
+      nextStep.hidden = false;
+      nextStep.innerHTML = '<p class="eyebrow">NEXT STEP</p><h2>Review your journey</h2><p>Your latest self-reported check-in is saved.</p><button class="button primary" data-dashboard-nav="progress">View My Journey <span>→</span></button>';
     } else {
-      nextStep.innerHTML = '<p class="eyebrow">YOUR NEXT STEP</p><h2>Start a focused assessment</h2><p>Get image-quality feedback and a structured screening summary. Uploaded images are not retained.</p><button class="button primary" data-dashboard-nav="home">Check My Health <span>→</span></button>';
+      nextStep.hidden = true;
+      nextStep.innerHTML = '';
     }
   }
   $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(button.dataset.dashboardNav); });
@@ -881,6 +897,18 @@ async function downloadHistory() {
 function renderProgress() {
   const hasProfile = Boolean(state.profile?.patient_id);
   const routines = state.routines || []; const checkins = state.checkins || []; const analyses = state.analyses || [];
+  let emptyJourney = $('#journeyEmptyState');
+  if (!emptyJourney) {
+    emptyJourney = document.createElement('section');
+    emptyJourney.id = 'journeyEmptyState'; emptyJourney.className = 'journey-empty-state';
+    emptyJourney.innerHTML = '<span aria-hidden="true">◔</span><div><p class="eyebrow">YOUR JOURNEY</p><h3>Your journey starts here.</h3><p>Complete your first assessment to begin tracking your health story.</p><button class="button primary" data-dashboard-nav="home">Check My Health <span>→</span></button></div>';
+    $('#progressSummary').insertAdjacentElement('beforebegin', emptyJourney);
+  }
+  const workspaceSections = ['#progressSummary', '#reportRegister', '#monitoringNote', '.progress-layout', '.checkin-card', '.history-card'];
+  workspaceSections.forEach(selector => { const element = $(selector); if (element) element.hidden = !hasProfile; });
+  const progressActions = $('.progress-actions');
+  if (progressActions) progressActions.hidden = !hasProfile;
+  emptyJourney.hidden = hasProfile;
   const latest = checkins[0];
   $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.length}</strong><small>active routines</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(latest.reported_trend) : '—'}</strong><small>latest self-reported trend</small></article><article><span>◌</span><strong>${latest ? `${latest.priority_score}/100` : '—'}</strong><small>reported-concern priority</small></article>`;
   $('#openProfileFromProgress').textContent = hasProfile ? 'Profile connected' : 'Set up profile';
@@ -899,6 +927,8 @@ function renderProgress() {
   $$('[data-edit-routine]').forEach(button => { button.onclick = () => editRoutine(button.dataset.editRoutine); });
   $$('[data-delete-routine]').forEach(button => { button.onclick = () => deleteRoutine(button.dataset.deleteRoutine); });
   renderReportRegister();
+  const reportRegister = $('#reportRegister');
+  if (reportRegister) reportRegister.hidden = !hasProfile;
   renderDashboard();
 }
 
@@ -1000,7 +1030,7 @@ $('#useResultLocationButton').onclick = () => useNearbyLocation({ target: 'resul
 $('#useDirectoryLocationButton').onclick = () => useNearbyLocation({ target: 'directory' });
 $('#resultAppointmentSearchButton').onclick = () => openAppointmentOptions($('#doctorLocation').value === 'Current device location' ? state.nearbySearchLocation : $('#doctorLocation').value);
 $('#appointmentSearchButton').onclick = () => openAppointmentOptions($('#directoryLocation').value === 'Current device location' ? state.nearbySearchLocation : $('#directoryLocation').value);
-$('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#profileForm').onsubmit = saveProfile;
+$('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#navProfileButton').onclick = openProfile; $('#navLogoutButton').onclick = clearLocalProfile; $('#profileForm').onsubmit = saveProfile;
 $$('[data-auth-tab]').forEach(button => { button.onclick = () => setAuthTab(button.dataset.authTab); });
 $('#registerForm').onsubmit = registerAccount; $('#loginForm').onsubmit = loginAccount; $('#continueGuestButton').onclick = continueAsGuest;
 $('#forgotPasswordButton').onclick = () => setAuthMessage('Password reset needs an email delivery service, which is not configured for this local college-project server. Create a new test account or ask the local project administrator for help.');
@@ -1042,10 +1072,12 @@ async function initialiseApp() {
   accountSetting.querySelector('p').textContent = 'End this browser session without deleting your local records.';
   $('#profileModal .profile-actions [data-close-profile]').textContent = 'Cancel';
   $('#resultTitle').textContent = 'Your assessment';
-  $('[data-result-tab="care"]').textContent = 'Care Hub';
+  $('[data-result-tab="summary"]').textContent = 'Overview';
+  $('[data-result-tab="evidence"]').textContent = 'Why this result?';
+  $('[data-result-tab="care"]').textContent = 'Care plan';
   $('[data-result-tab="progress"]').textContent = 'Track progress';
   $('[data-result-tab="support"]').textContent = 'Find a doctor';
-  $('#viewCareButton').textContent = 'View Care Hub';
+  $('#viewCareButton').textContent = 'View care guidance';
   const authenticated = await restoreAuthentication();
   if (authenticated) await hydrateProfile();
   await loadProgress();
