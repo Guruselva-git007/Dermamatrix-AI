@@ -70,6 +70,10 @@ For every result—and with clearer wording for `HIGH` or `URGENT` reported-conc
 
 No prescription medicine, dosage, diagnosis-specific treatment, or product recommendation is generated from an uploaded image. The care library contains only general personal-care education with an explicit clinician/pharmacist guardrail.
 
+## Product discovery and external shopping
+
+The Care Discovery page and eligible general-care result cards use a backend-owned catalogue of non-medicinal care categories. It never uses an assessment label to select a product. Each external handoff follows a transparent order: an explicitly configured partner URL, an explicitly configured direct product page, or a neutral exact search link. Partner status is labelled only when a partner URL is genuinely configured; price, stock, ratings, reviews, and product suitability are never claimed by DermaMatrix. High-priority or uncertain assessments defer product discovery. Configure optional local URLs only in the ignored `backend/.env` using the documented variables in `backend/.env.example`.
+
 ## Verification
 
 Run the focused service tests with:

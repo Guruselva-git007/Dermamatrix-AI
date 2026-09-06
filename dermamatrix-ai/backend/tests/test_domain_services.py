@@ -6,7 +6,7 @@ import os
 import sys
 import unittest
 from io import BytesIO
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from PIL import Image, ImageDraw
 
@@ -20,6 +20,7 @@ from assessment_contract import ASSESSMENT_RESULT_VERSION, build_assessment_resu
 from assessment_router import route_image_assessment
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
+from commerce_service import materialize_product, resolve_product_destination
 from longitudinal_service import build_progress_comparison
 from dataset_registry import DATASET_REGISTRY
 from ml_evaluation import multiclass_metrics, validate_grouped_splits, validate_patient_level_splits
@@ -27,6 +28,7 @@ from model_metadata import model_metadata
 from pirs_service import calculate_pirs
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
+from recommendation_service import build_recommendations, catalog_for_area
 from sweat_service import sweat_questionnaire_result
 
 
@@ -390,6 +392,60 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(summary["model_pipeline"]["model_lineage"]["pipeline_version"], "pipeline-v1")
         self.assertEqual(summary["condition_intelligence"]["knowledge_version"], "knowledge-v1")
         self.assertEqual(summary["assessment_result"]["contract_version"], ASSESSMENT_RESULT_VERSION)
+
+
+class CommerceBoundaryTests(unittest.TestCase):
+    def test_catalog_returns_general_categories_with_neutral_external_discovery(self):
+        products = catalog_for_area("Skin", risk_score=0)
+        self.assertEqual(len(products), 2)
+        primary = products[0]["commerce"]["primary"]
+        self.assertEqual(primary["destination_type"], "GOOGLE_SHOPPING_SEARCH")
+        self.assertFalse(primary["is_affiliate"])
+        self.assertIn("tbm=shop", primary["url"])
+        self.assertEqual(products[0]["url"], primary["url"])
+
+    def test_affiliate_url_is_used_only_when_explicitly_configured(self):
+        product = materialize_product({
+            "name": "Test care category", "search_terms": "test personal care",
+            "affiliate_env": "TEST_COMMERCE_AFFILIATE", "product_url_env": "TEST_COMMERCE_DIRECT",
+        })
+        self.assertFalse(product["commerce"]["primary"]["is_affiliate"])
+        with patch.dict(os.environ, {"TEST_COMMERCE_AFFILIATE": "https://partner.example/product"}, clear=False):
+            product = materialize_product({
+                "name": "Test care category", "search_terms": "test personal care",
+                "affiliate_env": "TEST_COMMERCE_AFFILIATE", "product_url_env": "TEST_COMMERCE_DIRECT",
+            })
+        self.assertTrue(product["commerce"]["primary"]["is_affiliate"])
+        self.assertEqual(product["commerce"]["primary"]["destination_type"], "AFFILIATE_URL")
+        self.assertTrue(product["commerce"]["disclosure_required"])
+
+    def test_invalid_external_urls_fall_back_to_safe_search(self):
+        destination = resolve_product_destination({
+            "name": "Test care category", "search_terms": "test personal care", "affiliate_url": "javascript:alert(1)", "product_url": "not-a-url",
+        })
+        self.assertEqual(destination["primary"]["destination_type"], "GOOGLE_SHOPPING_SEARCH")
+        self.assertFalse(destination["primary"]["is_affiliate"])
+        self.assertEqual({item["merchant"] for item in destination["alternatives"]}, {"Amazon India", "Flipkart"})
+
+    def test_priority_gate_defers_commerce_and_recommendations_remain_non_medicinal(self):
+        self.assertEqual(catalog_for_area("Hair", risk_score=40), [])
+        recommendation = build_recommendations("Skin", None, cdss={"product_guidance": "GENERAL_SELF_CARE_ONLY"})
+        self.assertFalse(recommendation["medication_information"]["available"])
+        self.assertEqual(recommendation["medication_information"]["status"], "NO_MEDICATION_RECOMMENDATION")
+        self.assertTrue(all(product["category"] == "Skin care" for product in recommendation["products"]))
+
+    def test_products_api_exposes_safe_commerce_contract(self):
+        from app import app
+
+        response = app.test_client().get("/api/products?area=Nails&risk_score=0")
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["eligible"])
+        self.assertFalse(payload["affiliate_links_present"])
+        self.assertIsNone(payload["affiliate_disclosure"])
+        self.assertEqual(payload["items"][0]["domain"], "Nails")
+        self.assertIn("commerce", payload["items"][0])
+        self.assertIn("No prescription medicine", payload["policy"])
 
 
 class ReportTests(unittest.TestCase):

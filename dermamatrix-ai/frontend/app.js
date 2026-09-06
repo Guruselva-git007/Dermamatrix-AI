@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -305,9 +305,10 @@ function showPage(page, { syncHistory = true } = {}) {
   const target = allowed.includes(page) ? page : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
   $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
-  const titles = { dashboard: 'Home', home: 'Check My Health', progress: 'My Journey', products: 'Care Hub', support: 'Find a Doctor', settings: 'Settings' };
+  const titles = { dashboard: 'Home', home: 'Check My Health', progress: 'My Journey', products: 'Care Discovery', support: 'Find a Doctor', settings: 'Settings' };
   $('#workspaceTitle').textContent = titles[target];
   if (target === 'progress' || target === 'dashboard') loadProgress();
+  if (target === 'products') loadCommerceCatalog();
   if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
   window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
@@ -598,7 +599,12 @@ function renderAnalysisDashboard(data) {
   const intelligence = data.condition_intelligence || {};
   const pathway = intelligence.care_pathway || {};
   const section = (title, values) => `<div><strong>${title}</strong><ul>${(values || []).map(value => `<li>${escapeHTML(value)}</li>`).join('')}</ul></div>`;
-  const products = (recommendation.products || []).map(product => `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${product.url ? ` <a href="${escapeHTML(product.url)}" target="_blank" rel="noopener sponsored">View partner ↗</a>` : ''}</li>`).join('');
+  const products = (recommendation.products || []).map(product => {
+    const primary = product.commerce?.primary || {};
+    const url = supportedExternalUrl(primary.url || product.url);
+    const link = url ? ` <a href="${escapeHTML(url)}" target="_blank" rel="noopener${primary.is_affiliate ? ' sponsored' : ''}">${primary.is_affiliate ? 'Visit partner' : 'Find product'} ↗</a>` : '';
+    return `<li><strong>${escapeHTML(product.name)}</strong> — ${escapeHTML(product.purpose)} <em>${escapeHTML(product.precautions)}</em>${link}</li>`;
+  }).join('');
   const followUpGuidance = intelligence.follow_up || {};
   const doctor = intelligence.doctor || {};
   const knowledgeReferences = (intelligence.knowledge?.references || []).map(reference => escapeHTML(reference.title)).join(' · ');
@@ -648,12 +654,10 @@ function renderPatientResult(data) {
     ...(presentation.questionnaire ? questionnaireObservations : []),
   ].filter(Boolean);
   const products = (recommendation.products || []).map(product => {
-    const url = supportedExternalUrl(product.url);
-    const action = url
-      ? `<a class="patient-text-link" href="${escapeHTML(url)}" target="_blank" rel="noopener sponsored">View partner →</a>`
-      : '<button class="patient-text-link" type="button" data-result-action="products">Explore Care Hub →</button>';
-    return `<article class="patient-product"><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || 'General personal-care support.')}</p><small>${escapeHTML(product.precautions || '')}</small>${action}</article>`;
+    return `<article class="patient-product"><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || 'General personal-care support.')}</p><small>${escapeHTML(product.precautions || '')}</small>${commerceDestinationMarkup(product, 'patient-product-destination')}</article>`;
   }).join('');
+  const hasAffiliateDestination = (recommendation.products || []).some(product => Boolean(product.commerce?.primary?.is_affiliate));
+  const medicationInformation = result.guidance?.medication_information || recommendation.medication_information || {};
   const routineMorning = recommendation.routine?.morning || [];
   const routineEvening = recommendation.routine?.evening || [];
   const routineWeekly = intelligence.follow_up?.guidance ? [intelligence.follow_up.guidance] : [];
@@ -672,6 +676,15 @@ function renderPatientResult(data) {
   technicalEvidence?.remove();
   root.className = 'patient-result-content';
   root.innerHTML = `<section class="patient-result-hero"><div><p class="eyebrow">${escapeHTML(presentation.primaryLabel.toUpperCase())}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></div><div class="patient-quick-summary"><div><small>MODEL CONFIDENCE</small><strong>${escapeHTML(presentation.confidence.value)}</strong><p>${escapeHTML(presentation.confidence.note)}</p></div><div><small>SYMPTOM SEVERITY</small><strong>${escapeHTML(readableStatus(presentation.severity.value))}</strong><p>${escapeHTML(presentation.severity.note)}</p></div><div><small>RISK ASSESSMENT</small><strong>${escapeHTML(presentation.diseaseRisk.value)}</strong><p>${escapeHTML(presentation.diseaseRisk.note)}</p></div></div></section>${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><p class="eyebrow">IMPORTANT</p><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}<section class="patient-result-main"><div class="patient-visual-card"><p class="eyebrow">IMAGE / AI VISUALIZATION</p>${visualMarkup}</div><section class="patient-meaning"><p class="eyebrow">WHAT THIS MEANS</p><h3>${conditionFinding.name ? escapeHTML(conditionFinding.name) : 'A condition was not classified'}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></section></section><section class="patient-why"><div><p class="eyebrow">WHY THIS RESULT?</p><h3>Information considered</h3>${patientList(observations, 'The available assessment did not produce additional observations.')}</div><div class="patient-what-next"><p class="eyebrow">WHAT TO DO NEXT</p><strong>${escapeHTML(presentation.nextAction)}</strong><p>${presentation.priority.score === null ? 'Care priority is unavailable for this assessment.' : `Care priority: ${escapeHTML(presentation.priority.level)} · ${presentation.priority.score}/100. This is based on reported concern details, not disease risk.`}</p></div></section><section class="patient-guidance-grid"><article><p class="eyebrow">CARE PLAN</p><h3>${escapeHTML(carePlan.heading || 'General care guidance')}</h3><p>${escapeHTML(carePlan.next_step || 'No personalized care plan is currently available.')}</p><small>${escapeHTML(carePlan.routine_guardrail || recommendation.medicine_policy || '')}</small></article><article><p class="eyebrow">YOUR ROUTINE</p><div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routineMorning, 'No morning routine is available.')}</div><div><strong>Evening</strong>${patientList(routineEvening, 'No evening routine is available.')}</div></div>${routineWeekly.length ? `<div class="patient-weekly"><strong>Follow-up</strong>${patientList(routineWeekly, '')}</div>` : ''}</article><article><p class="eyebrow">LIFESTYLE &amp; DIET</p><div class="patient-routine-columns"><div><strong>Supportive habits</strong>${patientList(recommendation.diet, 'Maintain a balanced diet. No specific dietary intervention was identified from this assessment.')}</div><div><strong>Supplements</strong>${patientList(recommendation.supplements, 'No supplement guidance is available.')}</div></div></article><article><p class="eyebrow">RECOMMENDED PRODUCTS</p><div class="patient-products">${products || '<p class="patient-empty-copy">Product recommendations will appear when an eligible general-care category is available.</p>'}</div>${products ? `<p class="patient-affiliate-note">${escapeHTML(recommendation.affiliate_disclosure || 'Partner links are optional and never influence medical suitability or assessment results.')}</p>` : ''}</article></section><section class="patient-support-grid"><article><p class="eyebrow">${doctor.recommended ? 'PROFESSIONAL SUPPORT' : 'NEED PROFESSIONAL SUPPORT?'}</p><h3>${doctor.recommended ? 'Professional evaluation is recommended' : `Find a ${escapeHTML(String(doctor.specialty || 'dermatologist').toLowerCase())}`}</h3><p>${escapeHTML(doctor.recommended ? 'Your assessment suggests a clinician discussion would be useful.' : 'Search current nearby listings, then confirm credentials and availability directly.')}</p><button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></article><article><p class="eyebrow">TRACK PROGRESS</p><h3>${state.profile?.patient_id ? 'Continue your care journey' : 'Save your progress'}</h3><p>${escapeHTML(progress.summary || (state.profile?.patient_id ? 'Record a future check-in when there is a meaningful change.' : 'Create an account to save assessment metadata, routines, and future check-ins.'))}</p><button type="button" class="button primary" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Create account to track'} <span>→</span></button></article></section><section class="patient-technical" id="patientTechnicalSlot"></section>`;
+  if (!hasAffiliateDestination) root.querySelector('.patient-affiliate-note')?.remove();
+  const carePlanCard = root.querySelector('.patient-guidance-grid > article:first-child');
+  if (carePlanCard && medicationInformation.notice) {
+    carePlanCard.insertAdjacentHTML('beforeend', `<div class="patient-medication-note"><strong>Medication information</strong><p>${escapeHTML(medicationInformation.notice)}</p><small>${escapeHTML(medicationInformation.consultation_notice || '')}</small></div>`);
+  }
+  const lifestyleCard = root.querySelector('.patient-guidance-grid > article:nth-child(3)');
+  if (lifestyleCard) {
+    lifestyleCard.innerHTML = `<p class="eyebrow">LIFESTYLE &amp; DIET</p><div class="patient-routine-columns"><div><strong>Diet &amp; wellbeing</strong>${patientList(recommendation.diet, 'Maintain a balanced diet. No specific dietary intervention was identified from this assessment.')}</div><div><strong>Lifestyle</strong>${patientList(recommendation.lifestyle, 'Keep routines simple and record meaningful changes for a clinician discussion.')}</div></div>${recommendation.supplements?.length ? `<div class="patient-weekly"><strong>Supplements</strong>${patientList(recommendation.supplements, '')}</div>` : ''}`;
+  }
   if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
   root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
     details.addEventListener('toggle', () => {
@@ -909,14 +922,68 @@ const discoveryItems = [
   { category: 'vitamins', icon: 'Bi', type: 'SUPPLEMENT INFO', name: 'Biotin information', copy: 'Hair and nail changes have many causes; ask a pharmacist about medicine interactions.', keywords: 'biotin hair nails supplement interaction pharmacist' }
 ];
 
+function commerceDestinationMarkup(product, className = 'catalog-destination') {
+  const commerce = product.commerce || {};
+  const primary = commerce.primary || {};
+  const destination = supportedExternalUrl(primary.url || product.url);
+  const action = destination
+    ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener${primary.is_affiliate ? ' sponsored' : ''}">${primary.is_affiliate ? 'Visit partner' : 'Find product'} ↗</a>`
+    : '<button class="patient-text-link" type="button" data-result-action="products">Explore care discovery →</button>';
+  const alternatives = (commerce.alternatives || []).map(option => {
+    const url = supportedExternalUrl(option.url);
+    return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener">${escapeHTML(option.merchant || 'External search')} ↗</a>` : '';
+  }).filter(Boolean).join('');
+  const partnerNote = primary.is_affiliate ? '<small class="commerce-affiliate-label">Partner link · may earn commission</small>' : '';
+  return `<div class="${className}">${action}${partnerNote}${alternatives ? `<details><summary>More places to search</summary><div class="commerce-alternatives">${alternatives}</div></details>` : ''}</div>`;
+}
+
+function commerceCard(product) {
+  const category = String(product.domain || 'care').toLowerCase();
+  const icon = category === 'hair' ? '〰' : category === 'nails' ? '▣' : '◌';
+  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><span class="catalog-icon">${icon}</span><span class="catalog-type">GENERAL ${escapeHTML(product.category || 'CARE').toUpperCase()}</span><h3>${escapeHTML(product.name || 'Personal-care category')}</h3><p>${escapeHTML(product.purpose || 'General personal-care discovery.')}</p><small class="catalog-precaution">${escapeHTML(product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product)}</article>`;
+}
+
+function topicCard(item) {
+  return `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-discuss-product="${item.name}">Explore topic →</button></article>`;
+}
+
 function renderDiscoveryCatalog() {
   const query = $('#productSearch').value.trim().toLowerCase();
-  const visible = discoveryItems.filter(item => {
+  const commerceItems = state.productCatalog.map(product => ({
+    kind: 'commerce', category: String(product.domain || '').toLowerCase(), product,
+    searchText: `${product.name || ''} ${product.purpose || ''} ${product.key_property || ''} ${(product.commerce || {}).query || ''}`.toLowerCase(),
+  }));
+  const topicItems = discoveryItems.map(item => ({ kind: 'topic', category: item.category, item, searchText: `${item.name} ${item.copy} ${item.keywords}`.toLowerCase() }));
+  const visible = [...commerceItems, ...topicItems].filter(item => {
     const matchesCategory = state.productFilter === 'all' || item.category === state.productFilter;
-    return matchesCategory && (!query || `${item.name} ${item.copy} ${item.keywords}`.toLowerCase().includes(query));
+    return matchesCategory && (!query || item.searchText.includes(query));
   });
-  $('#productCatalog').innerHTML = visible.length ? visible.map(item => `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-discuss-product="${item.name}">Explore topic →</button></article>`).join('') : '<div class="catalog-empty">No matching topics. Try “barrier”, “scalp”, or “vitamin”.</div>';
+  $('#productCatalog').innerHTML = visible.length
+    ? visible.map(item => item.kind === 'commerce' ? commerceCard(item.product) : topicCard(item.item)).join('')
+    : '<div class="catalog-empty">No matching information. Try “barrier”, “scalp”, “nail”, or “vitamin”.</div>';
   $$('[data-discuss-product]').forEach(button => { button.onclick = () => toast(`${button.dataset.discussProduct}: discuss suitability with an RMP or pharmacist first.`); });
+}
+
+async function loadCommerceCatalog({ force = false } = {}) {
+  if (state.productCatalogLoadPromise && !force) return state.productCatalogLoadPromise;
+  if (state.productCatalogLoaded && !force) return state.productCatalog;
+  state.productCatalogLoadPromise = requestJSON('/api/products?area=All&risk_score=0', {}, 10000)
+    .then(payload => {
+      state.productCatalog = Array.isArray(payload.items) ? payload.items : [];
+      state.productCatalogMeta = payload;
+      state.productCatalogLoaded = true;
+      renderDiscoveryCatalog();
+      return state.productCatalog;
+    })
+    .catch(() => {
+      state.productCatalog = [];
+      state.productCatalogMeta = null;
+      state.productCatalogLoaded = true;
+      renderDiscoveryCatalog();
+      return [];
+    })
+    .finally(() => { state.productCatalogLoadPromise = null; });
+  return state.productCatalogLoadPromise;
 }
 
 function restoreSettings() {

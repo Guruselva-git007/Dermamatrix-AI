@@ -29,7 +29,7 @@ from clinical_intelligence_service import clinical_decision_support, normalise_s
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, model_capability_matrix
 from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
-from recommendation_service import build_recommendations
+from recommendation_service import build_recommendations, catalog_for_area
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
 from segmentation_service import extract_visual_candidate_region, segment_dermoscopic_lesion, unavailable_candidate_region
@@ -385,19 +385,6 @@ def clinician_first_care_plan(risk_score: int) -> dict:
         "diet_guidance": "For general wellbeing, aim for regular meals with protein, fruits or vegetables, and hydration. Do not use supplements or diet changes to self-treat a suspected condition.",
         "diagnosis_notice": "The app reports screening support and, only in dermatoscopic lesion mode, a research label—not a verified diagnosis.",
     }
-
-
-def personal_care_catalog(area: str, risk_score: int) -> list[dict]:
-    """Generic non-medicinal categories; no brands, prescription drugs or doses."""
-    items = [
-        {"name": "Fragrance-free moisturiser", "category": "Cosmetic / personal care", "purpose": "Supports the skin barrier for dry-feeling skin.", "guardrail": "Check ingredients against known allergies; stop use if irritation occurs.", "affiliate_url": os.getenv("AFFILIATE_MOISTURISER_URL", "")},
-        {"name": "Broad-spectrum sunscreen", "category": "Cosmetic / personal care", "purpose": "Everyday sun-protection product discovery.", "guardrail": "This is not a treatment; choose a labelled product from a licensed seller.", "affiliate_url": os.getenv("AFFILIATE_SUNSCREEN_URL", "")},
-    ]
-    if area == "Hair":
-        items.append({"name": "Gentle, fragrance-free scalp cleanser", "category": "Cosmetic / personal care", "purpose": "A low-irritation cleansing option to discuss with a pharmacist.", "guardrail": "Avoid using on broken or painful skin without clinician advice.", "affiliate_url": os.getenv("AFFILIATE_SCALP_CLEANSER_URL", "")})
-    elif area == "Nails":
-        items.append({"name": "Protective nail-care emollient", "category": "Cosmetic / personal care", "purpose": "Helps support dry cuticles and nail surroundings.", "guardrail": "Do not use it to self-treat discoloured, painful, or lifting nails.", "affiliate_url": os.getenv("AFFILIATE_NAIL_CARE_URL", "")})
-    return items
 
 
 @app.get("/")
@@ -907,13 +894,25 @@ def request_clinical_review():
 
 @app.get("/api/products")
 def products():
-    area = request.args.get("area", "Skin").strip()[:30] or "Skin"
+    area = request.args.get("area", "All").strip()[:30] or "All"
+    if area not in {"All", "Skin", "Hair", "Nails", "Sweat"}:
+        return jsonify({"error": "Choose All, Skin, Hair, Nails, or Sweat."}), 400
     try:
         risk_score = int(request.args.get("risk_score", 28))
     except ValueError:
         return jsonify({"error": "Invalid risk score."}), 400
-    items = personal_care_catalog(area, risk_score)
-    return jsonify({"items": items, "eligible": bool(items), "consultation_required": True, "affiliate_disclosure": "Some links may be affiliate links. This does not change clinical suitability, ordering, or access to care.", "policy": "No prescription medicine, diagnosis-specific treatment, dosage, or paid ranking is provided by this prototype.", "pharmacy_notice": "Before using a suggested product or routine, consult an RMP or pharmacist and use a licensed pharmacy."})
+    items = catalog_for_area(area, risk_score=risk_score)
+    affiliate_links_present = any(bool((item.get("commerce") or {}).get("primary", {}).get("is_affiliate")) for item in items)
+    return jsonify({
+        "items": items,
+        "eligible": bool(items),
+        "priority_gate": "DEFER_PRODUCT_DISCOVERY" if risk_score >= 40 else "GENERAL_SELF_CARE_ONLY",
+        "consultation_required": True,
+        "affiliate_links_present": affiliate_links_present,
+        "affiliate_disclosure": "DermaMatrix AI may earn a commission from a clearly labelled partner link. Affiliate status never changes medical suitability, ordering, or access to care." if affiliate_links_present else None,
+        "policy": "No prescription medicine, diagnosis-specific treatment, dosage, paid ranking, retailer availability, price, rating, or review is provided by this prototype.",
+        "pharmacy_notice": "Before using a suggested product or routine, consult an RMP or pharmacist and use a licensed pharmacy.",
+    })
 
 
 @app.post("/api/assessments")

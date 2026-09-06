@@ -38,6 +38,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     classification = summary.get("classification") or {}
     segmentation = summary.get("segmentation") or {}
     recommendations = summary.get("recommendations") or {}
+    medication_information = summary.get("medication_information") or recommendations.get("medication_information") or {}
     care_plan = summary.get("care_plan") or {}
     severity = summary.get("severity") or {}
     cdss = summary.get("clinical_decision_support") or {}
@@ -102,6 +103,10 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         for factor in intelligence.get("reported_context_factors") or []
     ]
     references = [reference.get("title", "Source") for reference in (intelligence.get("knowledge") or {}).get("references") or []]
+    product_discovery = [
+        f"{product.get('name', 'Care category')}: {product.get('purpose', 'General personal-care discovery.')}"
+        for product in recommendations.get("products") or []
+    ]
 
     rows = [
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
@@ -162,6 +167,12 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>Routine:</b><br/>{_bullets((recommendations.get('routine') or {}).get('morning'))}<br/>{_bullets((recommendations.get('routine') or {}).get('evening'))}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Wellbeing:</b><br/>{_bullets(recommendations.get('diet'))}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Lifestyle:</b><br/>{_bullets(recommendations.get('lifestyle'))}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Medication information:</b> {_text(medication_information.get('notice'), 'No medication recommendation is generated from this assessment.')} {_text(medication_information.get('consultation_notice'), 'Discuss medication decisions with a qualified doctor or pharmacist.')}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>General product discovery:</b><br/>{_bullets(product_discovery)}", body),
         Paragraph(f"<b>Ongoing query:</b> {_text(journey.get('journey_id'), 'Not saved as an ongoing query')} · baseline {_text(journey.get('baseline_date'))}", note),
         Paragraph("Important safety notice", heading),
         Paragraph("This educational college-project prototype is not a medical device. It does not diagnose disease, prescribe medicine, or replace a registered medical practitioner. Discuss new routines, products, supplements, symptoms, and treatment decisions with a qualified clinician or pharmacist.", body),

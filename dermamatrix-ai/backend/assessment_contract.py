@@ -91,6 +91,7 @@ def build_assessment_result(response: dict) -> dict:
     questionnaire = response.get("input_type") == "questionnaire"
     condition = _condition(classifier, intelligence)
     attention = classifier.get("attention_map") or classifier.get("explainability") or {}
+    recommendations = response.get("recommendations") or {}
 
     return {
         "contract_version": ASSESSMENT_RESULT_VERSION,
@@ -156,8 +157,13 @@ def build_assessment_result(response: dict) -> dict:
             "care_pathway": intelligence.get("care_pathway") or {},
             "follow_up": intelligence.get("follow_up") or {},
             "doctor": intelligence.get("doctor") or {},
-            "recommendations": response.get("recommendations") or {},
+            "recommendations": recommendations,
             "care_plan": response.get("care_plan") or {},
+            "medication_information": recommendations.get("medication_information") or {},
+            "routine": recommendations.get("routine") or {},
+            "diet": recommendations.get("diet") or [],
+            "lifestyle": recommendations.get("lifestyle") or [],
+            "products": recommendations.get("products") or [],
         },
         "lineage": {
             "model_id": classifier.get("model_id") or (response.get("model_metadata") or {}).get("model_id"),
