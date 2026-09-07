@@ -29,6 +29,7 @@ from clinical_intelligence_service import clinical_decision_support, normalise_s
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
+from presentation_case_service import presentation_case_care_plan, presentation_case_for_image, presentation_case_recommendations
 from recommendation_service import build_recommendations, catalog_for_area, product_discovery_catalog, search_product_discovery
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
@@ -348,6 +349,7 @@ def stored_analysis_summary(response: dict) -> dict:
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
         "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
         "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}), "condition_intelligence": response.get("condition_intelligence", {}), "assessment_result": response.get("assessment_result", {}),
+        "presentation_case": response.get("presentation_case"),
         "image_stored": False,
     }
 
@@ -976,6 +978,11 @@ def create_assessment():
     except Exception:
         return jsonify({"error": "The selected file could not be read as an image."}), 422
     area = request.form.get("area", "Skin").strip()[:30] or "Skin"
+    presentation_case = presentation_case_for_image(
+        image_bytes,
+        area,
+        request.form.get("presentation_case_enabled") == "true",
+    )
     try:
         duration = int(request.form.get("duration", 0)); discomfort = int(request.form.get("discomfort", 0)); change = int(request.form.get("change", 0))
     except ValueError:
@@ -1066,6 +1073,19 @@ def create_assessment():
             "explainability": "Unavailable because no modality-specific classifier ran",
             "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")},
     }
+    if presentation_case:
+        # Presentation cases are a separately labelled, opt-in teaching layer.
+        # They never call a classifier, change a patient risk score, or match
+        # similar/edited images.  The normal assessment pipeline stays intact.
+        response["presentation_case"] = presentation_case
+        response["input_validation"]["presentation_case"] = {
+            "enabled": True,
+            "status": "EXACT_TEACHING_FILE_MATCH",
+            "notice": presentation_case["notice"],
+        }
+        response["model_pipeline"]["presentation_case"] = "Exact SHA-256 match to an opt-in, pre-labelled teaching file; not AI inference."
+        response["recommendations"] = presentation_case_recommendations(presentation_case, response["recommendations"])
+        response["care_plan"] = presentation_case_care_plan(presentation_case)
     if not patient_id:
         attach_condition_intelligence(response)
         response["persistence"] = "not-persisted-guest"

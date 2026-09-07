@@ -11,6 +11,18 @@ The India-aligned guardrails and production requirements are documented in `docs
 - **Face, hair/scalp, nail, or ordinary skin photo:** image-usability feedback and a non-diagnostic discussion-priority based on what the user reports. It does not identify a deficiency or classify a disease.
 - **Single, in-focus dermatoscopic skin-lesion image:** the optional HAM10000 ResNet-34 research model can show a research-label ranking and Grad-CAM attention after the user confirms the capture type. It shows an estimated likelihood only when a version-matched calibration artifact is configured. It is not lesion segmentation, a diagnosis, or clinical decision-making.
 
+### Presentation-case mode
+
+For the supervised project review only, the upload form has an opt-in
+**Presentation case matching** checkbox. It recognises the exact original files
+provided for the viva using a SHA-256 file fingerprint, then displays a
+pre-authored teaching-case label, sourced discussion topics, routine, diet and
+red flags. It does **not** use an AI classifier, does not match similar,
+edited, or re-encoded photos, and never creates a probability, diagnosis,
+patient risk score, prescription, or personal treatment plan. Leave the
+checkbox off for every ordinary/patient image. See
+[the presentation-case guide](docs/presentation-case-mode.md).
+
 See [the model card](docs/model-card.md) and [research-data protocol](docs/research-data-protocol.md) before any model training or evaluation.
 
 ## Run the complete app (local MySQL included)

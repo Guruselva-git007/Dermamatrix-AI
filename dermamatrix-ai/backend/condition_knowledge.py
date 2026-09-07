@@ -12,8 +12,8 @@ from __future__ import annotations
 from clinical_intelligence_service import AREA_SYMPTOMS
 
 
-KNOWLEDGE_VERSION = "dermamatrix-condition-knowledge-v1.1"
-LAST_REVIEWED = "2026-09-06"
+KNOWLEDGE_VERSION = "dermamatrix-condition-knowledge-v1.2"
+LAST_REVIEWED = "2026-09-07"
 
 SOURCE_CATALOG = {
     "ham10000": {
@@ -51,6 +51,11 @@ SOURCE_CATALOG = {
         "url": "https://www.aad.org/member/clinical-quality/guidelines/psoriasis",
         "evidence_type": "AAD clinical guideline",
     },
+    "seborrheic_keratosis": {
+        "title": "American Academy of Dermatology: Seborrheic keratoses overview",
+        "url": "https://www.aad.org/public/diseases/a-z/seborrheic-keratoses-overview",
+        "evidence_type": "AAD patient education",
+    },
     "eczema_guideline": {
         "title": "American Academy of Dermatology: Atopic dermatitis clinical guideline",
         "url": "https://www.aad.org/member/clinical-quality/guidelines/atopic-dermatitis",
@@ -74,6 +79,11 @@ SOURCE_CATALOG = {
     "nail_fungus": {
         "title": "American Academy of Dermatology: Nail fungus diagnosis and treatment",
         "url": "https://www.aad.org/public/diseases/a-z/nail-fungus-treatment",
+        "evidence_type": "AAD patient education",
+    },
+    "nail_psoriasis": {
+        "title": "American Academy of Dermatology: Nail psoriasis",
+        "url": "https://www.aad.org/public/diseases/psoriasis/treatment/genitals/nails",
         "evidence_type": "AAD patient education",
     },
     "seborrheic_dermatitis": {
@@ -190,6 +200,20 @@ COMMON_CONDITION_KNOWLEDGE = {
         red_flags=("Joint pain, swelling, or morning stiffness", "Extensive, painful, rapidly worsening, or infected skin", "Eye, genital, or widespread involvement"),
         specialty="Dermatologist", source_keys=("psoriasis_guideline",), timeline="Chronic disease management is individual; seek clinician review for new, extensive, or high-impact symptoms.",
     ),
+    "seborrheic-keratosis": _education_topic(
+        topic_id="seborrheic-keratosis", name="Seborrheic keratosis", health_area="Skin", aliases=("stuck-on growth", "waxy growth", "keratotic growth"),
+        description="A common non-cancerous skin growth that may be brown, rough, waxy, or wart-like. A photo cannot reliably distinguish every changing pigmented lesion from other conditions.",
+        visual_features=("Waxy or rough surface", "Stuck-on appearance", "Tan, brown, or darker colour"),
+        symptoms=("Often no symptoms", "May itch or become irritated"),
+        contributors=("Common with increasing age", "Individual susceptibility"),
+        differentials=("Melanoma or other skin cancer", "Actinic keratosis", "Wart"),
+        care_options=("Avoid self-removal", "Arrange dermatology review when a lesion changes, bleeds, itches, or looks different"),
+        medication_topics=(),
+        routine=("Avoid picking or attempting home removal", "Protect surrounding skin from irritation"),
+        lifestyle=("No diet or supplement treats a skin growth", "Use professional review for a new, changing, dark, or bleeding lesion"),
+        red_flags=("Rapid change, bleeding, persistent itch, or a new unusual lesion", "A lesion that differs from others or concerns the person"),
+        specialty="Dermatologist", source_keys=("seborrheic_keratosis",), timeline="A dermatologist can examine a concerning growth and decide whether further assessment is needed.",
+    ),
     "tinea": _education_topic(
         topic_id="tinea", name="Fungal skin infection / ringworm", health_area="Skin", aliases=("ringworm", "tinea corporis", "athlete's foot", "jock itch"),
         description="Ringworm is a fungal infection, not an infection caused by worms. Appearance varies by body site and can overlap with other rashes.",
@@ -273,6 +297,23 @@ COMMON_CONDITION_KNOWLEDGE = {
         lifestyle=("Do not use a nail image to choose supplements", "Discuss persistent changes with a clinician"),
         red_flags=("Pain, pus, spreading redness, or severe swelling", "Diabetes, poor circulation, immunosuppression, pregnancy, or uncertain diagnosis"),
         specialty="Dermatologist", source_keys=("nail_fungus",), timeline="Nails grow slowly; a confirmed condition can take prolonged clinician-guided treatment and visible change may lag.",
+    ),
+    "nail-psoriasis": _education_topic(
+        topic_id="nail-psoriasis", name="Nail psoriasis", health_area="Nails", aliases=("nail pitting", "nail lifting", "nail dystrophy"),
+        description="Psoriasis can cause pitting, discoloration, crumbling, debris under a nail, or nail lifting. Fungal infection and trauma can look similar, so an image alone is insufficient.",
+        visual_features=("Tiny pits or grooves", "White, yellow, or brown discolouration", "Crumbling, lifting, or debris under a nail"),
+        symptoms=("Nail appearance change", "Pressure discomfort in some cases"),
+        contributors=("Psoriasis-related inflammation", "Possible coexistence with skin or joint psoriasis"),
+        differentials=("Onychomycosis", "Traumatic nail dystrophy", "Other nail disorders"),
+        care_options=("Avoid picking and aggressive manicuring", "Ask a clinician whether fungal testing is needed"),
+        medication_topics=(
+            {"name": "Topical corticosteroid, vitamin-D analogue, or other topical treatment", "access": "Clinician-directed treatment", "note": "The choice, nail site, and duration need dermatologist guidance."},
+            {"name": "Systemic psoriasis treatment for selected disease", "access": "Specialist prescription treatment", "note": "Used only after assessment of skin, nails, joints, and health context."},
+        ),
+        routine=("Keep nails trimmed safely", "Avoid trauma and harsh cosmetic procedures", "Record pain, lifting, or joint symptoms for clinical discussion"),
+        lifestyle=("Do not diagnose psoriasis or deficiency from nail appearance alone", "Do not begin supplements solely from a nail image"),
+        red_flags=("Pain, swelling, pus, or spreading redness", "New joint pain or stiffness", "Rapid nail changes or uncertain cause"),
+        specialty="Dermatologist", source_keys=("nail_psoriasis",), timeline="Nails grow slowly, so visible improvement often takes months after an accurate diagnosis and appropriate care.",
     ),
     "nail-change-deficiency": _education_topic(
         topic_id="nail-change-deficiency", name="Nail changes and possible deficiency", health_area="Nails", aliases=("koilonychia", "brittle nails", "nail ridging", "vitamin deficiency nails"),

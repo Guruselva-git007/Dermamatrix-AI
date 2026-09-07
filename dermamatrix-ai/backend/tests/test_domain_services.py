@@ -477,7 +477,7 @@ class KnowledgeBoundaryTests(unittest.TestCase):
         self.assertTrue(acne["medication_topics"])
         self.assertTrue(acne["evidence_references"])
         self.assertIn("not confirm a diagnosis", acne["medical_notice"])
-        self.assertEqual({item["id"] for item in educational_condition_catalog("Nails")}, {"onychomycosis", "nail-change-deficiency", "blue-nails"})
+        self.assertEqual({item["id"] for item in educational_condition_catalog("Nails")}, {"onychomycosis", "nail-psoriasis", "nail-change-deficiency", "blue-nails"})
 
     def test_guides_keep_single_items_as_lists_and_use_relevant_sources(self):
         blue_nails = educational_condition_topic("blue-nails")
