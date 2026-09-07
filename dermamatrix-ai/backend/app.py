@@ -41,7 +41,7 @@ from sweat_service import sweat_questionnaire_result
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 AUTH_SCHEMA_VERSION = "20260907_auth_profile_preferences_v1"
@@ -1281,7 +1281,7 @@ def create_assessment():
     if not image_file or not image_file.filename:
         return jsonify({"error": "An image is required."}), 400
     if not allowed_file(image_file.filename):
-        return jsonify({"error": "Use a PNG, JPG, JPEG, or WEBP image."}), 415
+        return jsonify({"error": "Use a PNG, JPG, JPEG, WEBP, or AVIF image."}), 415
     image_bytes = image_file.read()
     if not image_bytes:
         return jsonify({"error": "The uploaded image was empty."}), 400

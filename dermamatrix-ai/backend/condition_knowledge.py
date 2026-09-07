@@ -12,7 +12,7 @@ from __future__ import annotations
 from clinical_intelligence_service import AREA_SYMPTOMS
 
 
-KNOWLEDGE_VERSION = "dermamatrix-condition-knowledge-v1.2"
+KNOWLEDGE_VERSION = "dermamatrix-condition-knowledge-v1.3"
 LAST_REVIEWED = "2026-09-07"
 
 SOURCE_CATALOG = {
@@ -45,6 +45,11 @@ SOURCE_CATALOG = {
         "title": "American Academy of Dermatology: Acne clinical guideline",
         "url": "https://www.aad.org/member/clinical-quality/guidelines/acne",
         "evidence_type": "AAD clinical guideline",
+    },
+    "hyperpigmentation": {
+        "title": "American Academy of Dermatology: How to fade dark spots in darker skin tones",
+        "url": "https://www.aad.org/public/everyday-care/skin-care-secrets/routine/fade-dark-spots?pp=1",
+        "evidence_type": "AAD patient education",
     },
     "psoriasis_guideline": {
         "title": "American Academy of Dermatology: Psoriasis clinical guideline",
@@ -166,6 +171,23 @@ COMMON_CONDITION_KNOWLEDGE = {
         lifestyle=("A balanced diet is reasonable; no single food universally causes acne", "Keep product changes gradual so irritation can be recognised"),
         red_flags=("Painful deep nodules or cysts", "Scarring or rapid worsening", "Significant distress or lack of improvement with appropriate care"),
         specialty="Dermatologist", source_keys=("acne_guideline",), timeline="Response varies; discuss persistent, scarring, or severe concerns with a dermatologist.",
+    ),
+    "hyperpigmentation": _education_topic(
+        topic_id="hyperpigmentation", name="Facial hyperpigmentation / dark spots", health_area="Skin", aliases=("melasma", "dark spots", "post-inflammatory hyperpigmentation", "lip pigmentation"),
+        description="Dark patches or spots can follow inflammation, sun exposure, hormonal influences, medicines, irritation, or other skin conditions. A photograph alone cannot establish the cause or exclude every pigmented lesion.",
+        visual_features=("Flat brown, grey-brown, or darker patches", "Marks following acne or irritation", "Often more noticeable after sun exposure"),
+        symptoms=("Often no physical symptom", "Possible cosmetic concern", "Itch, pain, scale, bleeding, or rapid change suggest the need for clinical assessment"),
+        contributors=("Sun or visible-light exposure", "Inflammation from acne, eczema, or irritation", "Hormonal influences or medicines for some people", "Friction or unsuitable cosmetic products"),
+        differentials=("Melasma", "Post-inflammatory hyperpigmentation", "Contact dermatitis or irritation", "Other pigmented lesions requiring examination"),
+        care_options=("Use broad-spectrum sun protection and gentle skin care", "Avoid picking, friction, and irritating unverified lightening products", "Seek assessment before using strong depigmenting medicines"),
+        medication_topics=(
+            {"name": "Azelaic acid, topical retinoid, or other pigment-directed topical treatment", "access": "OTC or prescription availability varies", "note": "A clinician or pharmacist should check suitability, irritation risk, pregnancy considerations, and the actual diagnosis before use."},
+            {"name": "Hydroquinone or procedure-based treatment", "access": "Clinician-directed / jurisdiction dependent", "note": "Requires professional oversight; do not use unregulated bleaching products or self-treat a new or changing pigmented lesion."},
+        ),
+        routine=("Use gentle cleanser and moisturiser that you tolerate", "Apply broad-spectrum sun protection as directed", "Avoid picking and introduce one new product at a time"),
+        lifestyle=("Use a balanced diet; no supplement or restrictive diet is a proven universal treatment for dark spots", "Avoid unregulated skin-lightening products, especially if they sting or cause irritation"),
+        red_flags=("A new, rapidly changing, bleeding, painful, or very dark lesion", "A single lesion that looks different from the others", "Pigmentation with a new rash, swelling, or severe irritation"),
+        specialty="Dermatologist", source_keys=("hyperpigmentation",), timeline="Pigment changes can take time to fade after the cause is identified; a clinician should assess new, changing, or concerning lesions.",
     ),
     "atopic-dermatitis": _education_topic(
         topic_id="atopic-dermatitis", name="Atopic dermatitis / eczema", health_area="Skin", aliases=("eczema", "dry itchy rash"),

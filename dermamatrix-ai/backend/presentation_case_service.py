@@ -12,9 +12,10 @@ from __future__ import annotations
 import hashlib
 
 from condition_knowledge import educational_condition_topic
+from recommendation_service import catalog_for_area
 
 
-PRESENTATION_CASE_VERSION = "viva-case-library-v1"
+PRESENTATION_CASE_VERSION = "viva-case-library-v1.2"
 
 # These are fingerprints of the user-supplied presentation files, not model
 # weights, perceptual hashes, training examples, or a general image classifier.
@@ -79,6 +80,60 @@ PRESENTATION_CASES = {
         "teaching_label": "Blue-grey nail discoloration — prompt-assessment teaching case",
         "teaching_summary": "This pre-labelled example is used to discuss blue/violaceous nails. It is not a vitamin-deficiency finding; persistent discoloration or breathing/chest symptoms need prompt medical assessment.",
     },
+    # Additional exact review files from the supplied DermaMatrix image folder.
+    # They have no effect on ordinary, edited, or visually similar uploads.
+    "6e48c9bfdee255672a7fcb764741a6a2474c40f119f68ac57790c4c5c3147532": {
+        "case_id": "hair-dandruff-reference", "area": "Hair", "topic_id": "seborrheic-dermatitis",
+        "teaching_label": "Scalp flaking — dandruff / seborrheic dermatitis teaching case",
+        "teaching_summary": "This exact supplied reference is used to discuss dandruff or seborrheic-dermatitis patterns. Scalp psoriasis, contact dermatitis, and tinea remain clinical differentials.",
+    },
+    "5c9be2050a8d25f5cffc60ee14898551918d43e0998fc0fb5aadbaaee1e98ae8": {
+        "case_id": "hair-dandruff-symptom-reference", "area": "Hair", "topic_id": "seborrheic-dermatitis",
+        "teaching_label": "Scalp flaking and itch — dandruff teaching case",
+        "teaching_summary": "This exact supplied reference is used to discuss visible scalp flaking. It does not confirm a cause for any other hair or scalp image.",
+    },
+    "fa6e23a59cc8a4ba8cc804864610f00f3adaf0ea1337be6dcc0dfa13c593a79c": {
+        "case_id": "skin-atrophic-acne-scars", "area": "Skin", "topic_id": "acne",
+        "teaching_label": "Atrophic acne scarring — teaching case",
+        "teaching_summary": "This exact supplied reference is used to discuss pitted acne scars after prior inflammation. Scarring care is individual and usually needs clinician assessment before procedures or medicines.",
+    },
+    "fe9213263115f338de662339415a586274a1add9648d47bb9049e05e70f2806e": {
+        "case_id": "skin-facial-dark-patches", "area": "Skin", "topic_id": "hyperpigmentation",
+        "teaching_label": "Facial dark patches — hyperpigmentation / melasma teaching differential",
+        "teaching_summary": "This exact supplied reference is used to discuss facial dark patches. Melasma, post-inflammatory marks, irritation, and other pigmented conditions require clinical differentiation.",
+    },
+    "2485c6770ac4db417b1f88e25d71b922a143772118bc1dc66bcf0233ef576a08": {
+        "case_id": "skin-facial-pigmentation", "area": "Skin", "topic_id": "hyperpigmentation",
+        "teaching_label": "Facial pigmentation patch — teaching differential",
+        "teaching_summary": "This exact supplied reference is used to discuss a facial pigmentation pattern. It is not a diagnosis and does not establish the cause of any new or changing spot.",
+    },
+    "8dba72dfc134e89a05525a309b2d02cf063219958d45517c9ca76aedca0b775f": {
+        "case_id": "skin-lip-pigmentation", "area": "Skin", "topic_id": "hyperpigmentation",
+        "teaching_label": "Lip pigmentation — teaching differential",
+        "teaching_summary": "This exact supplied reference is used to discuss lip-colour variation or pigmentation. Irritation, medicines, sun exposure, and other causes need clinical context; it is not a deficiency diagnosis.",
+    },
+    "e6add51030e175563c8c43cdfad7bf4bde1d90cd320837e7f2cf25eb8465b292": {
+        "case_id": "skin-concern-vocabulary-chart", "area": "Skin", "topic_id": None,
+        "teaching_label": "Facial skin concerns vocabulary chart — multi-condition teaching overview",
+        "teaching_summary": "This exact supplied image is a labelled vocabulary chart containing several different concerns. It is not one patient case, so no single diagnosis, probability, or risk score is assigned.",
+        "education": {
+            "id": "skin-concern-vocabulary", "name": "Facial skin concerns overview", "visual_features": ["The chart illustrates acne, comedones, pigmentation, dryness, rashes, and other distinct concerns."],
+            "common_symptoms": ["Each labelled concern has different symptoms and causes; use the matching individual teaching file or an educational guide for details."],
+            "common_contributors": ["Skin conditions can involve inflammation, irritation, sun exposure, products, infection, hormones, or other factors depending on the specific concern."],
+            "differential_diagnoses": ["A multi-condition overview is not sufficient to identify one condition in a person."],
+            "care_options": ["Use gentle, fragrance-free care and broad-spectrum sun protection as tolerated.", "Open the relevant educational guide or seek clinician advice for a specific concern."],
+            "medication_topics": [{"name": "No single medicine applies to this chart", "access": "Clinician or pharmacist discussion", "note": "Medication and treatment depend on the actual condition, location, severity, medical history, and examination."}],
+            "daily_routine": ["Use simple gentle cleansing and moisturising as tolerated", "Use sun protection where appropriate", "Avoid picking, harsh scrubs, and unregulated lightening products"],
+            "diet_lifestyle": ["Maintain a balanced diet; no one diet treats every concern shown in the chart.", "Do not start supplements or medicine based on a category image."],
+            "red_flags": ["Rapid change, severe pain, spreading redness, pus, bleeding, blistering, or systemic symptoms need prompt professional assessment."],
+            "doctor_specialty": "Dermatologist", "evidence_references": [],
+        },
+    },
+    "882c972469595ed23ca031c18eb6498ad152e68b6c9c41ef1654c22ea473237d": {
+        "case_id": "skin-inflammatory-acne-reference", "area": "Skin", "topic_id": "acne",
+        "teaching_label": "Inflammatory acne-pattern reference — teaching case",
+        "teaching_summary": "This exact supplied reference is used to discuss inflammatory acne-pattern spots and marks. Acne, folliculitis, and other causes require clinical context; it does not diagnose a different image.",
+    },
 }
 
 
@@ -87,12 +142,12 @@ def presentation_case_for_digest(digest: str, area: str) -> dict | None:
     record = PRESENTATION_CASES.get(str(digest or "").casefold())
     if not record or record["area"] != area:
         return None
-    topic = educational_condition_topic(record["topic_id"])
+    topic = educational_condition_topic(record.get("topic_id")) if record.get("topic_id") else record.get("education")
     if not topic:
-        raise RuntimeError(f"Presentation case topic is missing: {record['topic_id']}")
+        raise RuntimeError(f"Presentation case topic is missing: {record.get('topic_id')}")
     return {
         "matched": True,
-        "case_id": record["case_id"],
+        "case_id": record["case_id"], "area": record["area"],
         "version": PRESENTATION_CASE_VERSION,
         "matching_method": "EXACT_FILE_SHA256",
         "teaching_label": record["teaching_label"],
@@ -106,6 +161,10 @@ def presentation_case_for_digest(digest: str, area: str) -> dict | None:
         "red_flags": topic["red_flags"],
         "doctor_specialty": topic["doctor_specialty"],
         "references": topic["evidence_references"],
+        "visual_features": topic.get("visual_features", []),
+        "common_symptoms": topic.get("common_symptoms", []),
+        "common_contributors": topic.get("common_contributors", []),
+        "differential_diagnoses": topic.get("differential_diagnoses", []),
         "notice": "Presentation mode matched this exact supplied teaching file. This is a pre-labelled educational case, not AI inference, a diagnosis, a probability, a risk score, or a result for any other image.",
         "medication_notice": "Treatment topics are for a doctor or pharmacist discussion only. No medicine, dose, or personal treatment plan is generated.",
     }
@@ -139,6 +198,7 @@ def presentation_case_recommendations(case: dict, base: dict) -> dict:
         "diet": list(case.get("diet_lifestyle") or []),
         "lifestyle": ["Do not use supplements or restrictive diets to self-treat a presumed condition.", "Use the red flags and clinician discussion points in this teaching case."],
         "supplements": ["No supplement is selected by a presentation image. Discuss testing and any supplement with a qualified clinician or pharmacist."],
+        "products": base.get("products") or catalog_for_area(case["area"]),
     })
     return guidance
 

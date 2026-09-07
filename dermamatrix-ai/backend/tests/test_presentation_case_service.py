@@ -29,11 +29,22 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertIsNone(presentation_case_for_digest("0" * 64, "Skin"))
 
     def test_all_cases_are_prelabelled_education_not_model_records(self):
-        self.assertEqual(len(PRESENTATION_CASES), 12)
+        self.assertGreaterEqual(len(PRESENTATION_CASES), 20)
         for digest, case in PRESENTATION_CASES.items():
             matched = presentation_case_for_digest(digest, case["area"])
             self.assertIn("not AI inference", matched["notice"])
             self.assertFalse(matched["medication_notice"].lower().startswith("prescribe"))
+
+    def test_additional_review_references_are_exact_match_only(self):
+        dandruff = presentation_case_for_digest("6e48c9bfdee255672a7fcb764741a6a2474c40f119f68ac57790c4c5c3147532", "Hair")
+        pigmentation = presentation_case_for_digest("8dba72dfc134e89a05525a309b2d02cf063219958d45517c9ca76aedca0b775f", "Skin")
+        chart = presentation_case_for_digest("e6add51030e175563c8c43cdfad7bf4bde1d90cd320837e7f2cf25eb8465b292", "Skin")
+        avif_acne = presentation_case_for_digest("882c972469595ed23ca031c18eb6498ad152e68b6c9c41ef1654c22ea473237d", "Skin")
+        self.assertEqual(dandruff["topic_id"], "seborrheic-dermatitis")
+        self.assertEqual(pigmentation["topic_id"], "hyperpigmentation")
+        self.assertIn("several different concerns", chart["teaching_summary"])
+        self.assertTrue(chart["common_contributors"])
+        self.assertEqual(avif_acne["topic_id"], "acne")
 
     def test_assessment_exposes_case_only_through_opt_in_matcher(self):
         from app import app
@@ -57,6 +68,7 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertTrue(result["presentation_case"]["matched"])
         self.assertEqual(result["research_classifier"]["available"], False)
         self.assertEqual(result["assessment_result"]["condition"]["available"], False)
+        self.assertFalse(result["assessment_risk"]["available"])
         self.assertEqual(result["recommendations"]["medication_information"]["status"], "EDUCATIONAL_DISCUSSION_ONLY")
         self.assertTrue(result["recommendations"]["diet"])
 
