@@ -21,3 +21,47 @@ only images already selected by `prepare_scin_clinical_manifest.py`; its output
 must remain outside Git. The current downloadable research weight is installed
 by `backend/scripts/download_research_model.sh` and is sufficient to run the
 narrowly scoped dermatoscopic research path.
+
+## Nail feasibility data run (rejected; reproducible offline only)
+
+The project also records one licensed, task-matched nail experiment without
+turning it into application capability. The source is Han SS (2017),
+[*Model Onychomycosis Training Datasets (JPG thumbnails) and Validation
+Datasets*](https://doi.org/10.6084/m9.figshare.5398573.v2), CC BY 4.0. It
+contains labelled thumbnail/contact-sheet data plus validation cohorts; review
+the current Figshare record and attribution terms before download.
+
+Keep the downloaded ZIP files and all outputs in a private research-data
+directory outside the repository. After source integrity checking, a reproducible
+offline preparation run is:
+
+```bash
+.ml-venv/bin/python backend/scripts/prepare_onychomycosis_dataset.py \
+  --a1-zip /absolute/research-data/train_a1.zip \
+  --external-zip /absolute/research-data/external_validation.zip \
+  --output-dir /absolute/research-data/prepared-run \
+  --max-per-class 3000
+```
+
+The utility derives normal-appearing nail, nail dystrophy, and onychomycosis
+crops from A1 contact sheets; source-contact-sheet grouping prevents tile
+leakage but **does not** establish patient-level separation. It extracts the
+B1/B2/C/D cohort as a locked external set. The source external cohort has no
+normal-appearing nail class.
+
+Train only after retaining the generated `dataset_summary.json` and
+`manifest.csv` with the run:
+
+```bash
+.ml-venv/bin/python backend/scripts/train_onychomycosis_classifier.py \
+  --dataset-dir /absolute/research-data/prepared-run \
+  --output-dir /absolute/research-data/experiment-run \
+  --epochs 5 --batch-size 64 --device mps
+```
+
+The training script calibrates with the independent validation split, evaluates
+the internal and locked external sets, saves a versioned model/calibration/OOD
+record, and rejects the result unless its preconfigured thresholds pass. The
+recorded 2026-09-07 experiment failed those thresholds and must not be copied
+into `backend/models/` or connected to Flask inference. See the model card and
+dataset registry for its measured result and limitations.

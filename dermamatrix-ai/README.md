@@ -54,7 +54,7 @@ The application keeps four modalities behind one account, history, and reporting
 
 The browser uses an explicit assessment state machine (`IDLE`, `CATEGORY_SELECTED`, `INPUT_REQUIRED`, `INPUT_VALIDATING`, `PREPROCESSING`, `ANALYZING`, `RESULT_READY`, and `ERROR`). The processing panel is indeterminate until the backend returns; it does not invent a percentage or claim an unavailable model completed.
 
-`backend/risk_service.py` provides shared `LOW`, `MODERATE`, `HIGH`, `URGENT`, and `UNCERTAIN` semantics. `backend/pirs_service.py` is a transparent, configurable prototype aggregation; it is explicitly **not clinically validated**. The model boundary stays honest: only the optional dermatoscopic HAM10000 research adapter can produce a research label/Grad-CAM, and only when its real weights and required capture attestation are present. Hair, nail, segmentation, and sweat ML adapters remain unavailable until compatible validated models are configured.
+`backend/risk_service.py` provides shared `LOW`, `MODERATE`, `HIGH`, `URGENT`, and `UNCERTAIN` semantics. `backend/pirs_service.py` is a transparent, configurable prototype aggregation; it is explicitly **not clinically validated**. The model boundary stays honest: only the optional dermatoscopic HAM10000 research adapter can produce a research label/Grad-CAM, and only when its real weights and required capture attestation are present. A documented offline nail-model feasibility run exists but failed its predeclared internal and external thresholds, so it is not connected to the app. Hair, nail, segmentation, and sweat ML adapters remain unavailable until compatible validated models are configured.
 
 ## Source-linked condition guides
 

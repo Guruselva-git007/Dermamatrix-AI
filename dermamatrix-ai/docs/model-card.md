@@ -17,6 +17,21 @@ is `REJECTED_FOR_APPLICATION_INFERENCE`: the checkpoint and calibration file
 remain outside Git and are not loaded by the Flask service. This is a valuable
 negative baseline, not an app capability or a medical performance claim.
 
+### Nail feasibility experiment — rejected
+
+The Han (2017) Figshare nail-photo release was prepared outside Git as a
+contact-sheet-grouped A1 internal set and locked B1/B2/C/D external set. An
+ImageNet-initialised ResNet-18 was trained to distinguish normal-appearing
+nail, nail dystrophy, and onychomycosis. Temperature scaling was fit on the
+independent validation split only (T=1.375). It achieved balanced accuracy
+0.592593 on 1,350 internal-test images and 0.513777 on 1,358 locked external
+images. These results fail the predeclared promotion thresholds (0.70 internal,
+0.65 external), so it is `REJECTED_FOR_APPLICATION_INFERENCE`. Its checkpoint,
+calibration artifact, OOD reference, crops, and report are external research
+artifacts and are not loaded by the app. The source supplies no patient IDs and
+the external cohort has no normal-appearing class, so this is neither a
+patient-level split nor a complete external validation study.
+
 The HAM10000 component does **not** run on a face/selfie, hair/scalp image, nail image, sweat-gland concern, or a normal camera image. The user must choose dermatoscopic lesion mode, confirm the capture method, and pass the usability gate before it is called. Grad-CAM is an attention visualisation, not lesion segmentation and not a medical finding.
 
 ## Known limitations
@@ -26,6 +41,9 @@ The HAM10000 component does **not** run on a face/selfie, hair/scalp image, nail
 - Raw softmax scores are relative model rankings and are never shown as calibrated medical probabilities. The runtime only exposes an estimated likelihood when a version-matched temperature-scaling artifact with independent validation provenance is present.
 - The app has no fitted out-of-distribution detector. It reports `OOD_NOT_EVALUATED` instead of calling an image known, normal, or out-of-distribution.
 - A user-selected prompt-care concern is escalated without being overridden by the model.
+- The nail feasibility experiment does not provide a nail segmentation model,
+  a severity model, a treatment-selection model, or usable application
+  inference; an ordinary nail image continues to receive no disease label.
 
 ## Required work before clinical deployment
 
@@ -39,3 +57,4 @@ The HAM10000 component does **not** run on a face/selfie, hair/scalp image, nail
 
 - Tschandl P, Rosendahl C, Kittler H. *The HAM10000 dataset*. Scientific Data 5, 180161 (2018). DOI: 10.1038/sdata.2018.161.
 - Tschandl P et al. *Human–computer collaboration for skin cancer recognition*. Nature Medicine 26, 1229–1234 (2020). DOI: 10.1038/s41591-020-0942-0.
+- Han SS. *Model Onychomycosis Training Datasets (JPG thumbnails) and Validation Datasets* (2017). Figshare. DOI: 10.6084/m9.figshare.5398573.v2. CC BY 4.0.
