@@ -52,7 +52,47 @@ ONYCHOMYCOSIS_FIGSHARE_V2 = {
 }
 
 
+# This is deliberately a source-governance record, not an ingestion manifest.
+# The public atlas is an important educational resource, but its public website
+# does not publish a machine-learning training licence or an image API.  The
+# application also has commerce features, so a general non-commercial webpage
+# permission cannot be treated as permission to make training derivatives.
+UNM_INCLUSIVE_DERMATOLOGY_ATLAS = {
+    "dataset_name": "UNM Inclusive Dermatology: Creating a Diverse Visual Atlas of Skin Conditions",
+    "dataset_version": "public-web-atlas-audited-2026-09-07",
+    "source": "https://hsc.unm.edu/medicine/departments/dermatology/inclusive-dermatology/",
+    "gallery_url": "https://hsc.unm.edu/medicine/departments/dermatology/inclusive-dermatology/gallery.html",
+    "citation": "Midani L, Ridgeway G, Phillips CM, Smidt AC. Inclusive Dermatology — Creating a Diverse Visual Atlas of Skin Conditions. N Engl J Med. 2024;390:2037-2038. doi:10.1056/NEJMp2313807.",
+    "publication_url": "https://www.nejm.org/doi/full/10.1056/NEJMp2313807",
+    "terms_url": "https://www.unm.edu/legal.html",
+    "license": "No dataset or machine-learning training licence published on the public atlas pages",
+    "license_status": "PERMISSION_NOT_ESTABLISHED",
+    "training_eligibility": "BLOCKED_AWAITING_WRITTEN_ML_AUTHORIZATION",
+    "task": "Educational clinical dermatology atlas; not approved in this repository as a training/evaluation dataset",
+    "health_area": "Skin",
+    "modality": "CLINICAL_DERMATOLOGY_PHOTO",
+    "label_schema": "Condition-gallery labels are visible on the public site; a training label manifest and ground-truth protocol have not been supplied.",
+    "ground_truth": "Not published as a downloadable, versioned ML ground-truth dataset.",
+    "image_count": "NOT_PUBLISHED_AS_A_VERSIONED_DATASET",
+    "skin_tone_coverage": "Atlas is organised by team-estimated Fitzpatrick type; UNM notes the scale's subjectivity and limitations.",
+    "patient_ids": "Not available from the public pages; patient-level split safety cannot be established.",
+    "automation": "NOT_PERMITTED_BY_THIS_REPOSITORY_UNTIL_WRITTEN_AUTHORIZATION_AND_SOURCE_TERMS_CONFIRM_AUTOMATED_ACCESS",
+    "intended_use": "Linkable educational reference only. No images, metadata, labels, or derivatives are downloaded, stored, redistributed, trained on, or evaluated by DermaMatrix.",
+    "required_before_reconsideration": [
+        "Written authorization from the rightsholder explicitly covering ML training, evaluation, derived model weights, and the intended app use.",
+        "A documented dataset release with provenance, image-level licence/consent, version, condition labels, and permitted access method.",
+        "A clinician-governed protocol covering de-identification, patient-level split strategy, duplicate review, external validation, and subgroup evaluation.",
+        "A separate legal review because this application includes optional product-commerce features.",
+    ],
+    "limitations": "Public accessibility and an educational mission do not establish permission to scrape, bulk-download, train on, or redistribute patient photographs. No ingestion or model claim is made.",
+}
+
+
 EXCLUDED_DATASETS = {
+    "unm_inclusive_dermatology_atlas": {
+        "reason": "Public UNM material is not a published ML dataset. UNM's legal page permits non-commercial personal/educational reproduction subject to notice and no modification; it does not grant ML training/derivative-model, automated collection, or commerce-compatible permission. Written authorization is required before any ingestion.",
+        "source": "https://www.unm.edu/legal.html",
+    },
     "HAM10000": {
         "reason": "Harvard Dataverse terms report CC BY-NC 4.0. It is incompatible with an app that contains affiliate/commerce functionality unless a separate non-commercial research boundary and legal review are established.",
         "source": "https://doi.org/10.7910/DVN/DBW86T",
@@ -70,6 +110,7 @@ EXCLUDED_DATASETS = {
 DATASET_REGISTRY = {
     "scin_v1": SCIN_V1,
     "onychomycosis_figshare_v2": ONYCHOMYCOSIS_FIGSHARE_V2,
+    "unm_inclusive_dermatology_atlas": UNM_INCLUSIVE_DERMATOLOGY_ATLAS,
     "excluded": EXCLUDED_DATASETS,
 }
 
@@ -126,3 +167,34 @@ EXPERIMENTS = {
 
 
 DATASET_REGISTRY["experiments"] = EXPERIMENTS
+
+
+def training_eligibility(dataset_key: str) -> dict:
+    """Return the source-controlled gate for a proposed training dataset.
+
+    This gate intentionally defaults to blocked for unknown records.  It does
+    not prove a dataset is appropriate for clinical use; it only prevents a
+    known permission gap from being silently ignored by preparation scripts.
+    """
+    dataset = DATASET_REGISTRY.get(dataset_key)
+    if not isinstance(dataset, dict) or not dataset.get("dataset_name"):
+        return {
+            "allowed": False,
+            "status": "BLOCKED_UNKNOWN_DATASET",
+            "notice": "The dataset is not declared in the governed registry. Add provenance, licence, permissions, and intended-use review before preparing a manifest.",
+        }
+    status = dataset.get("training_eligibility")
+    if status == "BLOCKED_AWAITING_WRITTEN_ML_AUTHORIZATION":
+        return {
+            "allowed": False,
+            "status": status,
+            "notice": "Written source authorization for ML training/evaluation and derivative model use is required before any UNM atlas ingestion or manifest preparation.",
+            "source": dataset.get("source"),
+            "terms_url": dataset.get("terms_url"),
+        }
+    return {
+        "allowed": True,
+        "status": status or "DECLARED_FOR_OFFLINE_RESEARCH_ONLY",
+        "notice": "Registry declaration does not establish model quality, clinical validation, or permission beyond the recorded source terms.",
+        "source": dataset.get("source"),
+    }

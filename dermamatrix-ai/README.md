@@ -23,7 +23,7 @@ patient risk score, prescription, or personal treatment plan. Leave the
 checkbox off for every ordinary/patient image. See
 [the presentation-case guide](docs/presentation-case-mode.md).
 
-See [the model card](docs/model-card.md) and [research-data protocol](docs/research-data-protocol.md) before any model training or evaluation.
+See [the model card](docs/model-card.md), [research-data protocol](docs/research-data-protocol.md), and [UNM atlas governance audit](docs/unm-atlas-governance.md) before any model training or evaluation. The public UNM Inclusive Dermatology Atlas is recorded as an educational reference only; it is not downloaded, scraped, or used for model training because public pages do not grant that permission.
 
 ## Run the complete app (local MySQL included)
 
@@ -103,7 +103,7 @@ The existing `.ml-venv` can be used in place of `.venv` in this workspace. In VS
 ## Project layout
 
 - `frontend/` – accessible, responsive web prototype with a complete assessment flow.
-- `backend/` – Flask API, MySQL persistence, and the runnable screening-triage engine.
+- `backend/` – Flask API, MySQL persistence, and a deterministic reported-concern prioritisation helper (not an image classifier).
 - `backend/risk_service.py`, `backend/pirs_service.py`, `backend/report_service.py` – shared priority/PIRS/PDF-report domain boundaries.
 - `backend/assessment_contract.py` – versioned patient-result contract that keeps model likelihood, symptom severity, care priority, disease risk, and urgency separate.
 - `docs/` – model and safety documentation.

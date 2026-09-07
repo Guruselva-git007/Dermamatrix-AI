@@ -22,6 +22,7 @@ Audit date: 2026-09-06. This report describes the repository state; it does not 
 | OOD handling | Missing | No fitted reference distribution/detector is bundled; the app cannot call an image in-domain or OOD. |
 | Model versioning | Partial | Skin model version existed; all actual adapters now expose model/dataset/pipeline/calibration lineage in saved metadata. |
 | ML metadata | Partial | Added a source-controlled runtime registry without claiming unavailable models are ready. |
+| UNM Atlas ingestion | Blocked by governance | The atlas was investigated on 2026-09-07. Its public site does not publish machine-learning training permission, a versioned data release, image-level licence/consent, patient IDs, or a ground-truth dataset. The registry has a testable `BLOCKED_AWAITING_WRITTEN_ML_AUTHORIZATION` gate; nothing was scraped, downloaded, or trained. |
 | Normalized result contract | Exists | `assessment-result-v1` now persists one patient-safe result object for the UI, saved history, and PDFs. It separates calibrated condition likelihood (only when an artifact exists), self-reported symptom severity, reported-concern care priority, urgency routing, and unavailable disease risk. |
 
 ## Decision
@@ -44,3 +45,7 @@ only for an explicitly attested dermatoscopic single-lesion image, and it still
 remains research-only. Sweat concerns remain questionnaire-only. A disease-risk
 score remains unavailable until a validated, governed risk model is integrated;
 reported concern priority is retained separately for care-routing purposes.
+
+The previously named screening-triage helper is now explicitly a deterministic
+reported-concern prioritisation helper and emits no confidence value. Its score
+is kept separate from image-model likelihood, disease risk, and severity.

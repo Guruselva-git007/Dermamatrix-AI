@@ -8,6 +8,12 @@ Use HAM10000 / ISIC 2018 dermatoscopic lesion data only for education, research,
 
 Do not upload patient faces, hair/scalp images, nail images, or identifiable clinical photographs into public datasets or source-control. Do not train on patient images without documented consent, ethics approval where required, de-identification, and a clinician-approved data-governance plan.
 
+## UNM Inclusive Dermatology Atlas — source checked, not ingested
+
+The [UNM Inclusive Dermatology Atlas](https://hsc.unm.edu/medicine/departments/dermatology/inclusive-dermatology/) is an important educational reference about diverse skin presentations. It is **not an approved training source in this project**. On 2026-09-07, the public atlas and [UNM legal notice](https://www.unm.edu/legal.html) were reviewed. The public material does not grant ML training, derived model, bulk/automated collection, or commerce-compatible usage permission, and no versioned image dataset or patient-level split metadata is published. Do not crawl the gallery, download its images, or create a manifest from it.
+
+Only reconsider the source after the rightsholder has supplied written authorization explicitly covering training, evaluation, model weights and the intended deployment; a versioned release with image-level provenance/consent and labels; and a clinician-governed protocol for patient-level splits, duplicate review and external validation. The enforced registry status and conditions are in [the UNM governance audit](unm-atlas-governance.md).
+
 ## Reproducible setup
 
 1. Download the research data manually from the official source after accepting its current terms and record the source, version, licence, date, and checksum in a private experiment log.

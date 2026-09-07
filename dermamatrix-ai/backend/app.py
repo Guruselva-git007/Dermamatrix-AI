@@ -20,7 +20,7 @@ from PIL import Image, ImageFilter, ImageStat
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
-from model_service import run_screening_model
+from model_service import MODEL_VERSION, run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
 from assessment_router import public_workflows, route_image_assessment
@@ -404,15 +404,15 @@ def health():
                 connected = cursor.fetchone()["connected"] == 1
         finally:
             connection.close()
-        return jsonify({"status": "ok", "service": "dermamatrix-api", "mode": "educational-prototype", "database": "mysql-connected" if connected else "unavailable", "model": "screening-triage-v1.1-demo"})
+        return jsonify({"status": "ok", "service": "dermamatrix-api", "mode": "educational-prototype", "database": "mysql-connected" if connected else "unavailable", "model": MODEL_VERSION})
     except pymysql.MySQLError:
         return jsonify({
             "status": "ok",
             "service": "dermamatrix-api",
             "mode": "educational-prototype",
             "database": "mysql-unavailable-no-persistence",
-            "model": "screening-triage-v1.1-demo",
-            "notice": "Screening demo is active. Configure MYSQL_USER and MYSQL_PASSWORD to enable profile and assessment persistence.",
+            "model": MODEL_VERSION,
+            "notice": "Reported-concern prioritisation is active. Configure MYSQL_USER and MYSQL_PASSWORD to enable profile and assessment persistence.",
         })
 
 
@@ -1040,7 +1040,10 @@ def create_assessment():
     pirs = calculate_pirs(
         area=area,
         priority=priority,
-        model_confidence=model_output.get("confidence"),
+        # The intake-priority helper deliberately has no model confidence.
+        # Record an actual calibrated research likelihood only if a compatible
+        # image classifier has genuinely produced one.
+        model_confidence=(research_classifier.get("condition_likelihood") or {}).get("estimated_likelihood"),
         image_quality=quality,
         reported_factors=manual_symptoms,
     )

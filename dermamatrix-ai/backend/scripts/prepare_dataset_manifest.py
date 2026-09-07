@@ -17,6 +17,7 @@ from collections import Counter
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BACKEND_DIR)
+from dataset_registry import training_eligibility  # noqa: E402
 from ml_evaluation import validate_patient_level_splits  # noqa: E402
 
 
@@ -25,8 +26,17 @@ def main() -> None:
     parser.add_argument("--manifest-csv", required=True)
     parser.add_argument("--dataset-name", required=True)
     parser.add_argument("--dataset-version", required=True)
+    parser.add_argument(
+        "--dataset-key",
+        help="Optional key from backend/dataset_registry.py. Known blocked sources cannot be prepared.",
+    )
     parser.add_argument("--output-json", required=True)
     args = parser.parse_args()
+    governance = None
+    if args.dataset_key:
+        governance = training_eligibility(args.dataset_key)
+        if not governance["allowed"]:
+            raise SystemExit(f"Dataset preparation blocked: {governance['status']}. {governance['notice']}")
     with open(args.manifest_csv, newline="", encoding="utf-8") as file:
         rows = list(csv.DictReader(file))
     required = {"patient_id", "image_id", "split", "modality", "label"}
@@ -46,6 +56,8 @@ def main() -> None:
         "modality_counts": modalities,
         "label_counts": labels,
         "patient_level_split_check": "PASSED",
+        "dataset_key": args.dataset_key,
+        "governance": governance,
         "notice": "This manifest validates experiment metadata only. It does not establish licence, consent, ground truth quality, clinical validation, or dataset suitability.",
     }
     with open(args.output_json, "w", encoding="utf-8") as file:

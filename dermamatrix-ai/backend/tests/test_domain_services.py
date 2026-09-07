@@ -22,7 +22,8 @@ from clinical_intelligence_service import clinical_decision_support, normalise_s
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from commerce_service import materialize_product, resolve_product_destination
 from longitudinal_service import build_progress_comparison
-from dataset_registry import DATASET_REGISTRY
+from dataset_registry import DATASET_REGISTRY, training_eligibility
+from model_service import run_screening_model
 from ml_evaluation import multiclass_metrics, validate_grouped_splits, validate_patient_level_splits
 from model_metadata import model_metadata
 from pirs_service import calculate_pirs
@@ -33,6 +34,12 @@ from sweat_service import sweat_questionnaire_result
 
 
 class RiskAndPirsTests(unittest.TestCase):
+    def test_reported_priority_helper_never_emits_model_confidence(self):
+        result = run_screening_model(4, 5, 3, 91, {"width": 1200, "height": 900})
+        self.assertIn("risk_score", result)
+        self.assertNotIn("confidence", result)
+        self.assertIn("not an image model", result["intended_use"])
+
     def test_priority_normalisation_has_stable_severity_boundaries(self):
         self.assertEqual(normalise_reported_priority(39)["severity"], "LOW")
         self.assertEqual(normalise_reported_priority(40)["severity"], "MODERATE")
@@ -52,6 +59,22 @@ class RiskAndPirsTests(unittest.TestCase):
         self.assertEqual(result["engine"]["status"], "rule_based_prototype")
         self.assertEqual(result["explainability"]["method"], "Questionnaire input-contribution summary")
         self.assertGreaterEqual(result["risk_score"], 18)
+
+
+class DatasetGovernanceTests(unittest.TestCase):
+    def test_unm_atlas_is_registered_but_blocked_without_written_ml_authorization(self):
+        record = DATASET_REGISTRY["unm_inclusive_dermatology_atlas"]
+        gate = training_eligibility("unm_inclusive_dermatology_atlas")
+        self.assertEqual(record["license_status"], "PERMISSION_NOT_ESTABLISHED")
+        self.assertEqual(record["training_eligibility"], "BLOCKED_AWAITING_WRITTEN_ML_AUTHORIZATION")
+        self.assertFalse(gate["allowed"])
+        self.assertEqual(gate["status"], "BLOCKED_AWAITING_WRITTEN_ML_AUTHORIZATION")
+
+    def test_unknown_dataset_cannot_silently_enter_preparation(self):
+        gate = training_eligibility("not-in-registry")
+        self.assertFalse(gate["allowed"])
+        self.assertEqual(gate["status"], "BLOCKED_UNKNOWN_DATASET")
+        self.assertFalse(training_eligibility("excluded")["allowed"])
 
 
 class MlContractTests(unittest.TestCase):

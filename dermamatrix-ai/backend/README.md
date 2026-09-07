@@ -1,4 +1,4 @@
-# DermaMatrix AI API (MySQL + runnable screening model)
+# DermaMatrix AI API (MySQL + research-model boundary)
 
 The local Flask service serves the frontend and provides a prototype assessment endpoint.
 
@@ -33,7 +33,7 @@ For local configuration, copy `backend/.env.example` to `backend/.env`, then add
 - `GET /api/reports/<assessment_id>/download` – generates an account-scoped PDF discussion brief from stored assessment metadata
 - `GET /api/history/download` – generates an account-scoped PDF history export with saved metadata, routines, and self-reported check-ins; it excludes uploaded images
 
-The runnable `screening-triage-v1-demo` engine combines symptom inputs with image-quality reliability. A separate HAM10000 ResNet-34 research classifier can return seven lesion-class probabilities for a dermatoscopic lesion photo. It is **not for face photos, selfies, hair, nails, sweat glands, deficiency detection, medical advice, or diagnosis**. It is research-only and is not a medical device. The response explicitly flags future integrations for validated segmentation, Grad-CAM, and clinical risk models.
+The runnable reported-concern prioritisation helper combines selected symptom inputs with image-usability context. It is **not an image model** and has no model-confidence output. A separate HAM10000 ResNet-34 research classifier can return seven lesion-class probabilities for a dermatoscopic lesion photo. It is **not for face photos, selfies, hair, nails, sweat glands, deficiency detection, medical advice, or diagnosis**. It is research-only and is not a medical device. The response explicitly flags future integrations for validated segmentation, Grad-CAM, and clinical risk models.
 
 Assessment metadata is written only when the request is bound to the signed-in account. Guest results are intentionally returned without a database record. The report endpoints check the signed session and `user_id` before reading any data; PDFs are generated in memory and do not create an image store. The product policy is education-only: the API does not return prescription medicine, dosage, diagnosis-specific treatment, or an image-derived medicine recommendation.
 
