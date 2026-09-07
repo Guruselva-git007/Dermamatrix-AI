@@ -11,8 +11,9 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pymysql
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
@@ -41,6 +42,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+AUTH_SCHEMA_VERSION = "20260907_auth_profile_preferences_v1"
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_BYTES
@@ -88,6 +91,61 @@ def database() -> pymysql.Connection:
     return pymysql.connect(**options)
 
 
+def valid_email(value: str) -> bool:
+    """Use one bounded, non-display email validation rule at the API boundary."""
+    return bool(EMAIL_PATTERN.fullmatch(value)) and len(value) <= 254
+
+
+def _column_exists(cursor: pymysql.cursors.Cursor, table: str, column: str) -> bool:
+    cursor.execute(
+        """SELECT 1 FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s""",
+        (table, column),
+    )
+    return cursor.fetchone() is not None
+
+
+def apply_schema_migrations(connection: pymysql.Connection) -> None:
+    """Apply additive, recorded migrations without discarding existing project data."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """CREATE TABLE IF NOT EXISTS schema_migrations (
+                version VARCHAR(100) PRIMARY KEY,
+                applied_at DATETIME NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+        )
+        cursor.execute("SELECT version FROM schema_migrations WHERE version=%s", (AUTH_SCHEMA_VERSION,))
+        if cursor.fetchone():
+            return
+        additive_columns = {
+            "updated_at": "DATETIME NULL",
+            "last_login_at": "DATETIME NULL",
+            "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
+        }
+        for column, definition in additive_columns.items():
+            if not _column_exists(cursor, "users", column):
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+        cursor.execute(
+            """CREATE TABLE IF NOT EXISTS user_preferences (
+                id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                user_id BIGINT UNIQUE NOT NULL,
+                theme VARCHAR(10) NOT NULL DEFAULT 'light',
+                notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                reduced_motion BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at DATETIME NOT NULL,
+                CONSTRAINT fk_preferences_user FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+        )
+        cursor.execute("UPDATE users SET updated_at=created_at WHERE updated_at IS NULL")
+        cursor.execute(
+            """INSERT INTO user_preferences (user_id, theme, notifications_enabled, reduced_motion, updated_at)
+               SELECT u.id, 'light', TRUE, FALSE, %s FROM users u
+               LEFT JOIN user_preferences p ON p.user_id=u.id WHERE p.user_id IS NULL""",
+            (now(),),
+        )
+        cursor.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (%s, %s)", (AUTH_SCHEMA_VERSION, now()))
+
+
 def initialise_database() -> None:
     """Create consent-aware MySQL collections. Uploaded image bytes are never stored."""
     statements = [
@@ -97,7 +155,10 @@ def initialise_database() -> None:
             full_name VARCHAR(150) NOT NULL,
             phone_number VARCHAR(30) NOT NULL,
             email_address VARCHAR(254) NOT NULL,
-            created_at DATETIME NOT NULL
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NULL,
+            last_login_at DATETIME NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
         """CREATE TABLE IF NOT EXISTS auth_accounts (
             id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -193,6 +254,15 @@ def initialise_database() -> None:
             CONSTRAINT fk_report_user FOREIGN KEY (user_id) REFERENCES users(id),
             INDEX idx_report_user_generated (user_id, generated_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+        """CREATE TABLE IF NOT EXISTS user_preferences (
+            id BIGINT PRIMARY KEY AUTO_INCREMENT,
+            user_id BIGINT UNIQUE NOT NULL,
+            theme VARCHAR(10) NOT NULL DEFAULT 'light',
+            notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            reduced_motion BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at DATETIME NOT NULL,
+            CONSTRAINT fk_preferences_user FOREIGN KEY (user_id) REFERENCES users(id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
     ]
     global DATABASE_BOOT_ERROR
     try:
@@ -205,6 +275,7 @@ def initialise_database() -> None:
         with connection.cursor() as cursor:
             for statement in statements:
                 cursor.execute(statement)
+        apply_schema_migrations(connection)
         connection.commit()
     except pymysql.MySQLError as error:
         DATABASE_BOOT_ERROR = str(error)
@@ -218,22 +289,49 @@ def allowed_file(filename: str) -> bool:
 
 
 def user_for_patient(connection: pymysql.Connection, patient_id: str) -> dict | None:
-    """Resolve only the profile bound to the active signed-in browser session."""
+    """Legacy compatibility guard for routes that still receive a patient id.
+
+    New routes derive ownership exclusively from the signed-in session.  This
+    helper remains deliberately strict while older browser clients migrate.
+    """
+    # Reject a missing/mismatched legacy id without touching the database. This
+    # also ensures an old client cannot use this compatibility route to probe
+    # another account identifier.
+    if not patient_id or not session.get("user_id") or session.get("patient_id") != patient_id:
+        return None
+    user = current_user(connection)
+    if not user or user["patient_id"] != patient_id:
+        return None
+    return user
+
+
+def current_user(connection: pymysql.Connection) -> dict | None:
+    """Resolve the active account from the server-side signed session only."""
     session_user_id = session.get("user_id")
-    if not patient_id or not session_user_id or session.get("patient_id") != patient_id:
+    if not session_user_id:
         return None
     with connection.cursor() as cursor:
-        cursor.execute("SELECT id, patient_id, full_name, phone_number, email_address FROM users WHERE patient_id=%s AND id=%s", (patient_id, session_user_id))
+        cursor.execute(
+            """SELECT id, patient_id, full_name, phone_number, email_address,
+                      created_at, updated_at, last_login_at, is_active
+               FROM users WHERE id=%s AND is_active=TRUE""",
+            (session_user_id,),
+        )
         return cursor.fetchone()
 
 
 def account_response(user: dict, history: dict | None = None) -> dict:
     """Return the minimum account data the browser needs; password hashes never leave MySQL."""
     result = {
+        "id": user["id"],
         "patient_id": user["patient_id"],
         "full_name": user["full_name"],
         "phone_number": user["phone_number"],
         "email_address": user["email_address"],
+        "name": user["full_name"],
+        "email": user["email_address"],
+        "member_since": user.get("created_at").isoformat() if hasattr(user.get("created_at"), "isoformat") else user.get("created_at"),
+        "last_login_at": user.get("last_login_at").isoformat() if hasattr(user.get("last_login_at"), "isoformat") else user.get("last_login_at"),
         "stored_in": "mysql",
     }
     if history is not None:
@@ -249,6 +347,44 @@ def account_history(connection: pymysql.Connection, user_id: int) -> dict:
             (user_id,),
         )
         return cursor.fetchone() or {"past_history": "", "current_history": ""}
+
+
+def account_preferences(connection: pymysql.Connection, user_id: int) -> dict:
+    """Get durable non-clinical interface preferences for one authenticated user."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT theme, notifications_enabled, reduced_motion, updated_at
+               FROM user_preferences WHERE user_id=%s""",
+            (user_id,),
+        )
+        preferences = cursor.fetchone()
+        if preferences:
+            return {
+                "theme": preferences["theme"],
+                "notifications_enabled": bool(preferences["notifications_enabled"]),
+                "reduced_motion": bool(preferences["reduced_motion"]),
+                "updated_at": preferences["updated_at"].isoformat() if hasattr(preferences.get("updated_at"), "isoformat") else preferences.get("updated_at"),
+            }
+        timestamp = now()
+        cursor.execute(
+            """INSERT INTO user_preferences (user_id, theme, notifications_enabled, reduced_motion, updated_at)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (user_id, "light", True, False, timestamp),
+        )
+    connection.commit()
+    return {"theme": "light", "notifications_enabled": True, "reduced_motion": False, "updated_at": timestamp}
+
+
+def authenticated_response(connection: pymysql.Connection, user: dict, include_history: bool = True) -> dict:
+    profile = account_response(user, account_history(connection, user["id"]) if include_history else None)
+    return {
+        "authenticated": True,
+        "user": profile,
+        # `account` is retained for older frontend builds during this additive migration.
+        "account": profile,
+        "profile": profile,
+        "preferences": account_preferences(connection, user["id"]),
+    }
 
 
 def routine_payload(payload: dict) -> tuple[str, str, str, str] | None:
@@ -435,17 +571,28 @@ def model_registry():
 
 @app.get("/api/auth/session")
 def auth_session():
-    """Restore an authenticated account from the signed, HTTP-only session cookie."""
-    patient_id = str(session.get("patient_id", "")).strip()
-    if not patient_id:
-        return jsonify({"authenticated": False})
+    """Backward-compatible session probe for clients that expect HTTP 200."""
     connection = database()
     try:
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             session.clear()
             return jsonify({"authenticated": False})
-        return jsonify({"authenticated": True, "account": account_response(user)})
+        return jsonify(authenticated_response(connection, user))
+    finally:
+        connection.close()
+
+
+@app.get("/api/auth/me")
+def auth_me():
+    """Canonical current-session endpoint; it never accepts a client user id."""
+    connection = database()
+    try:
+        user = current_user(connection)
+        if not user:
+            session.clear()
+            return jsonify({"error": "Your session has expired. Please sign in again."}), 401
+        return jsonify(authenticated_response(connection, user))
     finally:
         connection.close()
 
@@ -454,13 +601,15 @@ def auth_session():
 def register_account():
     """Create a local account. Only a salted password hash is persisted."""
     payload = request.get_json(silent=True) or {}
-    full_name = str(payload.get("full_name", "")).strip()[:150]
-    email_address = str(payload.get("email_address", "")).strip().lower()[:254]
+    full_name = str(payload.get("full_name", payload.get("name", ""))).strip()[:150]
+    email_address = str(payload.get("email_address", payload.get("email", ""))).strip().lower()[:254]
     phone_number = str(payload.get("phone_number", "")).strip()[:30]
     password = str(payload.get("password", ""))
     confirm_password = str(payload.get("confirm_password", ""))
-    if not full_name or "@" not in email_address or len(phone_number) < 8:
-        return jsonify({"error": "Enter your full name, a valid email address, and a valid phone number."}), 400
+    if not full_name or not valid_email(email_address):
+        return jsonify({"error": "Enter your full name and a valid email address."}), 400
+    if phone_number and len(phone_number) < 8:
+        return jsonify({"error": "Enter a valid phone number or leave it blank."}), 400
     if len(password) < 8:
         return jsonify({"error": "Use a password with at least 8 characters."}), 400
     if password != confirm_password:
@@ -478,17 +627,19 @@ def register_account():
                 return jsonify({"error": "An account already exists for this email. Sign in instead."}), 409
             password_hash = generate_password_hash(password)
             cursor.execute(
-                """INSERT INTO users (patient_id, full_name, phone_number, email_address, created_at)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (patient_id, full_name, phone_number, email_address, timestamp),
+                """INSERT INTO users (patient_id, full_name, phone_number, email_address, created_at, updated_at, last_login_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (patient_id, full_name, phone_number, email_address, timestamp, timestamp, timestamp),
             )
             user_id = cursor.lastrowid
             cursor.execute("INSERT INTO auth_accounts (user_id, email_address, password_hash, created_at) VALUES (%s, %s, %s, %s)", (user_id, email_address, password_hash, timestamp))
             cursor.execute("INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)", (user_id, "", "", timestamp))
             cursor.execute("INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)", (user_id, "local-auth-v1", "Local account authentication and secure session", timestamp))
+            cursor.execute("INSERT INTO user_preferences (user_id, theme, notifications_enabled, reduced_motion, updated_at) VALUES (%s, %s, %s, %s, %s)", (user_id, "light", True, False, timestamp))
         connection.commit()
-        session.clear(); session["user_id"] = user_id; session["patient_id"] = patient_id
-        return jsonify({"authenticated": True, "account": {"patient_id": patient_id, "full_name": full_name, "phone_number": phone_number, "email_address": email_address, "stored_in": "mysql"}}), 201
+        session.clear(); session["user_id"] = user_id; session["patient_id"] = patient_id; session.permanent = True
+        user = current_user(connection)
+        return jsonify(authenticated_response(connection, user)), 201
     except Exception:
         connection.rollback()
         raise
@@ -501,21 +652,27 @@ def login_account():
     payload = request.get_json(silent=True) or {}
     email_address = str(payload.get("email_address", "")).strip().lower()[:254]
     password = str(payload.get("password", ""))
-    if not email_address or not password:
+    if not valid_email(email_address) or not password:
         return jsonify({"error": "Enter your email address and password."}), 400
     connection = database()
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT u.id, u.patient_id, u.full_name, u.phone_number, u.email_address, a.password_hash
-                   FROM auth_accounts a JOIN users u ON u.id=a.user_id WHERE a.email_address=%s""",
+                """SELECT u.id, u.patient_id, u.full_name, u.phone_number, u.email_address,
+                          u.created_at, u.updated_at, u.last_login_at, u.is_active, a.password_hash
+                   FROM auth_accounts a JOIN users u ON u.id=a.user_id WHERE a.email_address=%s AND u.is_active=TRUE""",
                 (email_address,),
             )
             user = cursor.fetchone()
         if not user or not user.get("password_hash") or not check_password_hash(user["password_hash"], password):
             return jsonify({"error": "That email and password do not match."}), 401
-        session.clear(); session["user_id"] = user["id"]; session["patient_id"] = user["patient_id"]
-        return jsonify({"authenticated": True, "account": account_response(user)})
+        timestamp = now()
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE users SET last_login_at=%s, updated_at=%s WHERE id=%s", (timestamp, timestamp, user["id"]))
+        connection.commit()
+        user["last_login_at"] = timestamp; user["updated_at"] = timestamp
+        session.clear(); session["user_id"] = user["id"]; session["patient_id"] = user["patient_id"]; session.permanent = True
+        return jsonify(authenticated_response(connection, user))
     finally:
         connection.close()
 
@@ -526,38 +683,80 @@ def logout_account():
     return jsonify({"authenticated": False})
 
 
-@app.post("/api/profiles")
-def create_profile():
-    payload = request.get_json(silent=True) or {}
-    required = ("full_name", "phone_number", "email_address", "past_history", "current_history")
-    missing = [field for field in required if not str(payload.get(field, "")).strip()]
-    if missing:
-        return jsonify({"error": f"Please provide: {', '.join(missing)}."}), 400
-    if not payload.get("health_data_consent"):
-        return jsonify({"error": "Explicit consent is required before storing health information."}), 400
-    if "@" not in str(payload["email_address"]) or len(str(payload["phone_number"]).strip()) < 8:
-        return jsonify({"error": "Enter a valid email address and phone number."}), 400
+def update_profile_record(connection: pymysql.Connection, user: dict, payload: dict, legacy_required: bool = False) -> dict:
+    """Update only the active account's profile; identifiers come from the session."""
+    full_name = str(payload.get("full_name", user["full_name"])).strip()[:150]
+    phone_number = str(payload.get("phone_number", user["phone_number"])).strip()[:30]
+    email_address = str(payload.get("email_address", user["email_address"])).strip().lower()[:254]
+    if not full_name:
+        raise ValueError("Enter your full name.")
+    if phone_number and len(phone_number) < 8:
+        raise ValueError("Enter a valid phone number or leave it blank.")
+    if not valid_email(email_address):
+        raise ValueError("Enter a valid email address.")
+    if email_address != user["email_address"]:
+        raise ValueError("Email changes require a verified email-change flow and are not available in this local prototype.")
+    has_health_fields = "past_history" in payload or "current_history" in payload
+    if legacy_required and (not has_health_fields or not str(payload.get("past_history", "")).strip() or not str(payload.get("current_history", "")).strip()):
+        raise ValueError("Please provide your past and current health history.")
+    if has_health_fields and not payload.get("health_data_consent"):
+        raise ValueError("Explicit consent is required before storing health information.")
+    timestamp = now()
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE users SET full_name=%s, phone_number=%s, updated_at=%s WHERE id=%s", (full_name, phone_number, timestamp, user["id"]))
+        if has_health_fields:
+            cursor.execute(
+                "INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)",
+                (user["id"], str(payload.get("past_history", "")).strip()[:5000], str(payload.get("current_history", "")).strip()[:5000], timestamp),
+            )
+            cursor.execute(
+                "INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)",
+                (user["id"], "india-prototype-v1", "MySQL storage of profile and health-history data for screening support", timestamp),
+            )
+    connection.commit()
+    updated = current_user(connection)
+    return account_response(updated, account_history(connection, updated["id"]))
 
+
+@app.route("/api/profile", methods=["GET", "PATCH"])
+def profile():
     connection = database()
     try:
-        patient_id = str(session.get("patient_id", "")).strip()
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
-            return jsonify({"error": "Sign in before saving health details."}), 401
-        if str(payload["email_address"]).strip().lower() != user["email_address"]:
-            return jsonify({"error": "Email address changes are not supported in this local prototype."}), 400
-        timestamp = now()
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE users SET full_name=%s, phone_number=%s WHERE id=%s", (payload["full_name"].strip(), payload["phone_number"].strip(), user["id"]))
-            cursor.execute("INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)", (user["id"], payload["past_history"].strip(), payload["current_history"].strip(), timestamp))
-            cursor.execute("INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)", (user["id"], "india-prototype-v1", "MySQL storage of profile and health-history data for screening support", timestamp))
-        connection.commit()
+            return jsonify({"error": "Sign in before viewing or updating your profile."}), 401
+        if request.method == "GET":
+            return jsonify(account_response(user, account_history(connection, user["id"])))
+        try:
+            updated = update_profile_record(connection, user, request.get_json(silent=True) or {})
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        return jsonify({"profile": updated, "message": "Profile updated."})
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
-    return jsonify({"patient_id": patient_id, "full_name": payload["full_name"].strip(), "email_address": user["email_address"], "phone_number": payload["phone_number"].strip(), "stored_in": "mysql", "consent_recorded": True})
+
+
+@app.post("/api/profiles")
+def create_profile():
+    """Legacy profile-save alias retained for existing local browser clients."""
+    payload = request.get_json(silent=True) or {}
+    connection = database()
+    try:
+        user = current_user(connection)
+        if not user:
+            return jsonify({"error": "Sign in before saving health details."}), 401
+        try:
+            return jsonify(update_profile_record(connection, user, payload, legacy_required=True))
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 @app.get("/api/profiles/<patient_id>")
@@ -573,12 +772,48 @@ def get_profile(patient_id: str):
         connection.close()
 
 
-@app.get("/api/routines")
-def list_routines():
-    patient_id = request.args.get("patient_id", "").strip()
+@app.route("/api/preferences", methods=["GET", "PUT"])
+def preferences():
+    """Persist only non-clinical presentation preferences for authenticated accounts."""
     connection = database()
     try:
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
+        if not user:
+            return jsonify({"error": "Sign in before updating account preferences."}), 401
+        if request.method == "GET":
+            return jsonify({"preferences": account_preferences(connection, user["id"])})
+        payload = request.get_json(silent=True) or {}
+        allowed = {"theme", "notifications_enabled", "reduced_motion"}
+        if any(key not in allowed for key in payload):
+            return jsonify({"error": "Unsupported preference field."}), 400
+        existing = account_preferences(connection, user["id"])
+        theme = payload.get("theme", existing["theme"])
+        if theme not in {"light", "dark"}:
+            return jsonify({"error": "Theme must be light or dark."}), 400
+        notifications = payload.get("notifications_enabled", existing["notifications_enabled"])
+        reduced_motion = payload.get("reduced_motion", existing["reduced_motion"])
+        if not isinstance(notifications, bool) or not isinstance(reduced_motion, bool):
+            return jsonify({"error": "Preference switches must be boolean values."}), 400
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE user_preferences SET theme=%s, notifications_enabled=%s,
+                          reduced_motion=%s, updated_at=%s WHERE user_id=%s""",
+                (theme, notifications, reduced_motion, now(), user["id"]),
+            )
+        connection.commit()
+        return jsonify({"preferences": account_preferences(connection, user["id"]), "message": "Preferences updated."})
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+@app.get("/api/routines")
+def list_routines():
+    connection = database()
+    try:
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Create or open a local profile before viewing progress."}), 401
         with connection.cursor() as cursor:
@@ -604,7 +839,7 @@ def create_routine():
         return jsonify({"error": "Provide a clinician-recorded condition, routine name, and valid start date."}), 400
     connection = database()
     try:
-        user = user_for_patient(connection, str(payload.get("patient_id", "")).strip())
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Create a local profile before adding routines."}), 401
         routine_id = f"routine-{uuid.uuid4().hex[:12]}"
@@ -631,7 +866,7 @@ def update_routine(routine_id: str):
         return jsonify({"error": "Provide a clinician-recorded condition, routine name, and valid start date."}), 400
     connection = database()
     try:
-        user = user_for_patient(connection, str(payload.get("patient_id", "")).strip())
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Create a local profile before editing routines."}), 401
         with connection.cursor() as cursor:
@@ -649,10 +884,9 @@ def update_routine(routine_id: str):
 
 @app.delete("/api/routines/<routine_id>")
 def delete_routine(routine_id: str):
-    patient_id = request.args.get("patient_id", "").strip()
     connection = database()
     try:
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Create a local profile before deleting routines."}), 401
         with connection.cursor() as cursor:
@@ -671,10 +905,9 @@ def delete_routine(routine_id: str):
 
 @app.get("/api/progress-checkins")
 def list_progress_checkins():
-    patient_id = request.args.get("patient_id", "").strip()
     connection = database()
     try:
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Create or open a local profile before viewing progress."}), 401
         with connection.cursor() as cursor:
@@ -694,10 +927,9 @@ def list_progress_checkins():
 @app.get("/api/analysis-history")
 def list_analysis_history():
     """Return saved analysis metadata for a profile; uploaded image bytes are never returned or stored."""
-    patient_id = request.args.get("patient_id", "").strip()
     connection = database()
     try:
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Create or open a local profile before viewing saved analyses."}), 401
         with connection.cursor() as cursor:
@@ -713,7 +945,7 @@ def list_analysis_history():
                 "assessment_id": record["assessment_id"], "area": record["area"], "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
                 "image_stored": bool(record["image_stored"]), "summary": summary,
             })
-        return jsonify({"analyses": analyses, "image_policy": "Analysis metadata is stored for registered profiles. Uploaded image bytes are not stored in this prototype."})
+        return jsonify({"analyses": analyses, "assessments": analyses, "image_policy": "Analysis metadata is stored for registered profiles. Uploaded image bytes are not stored in this prototype."})
     finally:
         connection.close()
 
@@ -723,7 +955,7 @@ def download_assessment_report(assessment_id: str):
     """Generate a PDF from one account-scoped stored assessment record."""
     connection = database()
     try:
-        user = user_for_patient(connection, str(session.get("patient_id", "")).strip())
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Sign in to download a saved report."}), 401
         with connection.cursor() as cursor:
@@ -777,7 +1009,7 @@ def download_history_export():
     """
     connection = database()
     try:
-        user = user_for_patient(connection, str(session.get("patient_id", "")).strip())
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Sign in to download your saved history."}), 401
         with connection.cursor() as cursor:
@@ -833,7 +1065,6 @@ def download_history_export():
 @app.post("/api/progress-checkins")
 def create_progress_checkin():
     payload = request.get_json(silent=True) or {}
-    patient_id = str(payload.get("patient_id", "")).strip()
     routine_id = str(payload.get("routine_id", "")).strip()[:50]
     trend = str(payload.get("reported_trend", "")).strip()
     checkin_date = str(payload.get("checkin_date", "")).strip()[:10]
@@ -847,7 +1078,7 @@ def create_progress_checkin():
         return jsonify({"error": "Provide valid check-in details."}), 400
     connection = database()
     try:
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Create a local profile before adding a check-in."}), 401
         with connection.cursor() as cursor:
@@ -879,8 +1110,7 @@ def request_clinical_review():
         return jsonify({"error": "An assessment ID is required."}), 400
     connection = database()
     try:
-        patient_id = str(payload.get("patient_id", "")).strip()
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Sign in to save a clinician-review request."}), 401
         with connection.cursor() as cursor:
@@ -1048,7 +1278,6 @@ def create_assessment():
         reported_factors=manual_symptoms,
     )
     assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
-    patient_id = request.form.get("patient_id", "").strip()
     user_id = None
     persistence = "mysql"
     response = {
@@ -1089,7 +1318,9 @@ def create_assessment():
         response["model_pipeline"]["presentation_case"] = "Exact SHA-256 match to an opt-in, pre-labelled teaching file; not AI inference."
         response["recommendations"] = presentation_case_recommendations(presentation_case, response["recommendations"])
         response["care_plan"] = presentation_case_care_plan(presentation_case)
-    if not patient_id:
+    # Guests get an ephemeral result. Authenticated requests persist under the
+    # user resolved from the signed cookie, never from a submitted patient id.
+    if not session.get("user_id"):
         attach_condition_intelligence(response)
         response["persistence"] = "not-persisted-guest"
         response["progress_comparison"] = versioned_progress_summary(None, None, area, response)
@@ -1099,7 +1330,7 @@ def create_assessment():
     connection = None
     try:
         connection = database()
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
         user_id = user["id"]
@@ -1168,7 +1399,6 @@ def create_sweat_assessment():
             f"Body location: {str(payload.get('body_location', '')).strip()[:120]}" if str(payload.get("body_location", "")).strip() else "",
         ],
     )
-    patient_id = str(payload.get("patient_id", "")).strip()
     response = {
         "assessment_id": assessment_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1209,7 +1439,7 @@ def create_sweat_assessment():
         "care_plan": clinician_first_care_plan(risk_score),
         "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
     }
-    if not patient_id:
+    if not session.get("user_id"):
         attach_condition_intelligence(response)
         response["persistence"] = "not-persisted-guest"
         response["progress_comparison"] = versioned_progress_summary(None, None, "Sweat", response)
@@ -1219,7 +1449,7 @@ def create_sweat_assessment():
     connection = None
     try:
         connection = database()
-        user = user_for_patient(connection, patient_id)
+        user = current_user(connection)
         if not user:
             return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
         history = account_history(connection, user["id"])
@@ -1274,8 +1504,13 @@ def prevent_stale_local_assets(response):
 
 
 load_local_env()
+try:
+    session_days = max(1, min(int(os.getenv("FLASK_SESSION_DAYS", "14")), 30))
+except ValueError:
+    session_days = 14
 app.config.update(
     SECRET_KEY=os.getenv("FLASK_SECRET_KEY") or os.urandom(32),
+    PERMANENT_SESSION_LIFETIME=timedelta(days=session_days),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.getenv("FLASK_SESSION_SECURE", "false").lower() == "true",

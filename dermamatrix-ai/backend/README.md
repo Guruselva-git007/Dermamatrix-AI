@@ -25,6 +25,9 @@ For local configuration, copy `backend/.env.example` to `backend/.env`, then add
 - `POST /api/auth/register` – creates a local account; only a salted password hash is stored
 - `POST /api/auth/login` / `POST /api/auth/logout` – local account session controls
 - `GET /api/auth/session` – restores the signed local browser session
+- `GET /api/auth/me` – canonical current-user/session restoration endpoint (401 when signed out)
+- `GET` / `PATCH /api/profile` – session-scoped profile and consent-aware health-history access
+- `GET` / `PUT /api/preferences` – session-scoped non-clinical appearance/accessibility preferences
 - `GET /api/products` – returns assessment-gated general-care categories or user-led discovery categories when `mode=discovery`
 - `GET /api/products/search?q=...` – resolves a user-initiated product, ingredient, or care-topic search to safe external discovery handoffs
 - `GET /api/knowledge/conditions` and `GET /api/knowledge/conditions/<id>` – source-linked educational guides that are never represented as image-model predictions

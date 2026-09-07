@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -72,7 +72,11 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw Error(payload.error || `Request failed (${response.status}).`);
+    if (!response.ok) {
+      const error = Error(payload.error || `Request failed (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
     return payload;
   } catch (error) {
     if (error.name === 'AbortError') throw Error('The request took too long. Please retry.');
@@ -200,14 +204,45 @@ function hideAuthGate() {
   $('#authGate').classList.remove('show'); $('#authGate').setAttribute('aria-hidden', 'true'); document.body.classList.remove('auth-open');
 }
 
-function applyAccount(account) {
+function applyPreferences(preferences = {}) {
+  const next = {
+    theme: preferences.theme === 'dark' ? 'dark' : 'light',
+    notifications_enabled: preferences.notifications_enabled !== false,
+    reduced_motion: preferences.reduced_motion === true,
+  };
+  state.preferences = { ...state.preferences, ...next };
+  $('#notificationsToggle').checked = next.notifications_enabled;
+  $('#motionToggle').checked = next.reduced_motion;
+  document.body.classList.toggle('reduce-motion', next.reduced_motion);
+  applyTheme(next.theme);
+  // These values contain no account identity. They are only a guest/offline
+  // rendering fallback; signed-in preferences are persisted by the API.
+  localStorage.setItem('dermamatrix_notifications', String(next.notifications_enabled));
+  localStorage.setItem('dermamatrix_reduced_motion', String(next.reduced_motion));
+  localStorage.setItem('dermamatrix_theme', next.theme);
+}
+
+async function persistPreferences(patch) {
+  const next = { ...(state.preferences || {}), ...patch };
+  applyPreferences(next);
+  if (!state.profile?.patient_id) return;
+  try {
+    const data = await requestJSON('/api/preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    applyPreferences(data.preferences);
+  } catch (error) {
+    toast(error.status === 401 ? 'Your session ended. Sign in again to save preferences.' : 'Preference changed in this browser but could not be saved to your account.');
+  }
+}
+
+function applyAccount(account, preferences = null) {
   state.profile = { ...account }; state.isGuest = false; state.progressLoadedFor = null;
   $('#profileName').textContent = account.full_name; $('#profileMeta').textContent = account.patient_id;
+  if (preferences) applyPreferences(preferences);
   updateDashboardIdentity(); persistBrowserProfile();
 }
 
-async function enterAccount(account, message) {
-  applyAccount(account); hideAuthGate();
+async function enterAccount(authentication, message) {
+  applyAccount(authentication.user || authentication.account, authentication.preferences); hideAuthGate();
   await hydrateProfile(); await loadProgress({ force: true });
   if (message) toast(message);
 }
@@ -219,7 +254,7 @@ async function registerAccount(event) {
   const button = form.querySelector('[type="submit"]'); button.disabled = true; setAuthMessage('');
   try {
     const data = await requestJSON('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    form.reset(); await enterAccount(data.account, 'Account created. Add health details only when you are ready.');
+    form.reset(); await enterAccount(data, 'Account created. Add health details only when you are ready.');
   } catch (error) { setAuthMessage(error.message || 'Unable to create your account.'); }
   button.disabled = false;
 }
@@ -230,7 +265,7 @@ async function loginAccount(event) {
   const button = form.querySelector('[type="submit"]'); button.disabled = true; setAuthMessage('');
   try {
     const data = await requestJSON('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    form.reset(); await enterAccount(data.account, 'Signed in to your local workspace.');
+    form.reset(); await enterAccount(data, 'Signed in to your local workspace.');
   } catch (error) { setAuthMessage(error.message || 'Unable to sign in.'); }
   button.disabled = false;
 }
@@ -248,9 +283,9 @@ async function continueAsGuest() {
 
 async function restoreAuthentication() {
   try {
-    const data = await requestJSON('/api/auth/session', {}, 10000);
-    if (!data.authenticated || !data.account) return false;
-    applyAccount(data.account); return true;
+    const data = await requestJSON('/api/auth/me', {}, 10000);
+    if (!data.authenticated || !(data.user || data.account)) return false;
+    applyAccount(data.user || data.account, data.preferences); return true;
   } catch {
     return false;
   }
@@ -741,7 +776,7 @@ async function analyze() {
     transitionAssessment(AssessmentState.ANALYZING, 'ASSESSMENT RUNNING');
     if (sweat) {
       const payload = {
-        patient_id: state.profile?.patient_id || '', questionnaire_consent: true, urgent_concern: $('#urgentConcern').checked,
+        questionnaire_consent: true, urgent_concern: $('#urgentConcern').checked,
         pattern: $('#sweatPattern').value, frequency: $('#sweatFrequency').value, duration: $('#sweatDuration').value,
         body_location: $('#sweatLocation').value, stress: $('#sweatStress').value, heat: $('#sweatHeat').value,
         medication_change: $('#sweatMedication').checked, daily_impact: $('#sweatImpact').checked,
@@ -749,7 +784,7 @@ async function analyze() {
       data = await requestJSON('/api/sweat-assessments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     } else {
       const form = new FormData();
-      [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['patient_id', state.profile?.patient_id || ''], ['image_consent', String($('#imageConsent').checked)], ['presentation_case_enabled', String($('#presentationCaseEnabled').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
+      [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['image_consent', String($('#imageConsent').checked)], ['presentation_case_enabled', String($('#presentationCaseEnabled').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
       $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
       data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
     }
@@ -897,10 +932,11 @@ async function saveProfile(event) {
   payload.health_data_consent = form.get('health_data_consent') === 'on';
   const button = event.currentTarget.querySelector('[type="submit"]'); button.disabled = true;
   try {
-    const data = await requestJSON('/api/profiles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    state.profile = { ...state.profile, ...data, past_history: payload.past_history, current_history: payload.current_history };
+    const data = await requestJSON('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const profile = data.profile;
+    state.profile = { ...state.profile, ...profile };
     persistBrowserProfile();
-    $('#profileName').textContent = data.full_name; $('#profileMeta').textContent = data.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); toast('Profile saved in the local project database.');
+    $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); toast('Profile saved in the local project database.');
   } catch (error) { toast(error.message || 'Unable to save profile.'); }
   button.disabled = false;
 }
@@ -919,7 +955,7 @@ function restoreProfile() {
 async function hydrateProfile() {
   if (!state.profile?.patient_id) return;
   try {
-    const profile = await requestJSON(`/api/profiles/${encodeURIComponent(state.profile.patient_id)}`, {}, 10000);
+    const profile = await requestJSON('/api/profile', {}, 10000);
     state.profile = { ...state.profile, ...profile };
     $('#profileName').textContent = state.profile.full_name; $('#profileMeta').textContent = state.profile.patient_id;
     updateDashboardIdentity();
@@ -1288,11 +1324,10 @@ async function loadProgress({ force = false } = {}) {
   if (state.progressLoadPromise) return state.progressLoadPromise;
   state.progressLoadPromise = (async () => {
     try {
-      const encodedId = encodeURIComponent(patientId);
       const [routineData, checkinData, analysisData] = await Promise.all([
-        requestJSON(`/api/routines?patient_id=${encodedId}`),
-        requestJSON(`/api/progress-checkins?patient_id=${encodedId}`),
-        requestJSON(`/api/analysis-history?patient_id=${encodedId}`),
+        requestJSON('/api/routines'),
+        requestJSON('/api/progress-checkins'),
+        requestJSON('/api/analysis-history'),
       ]);
       if (state.profile?.patient_id !== patientId) return;
       state.routines = routineData.routines; state.checkins = checkinData.checkins; state.analyses = analysisData.analyses;
@@ -1321,7 +1356,7 @@ async function saveRoutine(event) {
   if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving routines.'); }
   const submitButton = event.currentTarget.querySelector('[type="submit"]');
   if (submitButton.disabled) return;
-  const payload = { patient_id: state.profile.patient_id, condition_label: $('#conditionLabel').value, routine_name: $('#routineName').value, start_date: $('#routineStartDate').value, notes: $('#routineNotes').value };
+  const payload = { condition_label: $('#conditionLabel').value, routine_name: $('#routineName').value, start_date: $('#routineStartDate').value, notes: $('#routineNotes').value };
   const editingId = $('#editingRoutineId').value;
   submitButton.disabled = true;
   try {
@@ -1334,7 +1369,7 @@ async function saveRoutine(event) {
 async function deleteRoutine(routineId) {
   if (!window.confirm('Delete this routine and its progress history?')) return;
   try {
-    await requestJSON(`/api/routines/${routineId}?patient_id=${encodeURIComponent(state.profile.patient_id)}`, { method: 'DELETE' });
+    await requestJSON(`/api/routines/${routineId}`, { method: 'DELETE' });
     await loadProgress({ force: true }); toast('Routine deleted.');
   } catch (error) { toast(error.message || 'Could not delete this routine.'); }
 }
@@ -1345,7 +1380,7 @@ async function saveCheckin(event) {
   const submitButton = event.currentTarget.querySelector('[type="submit"]');
   if (submitButton.disabled) return;
   const file = $('#checkinImage').files[0];
-  const payload = { patient_id: state.profile.patient_id, routine_id: $('#checkinRoutine').value, checkin_date: $('#checkinDate').value, reported_trend: $('#checkinTrend').value, discomfort: $('#checkinDiscomfort').value, change: $('#checkinChange').value, note: $('#checkinNote').value };
+  const payload = { routine_id: $('#checkinRoutine').value, checkin_date: $('#checkinDate').value, reported_trend: $('#checkinTrend').value, discomfort: $('#checkinDiscomfort').value, change: $('#checkinChange').value, note: $('#checkinNote').value };
   submitButton.disabled = true;
   try {
     const data = await requestJSON('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1397,11 +1432,11 @@ $('#workspaceSearch').onkeydown = event => {
   if (!query) return;
   $('#productSearch').value = query; showPage('products'); searchProducts();
 };
-$('#notificationsToggle').onchange = event => { localStorage.setItem('dermamatrix_notifications', String(event.target.checked)); toast(event.target.checked ? 'Local care reminders enabled.' : 'Local care reminders disabled.'); };
-$('#motionToggle').onchange = event => { localStorage.setItem('dermamatrix_reduced_motion', String(event.target.checked)); document.body.classList.toggle('reduce-motion', event.target.checked); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
+$('#notificationsToggle').onchange = event => { persistPreferences({ notifications_enabled: event.target.checked }); toast(event.target.checked ? 'Care reminders enabled.' : 'Care reminders disabled.'); };
+$('#motionToggle').onchange = event => { persistPreferences({ reduced_motion: event.target.checked }); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
 $('#clearProfileButton').onclick = clearLocalProfile;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
-$('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('dermamatrix_theme', next); applyTheme(next); };
+$('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; persistPreferences({ theme: next }); };
 $('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin; $('#downloadHistoryButton').onclick = downloadHistory;
 window.addEventListener('popstate', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
 window.addEventListener('hashchange', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));

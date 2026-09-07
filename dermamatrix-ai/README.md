@@ -54,6 +54,8 @@ For a terminal-only start, use `bash backend/scripts/run_app.sh`. It selects `.v
 The entry screen supports account creation, sign-in, and a non-persistent guest workspace.
 
 - Account passwords are never stored in plaintext. MySQL holds a salted Werkzeug password hash, and the browser receives an HTTP-only signed session cookie after a successful sign-in.
+- `GET /api/auth/me` is the canonical session-restoration endpoint; it returns only the current signed-in user, profile, and non-clinical preferences. The backend derives ownership for routines, check-ins, saved assessments, PDFs, and clinical-review requests from that cookie—never from a browser-supplied patient ID.
+- Appearance, notification, and reduced-motion preferences are durable per account through `/api/preferences`; guest preferences stay only in the current browser. Profiles are read and updated through `/api/profile`.
 - The guest path does not create an account, persist health history, or retain analysis reports.
 - For a durable local login session across Flask restarts, set a long random `FLASK_SECRET_KEY` in the ignored `backend/.env`. Without it, users can still sign in again with their saved email and password after a restart.
 
