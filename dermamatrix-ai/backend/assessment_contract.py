@@ -11,11 +11,19 @@ explainability artifact when an underlying service did not produce one.
 from __future__ import annotations
 
 
-ASSESSMENT_RESULT_VERSION = "assessment-result-v1"
+ASSESSMENT_RESULT_VERSION = "assessment-result-v1.1"
 
 
-def _urgency(cdss: dict, urgent_notice: str | None) -> dict:
+def _urgency(cdss: dict, urgent_notice: str | None, assessment_risk: dict) -> dict:
     """Keep care routing distinct from a disease-risk model."""
+    calculated = assessment_risk.get("urgency")
+    if calculated:
+        return {
+            "level": calculated,
+            "available": True,
+            "source": "Assessment concern indicator and CDSS routing",
+            "notice": cdss.get("next_step") or assessment_risk.get("urgency_label"),
+        }
     state = cdss.get("status", "UNCERTAIN")
     if urgent_notice or state == "URGENT_EVALUATION_RECOMMENDED":
         return {
@@ -85,6 +93,7 @@ def build_assessment_result(response: dict) -> dict:
     quality = response.get("quality") or {}
     validation = response.get("input_validation") or {}
     priority = response.get("risk") or {}
+    assessment_risk = response.get("assessment_risk") or {}
     cdss = response.get("clinical_decision_support") or {}
     segmentation = response.get("segmentation") or {}
     candidate = response.get("candidate_region") or {}
@@ -127,6 +136,20 @@ def build_assessment_result(response: dict) -> dict:
             "source": None,
             "notice": "No validated disease-risk model is configured for this assessment.",
         },
+        "assessment_risk": {
+            "available": bool(assessment_risk.get("available") and assessment_risk.get("score") is not None),
+            "score": assessment_risk.get("score"),
+            "level": assessment_risk.get("level") or "NOT_ASSESSED",
+            "urgency": assessment_risk.get("urgency"),
+            "urgency_label": assessment_risk.get("urgency_label"),
+            "factors": assessment_risk.get("factors") or [],
+            "factor_labels": assessment_risk.get("factor_labels") or [],
+            "explanation": assessment_risk.get("explanation"),
+            "methodology": assessment_risk.get("methodology"),
+            "methodology_version": assessment_risk.get("methodology_version"),
+            "validation_status": assessment_risk.get("validation_status"),
+            "notice": assessment_risk.get("label") or "Assessment concern indicator is not a disease probability or diagnosis.",
+        },
         "care_priority": {
             "available": priority.get("score") is not None,
             "score": priority.get("score"),
@@ -135,7 +158,7 @@ def build_assessment_result(response: dict) -> dict:
             "notice": priority.get("label") or "Reported concern priority is not disease risk or condition likelihood.",
             "version": priority.get("version"),
         },
-        "urgency": _urgency(cdss, response.get("urgent_notice")),
+        "urgency": _urgency(cdss, response.get("urgent_notice"), assessment_risk),
         "explainability": {
             "available": bool(classifier.get("available") and attention.get("image")),
             "method": (classifier.get("explainability") or {}).get("method") if classifier.get("available") else "NOT_AVAILABLE",

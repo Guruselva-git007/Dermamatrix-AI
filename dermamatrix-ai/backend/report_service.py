@@ -51,7 +51,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
 
     result_condition = result.get("condition") or {}
     result_severity = result.get("severity") or {}
-    result_risk = result.get("disease_risk") or {}
+    result_risk = result.get("assessment_risk") or summary.get("assessment_risk") or {}
     result_priority = result.get("care_priority") or {}
     result_urgency = result.get("urgency") or {}
     result_input = result.get("input") or {}
@@ -76,10 +76,10 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
 
     created_at = str(assessment.get("created_at", ""))[:19].replace("T", " ")
     priority_value = f"{_text(result_priority.get('score', risk.get('score')), '—')}/100 · {_text(result_priority.get('level', risk.get('level')), 'NOT ASSESSED')}"
-    disease_risk_value = (
+    assessment_risk_value = (
         f"{_text(result_risk.get('score'))}/100 · {_text(result_risk.get('level'))}"
         if result_risk.get("available") and result_risk.get("score") is not None
-        else "Not available — no validated disease-risk model is configured"
+        else _text(result_risk.get("notice"), "Not assessed")
     )
     prediction = classification.get("top_prediction") or {}
     classification_value = _text(prediction.get("condition"), "No scoped disease classification was run") if classification.get("available") else "No scoped disease classification was run"
@@ -114,10 +114,10 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
         [Paragraph("Possible finding", eyebrow), Paragraph(knowledge_finding, body)],
         [Paragraph("Estimated likelihood", eyebrow), Paragraph(_text(likelihood_value), body)],
-        [Paragraph("Disease risk", eyebrow), Paragraph(_text(disease_risk_value), body)],
+        [Paragraph("Assessment concern score", eyebrow), Paragraph(_text(assessment_risk_value), body)],
         [Paragraph("Reported symptom severity", eyebrow), Paragraph(f"{_text(severity_value)} · {_text(severity_note)}", body)],
         [Paragraph("Care priority", eyebrow), Paragraph(f"{priority_value}<br/><font color='#5C6E80'>Reported concern priority, not disease risk.</font>", body)],
-        [Paragraph("Urgency and next step", eyebrow), Paragraph(f"{_text(urgency_value)} · {_text(result_urgency.get('notice') or cdss.get('next_step'))}", body)],
+        [Paragraph("Urgency and next step", eyebrow), Paragraph(f"{_text(result_risk.get('urgency_label') or urgency_value)} · {_text(result_urgency.get('notice') or cdss.get('next_step'))}", body)],
         [Paragraph("Image / input readiness", eyebrow), Paragraph(_text(input_quality), body)],
         [Paragraph("Account", eyebrow), Paragraph(_text(account.get("full_name")), body)],
     ]
@@ -142,6 +142,12 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(_text(screening.get("title")), body),
         Spacer(1, 1.5 * mm),
         Paragraph(_text(screening.get("summary")), body),
+        Paragraph("Assessment score explanation", heading),
+        Paragraph(_text(result_risk.get("explanation") or result_risk.get("notice")), body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Contributing factors:</b><br/>{_bullets(result_risk.get('factor_labels') or [factor.get('label') for factor in result_risk.get('factors') or []])}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Method:</b> {_text(result_risk.get('methodology'))} · version {_text(result_risk.get('methodology_version'))}. {_text(result_risk.get('notice'), 'This score is not a disease probability or diagnosis.')}", note),
         Paragraph("Model and explanation scope", heading),
         Paragraph(f"<b>Classification:</b> {classification_value}", body),
         Spacer(1, 1.5 * mm),
@@ -242,7 +248,7 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
     analysis_rows = []
     for analysis in analyses[:50]:
         summary = analysis.get("summary") or {}
-        risk = summary.get("risk") or {}
+        risk = summary.get("assessment_risk") or (summary.get("assessment_result") or {}).get("assessment_risk") or summary.get("risk") or {}
         classifier = summary.get("classification") or summary.get("research_classifier") or {}
         prediction = classifier.get("top_prediction") or {}
         scope = prediction.get("condition") if classifier.get("available") else "Screening summary only"
@@ -263,9 +269,9 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
         Spacer(1, 4 * mm),
         profile_table,
         Paragraph("Saved screening summaries", heading),
-        Paragraph("Reported-concern priority is not disease risk. A screening summary is not a confirmed diagnosis.", note),
+        Paragraph("Assessment concern indicators are transparent project-defined estimates, not disease probabilities, diagnoses, or clinically validated medical-risk scores. A screening summary is not a confirmed diagnosis.", note),
         Spacer(1, 1.5 * mm),
-        compact_table(["Date", "Area", "Result scope", "Priority"], analysis_rows, [25 * mm, 24 * mm, 77 * mm, 44 * mm]),
+        compact_table(["Date", "Area", "Result scope", "Assessment score"], analysis_rows, [25 * mm, 24 * mm, 77 * mm, 44 * mm]),
         Paragraph("Routines", heading),
         compact_table(["Problem recorded", "Routine", "Started", "Tracking"], routine_rows, [47 * mm, 65 * mm, 28 * mm, 30 * mm]),
         Paragraph("Check-in timeline", heading),

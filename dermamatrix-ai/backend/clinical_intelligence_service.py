@@ -89,12 +89,13 @@ def patient_context_snapshot(*, area: str, symptoms: list[str], previous_treatme
     }
 
 
-def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_validation: dict, classifier: dict, context: dict, urgent_selected: bool) -> dict:
+def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_validation: dict, classifier: dict, context: dict, urgent_selected: bool, assessment_risk: dict | None = None) -> dict:
     """Route the existing recommendation and referral modules without prescribing."""
     validation_status = input_validation.get("status", "UNCERTAIN")
     uncertainty = (classifier.get("uncertainty") or {}).get("status")
     risk_severity = risk.get("severity", "UNCERTAIN")
-    if urgent_selected or risk_severity == "URGENT":
+    concern_urgency = (assessment_risk or {}).get("urgency")
+    if urgent_selected or risk_severity == "URGENT" or concern_urgency == "URGENT_EVALUATION":
         state = "URGENT_EVALUATION_RECOMMENDED"
         title = "Seek timely professional evaluation"
         next_step = "You selected a prompt-care concern. Do not rely on app guidance alone; contact an appropriate clinician or urgent service now if you feel severely unwell."
@@ -102,7 +103,7 @@ def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_va
         state = "UNCERTAIN"
         title = "Retake or discuss this assessment"
         next_step = "The available input cannot support a confident condition assessment. Retake a clear, relevant image or discuss the concern with a qualified clinician."
-    elif risk_severity in {"HIGH", "MODERATE"}:
+    elif concern_urgency in {"PROMPT_MEDICAL_EVALUATION", "MEDICAL_REVIEW_RECOMMENDED"} or risk_severity in {"HIGH", "MODERATE"}:
         state = "PROFESSIONAL_EVALUATION_RECOMMENDED"
         title = "Professional evaluation is recommended"
         next_step = "Track the reported concern and arrange professional advice before changing care because symptoms are persistent, changing, or impactful."
@@ -120,7 +121,7 @@ def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_va
         "urgent_evaluation_recommended": state == "URGENT_EVALUATION_RECOMMENDED",
         "product_guidance": product_guidance,
         "monitoring": "Save this assessment as an ongoing query and submit a future check-in or assessment when a meaningful change occurs. No passive monitoring or cure claim is made.",
-        "inputs_considered": ["reported-concern priority", "self-reported symptom severity", "input validation", "model uncertainty", "area-relevant context"],
+        "inputs_considered": ["assessment concern indicator", "reported-concern priority", "self-reported symptom severity", "input validation", "model uncertainty", "area-relevant context"],
         "context_scope": context["cdss_context"],
         "notice": "This CDSS layer provides structured educational guidance. It does not diagnose disease, prescribe treatment, or turn a research model label into a prescription.",
     }

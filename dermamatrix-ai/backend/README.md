@@ -33,6 +33,7 @@ For local configuration, copy `backend/.env.example` to `backend/.env`, then add
 - `GET /api/knowledge/conditions` and `GET /api/knowledge/conditions/<id>` – source-linked educational guides that are never represented as image-model predictions
 - `POST /api/assessments` – accepts `image`, `area`, `duration`, `discomfort`, and `change` as multipart form data
 - `POST /api/sweat-assessments` – accepts structured sweat questionnaire data only; it never accepts an image
+- `GET /api/assessments/<assessment_id>` – returns one account-scoped saved assessment result and its versioned concern-indicator metadata
 - `GET /api/reports/<assessment_id>/download` – generates an account-scoped PDF discussion brief from stored assessment metadata
 - `GET /api/history/download` – generates an account-scoped PDF history export with saved metadata, routines, and self-reported check-ins; it excludes uploaded images
 

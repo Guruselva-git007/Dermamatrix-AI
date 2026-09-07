@@ -151,8 +151,14 @@ class AccountMySQLIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(saved_sweat.status_code, 200, saved_sweat.get_json())
         self.assertEqual(saved_sweat.get_json()["persistence"], "mysql")
-        self.assertEqual(len(self.client_a.get("/api/analysis-history").get_json()["analyses"]), 1)
+        self.assertTrue(saved_sweat.get_json()["assessment_risk"]["available"])
+        self.assertIsNotNone(saved_sweat.get_json()["assessment_risk"]["score"])
+        history = self.client_a.get("/api/analysis-history").get_json()["analyses"]
+        self.assertEqual(len(history), 1)
         self.assertEqual(self.client_b.get("/api/analysis-history").get_json()["analyses"], [])
+        assessment_id = history[0]["assessment_id"]
+        self.assertEqual(self.client_a.get(f"/api/assessments/{assessment_id}").status_code, 200)
+        self.assertEqual(self.client_b.get(f"/api/assessments/{assessment_id}").status_code, 404)
 
         self.assertEqual(self.client_a.post("/api/auth/logout").status_code, 200)
         self.assertEqual(self.client_a.get("/api/auth/me").status_code, 401)

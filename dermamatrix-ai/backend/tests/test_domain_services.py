@@ -29,6 +29,7 @@ from model_metadata import model_metadata
 from pirs_service import calculate_pirs
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
+from risk_engine import calculate_assessment_risk
 from recommendation_service import build_recommendations, catalog_for_area, search_product_discovery
 from sweat_service import sweat_questionnaire_result
 
@@ -59,6 +60,18 @@ class RiskAndPirsTests(unittest.TestCase):
         self.assertEqual(result["engine"]["status"], "rule_based_prototype")
         self.assertEqual(result["explainability"]["method"], "Questionnaire input-contribution summary")
         self.assertGreaterEqual(result["risk_score"], 18)
+
+    def test_assessment_indicator_is_not_a_model_probability(self):
+        result = calculate_assessment_risk(
+            area="Skin", condition_name=None, condition_source=None, model_confidence=None,
+            severity={"score": 20}, duration=2, discomfort=3, recent_change=2,
+            symptoms=["itching"], urgent_selected=False, image_quality=88,
+            quality_status="GOOD", uncertainty_status="NOT_APPLICABLE_NO_CLASSIFIER",
+            input_validation_status="VALID_RELEVANT",
+        )
+        self.assertTrue(result["available"])
+        self.assertEqual(result["validation_status"], "not_clinically_validated")
+        self.assertIn("not a disease probability", result["explanation"])
 
 
 class DatasetGovernanceTests(unittest.TestCase):

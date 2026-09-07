@@ -28,6 +28,12 @@ def _model_signature(snapshot: dict) -> tuple[object, ...]:
     )
 
 
+def _assessment_indicator(snapshot: dict) -> dict:
+    """Prefer the versioned concern indicator; preserve legacy saved history."""
+    result = snapshot.get("assessment_result") or {}
+    return snapshot.get("assessment_risk") or result.get("assessment_risk") or snapshot.get("risk") or {}
+
+
 def build_progress_comparison(*, user_id: int | None, area: str, current: dict, historical: list[dict]) -> dict:
     """Return one ongoing-query baseline/follow-up record from account-scoped data."""
     if not user_id:
@@ -39,15 +45,17 @@ def build_progress_comparison(*, user_id: int | None, area: str, current: dict, 
             "status": "BASELINE_CREATED",
             "summary": "This saved assessment is the baseline for an ongoing query. A future compatible assessment can report measurement changes, but the app does not infer healing or cure.",
             "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": current.get("created_at"), "baseline_assessment_id": current.get("assessment_id"), "follow_up_count": 0},
-            "comparison": {"risk": "No earlier saved priority record.", "likelihood": "No earlier compatible calibrated likelihood.", "images": "Source images are not retained for before/after comparison."},
+            "comparison": {"risk": "No earlier saved assessment concern indicator.", "likelihood": "No earlier compatible calibrated likelihood.", "images": "Source images are not retained for before/after comparison."},
         }
 
     baseline = historical[0]
     previous = historical[-1]
     previous_summary = previous.get("summary") or {}
-    prior_risk = (previous_summary.get("risk") or {})
-    current_risk = current.get("risk") or {}
-    risk_compatible = current_risk.get("version") and current_risk.get("version") == prior_risk.get("version")
+    prior_risk = _assessment_indicator(previous_summary)
+    current_risk = _assessment_indicator(current)
+    prior_version = prior_risk.get("methodology_version") or prior_risk.get("version")
+    current_version = current_risk.get("methodology_version") or current_risk.get("version")
+    risk_compatible = bool(current_version and current_version == prior_version)
     risk_change = None
     if risk_compatible and isinstance(current_risk.get("score"), (int, float)) and isinstance(prior_risk.get("score"), (int, float)):
         risk_change = int(current_risk["score"] - prior_risk["score"])
@@ -57,11 +65,11 @@ def build_progress_comparison(*, user_id: int | None, area: str, current: dict, 
     likelihood_compatible = current_likelihood is not None and previous_likelihood is not None and _model_signature(current) == _model_signature(previous_summary)
     likelihood_change = round(current_likelihood - previous_likelihood, 4) if likelihood_compatible else None
     compatibility = "COMPATIBLE" if risk_compatible and (current_likelihood is None or likelihood_compatible) else "LIMITED"
-    risk_note = f"Reported-concern priority changed by {risk_change:+d} points since the previous saved assessment." if risk_change is not None else "Reported-concern priority is not compared because the engine version differs or a score is unavailable."
+    risk_note = f"Assessment concern indicator changed by {risk_change:+d} points since the previous saved assessment; this is not evidence of disease progression or cure." if risk_change is not None else "Assessment concern indicator is not compared because the methodology version differs or a score is unavailable."
     likelihood_note = f"Calibrated model-estimated likelihood changed by {likelihood_change:+.1%}; this is not evidence of disease progression or cure." if likelihood_change is not None else "Condition likelihood is not compared because calibration or model lineage is unavailable/incompatible."
     return {
         "status": "FOLLOW_UP_COMPARABLE" if compatibility == "COMPATIBLE" else "FOLLOW_UP_LIMITED",
         "summary": f"Follow-up saved. {risk_note} {likelihood_note}",
         "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": baseline.get("created_at"), "baseline_assessment_id": baseline.get("assessment_id"), "follow_up_count": len(historical), "comparison_compatibility": compatibility},
-        "comparison": {"risk_change": risk_change, "likelihood_change": likelihood_change, "risk_engine_compatible": risk_compatible, "model_lineage_compatible": likelihood_compatible, "previous_assessment": previous.get("created_at"), "images": "Source images are not retained for before/after comparison."},
+        "comparison": {"risk_change": risk_change, "risk_kind": "assessment_concern_indicator", "likelihood_change": likelihood_change, "risk_engine_compatible": risk_compatible, "risk_methodology_version": current_version, "model_lineage_compatible": likelihood_compatible, "previous_assessment": previous.get("created_at"), "images": "Source images are not retained for before/after comparison."},
     }

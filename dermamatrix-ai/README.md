@@ -63,12 +63,14 @@ The entry screen supports account creation, sign-in, and a non-persistent guest 
 
 The application keeps four modalities behind one account, history, and reporting system:
 
-- **Skin, hair, and nails:** category selection → image preview → input/quality validation → scoped model adapter → normalised reported-concern priority → PIRS record → structured guidance → optional account-scoped history/PDF.
-- **Sweat glands:** category selection → questionnaire → bounded/normalised inputs → transparent rule-contribution summary → normalised priority → PIRS record → structured guidance. It never accepts an image.
+- **Skin, hair, and nails:** category selection → image preview → input/quality validation → scoped model adapter → versioned assessment concern indicator → normalised reported-concern priority → PIRS record → structured guidance → optional account-scoped history/PDF.
+- **Sweat glands:** category selection → questionnaire → bounded/normalised inputs → transparent rule-contribution summary → versioned assessment concern indicator → normalised priority → PIRS record → structured guidance. It never accepts an image.
 
 The browser uses an explicit assessment state machine (`IDLE`, `CATEGORY_SELECTED`, `INPUT_REQUIRED`, `INPUT_VALIDATING`, `PREPROCESSING`, `ANALYZING`, `RESULT_READY`, and `ERROR`). The processing panel is indeterminate until the backend returns; it does not invent a percentage or claim an unavailable model completed.
 
 `backend/risk_service.py` provides shared `LOW`, `MODERATE`, `HIGH`, `URGENT`, and `UNCERTAIN` semantics. `backend/pirs_service.py` is a transparent, configurable prototype aggregation; it is explicitly **not clinically validated**. The model boundary stays honest: only the optional dermatoscopic HAM10000 research adapter can produce a research label/Grad-CAM, and only when its real weights and required capture attestation are present. A documented offline nail-model feasibility run exists but failed its predeclared internal and external thresholds, so it is not connected to the app. Hair, nail, segmentation, and sweat ML adapters remain unavailable until compatible validated models are configured.
+
+`backend/risk_engine.py` adds a versioned 0–100 **assessment concern indicator**. It is based on the reported assessment evidence and optional real scoped-model evidence, shows its contributing factors and urgency separately, and is stored with its methodology version. It is not a disease probability, diagnosis, prognosis, treatment recommendation, or clinically validated medical-risk score. See [the risk-engine note](docs/assessment-risk-engine.md).
 
 ## Source-linked condition guides
 
@@ -107,5 +109,5 @@ The existing `.ml-venv` can be used in place of `.venv` in this workspace. In VS
 - `frontend/` – accessible, responsive web prototype with a complete assessment flow.
 - `backend/` – Flask API, MySQL persistence, and a deterministic reported-concern prioritisation helper (not an image classifier).
 - `backend/risk_service.py`, `backend/pirs_service.py`, `backend/report_service.py` – shared priority/PIRS/PDF-report domain boundaries.
-- `backend/assessment_contract.py` – versioned patient-result contract that keeps model likelihood, symptom severity, care priority, disease risk, and urgency separate.
+- `backend/assessment_contract.py` – versioned patient-result contract that keeps model likelihood, symptom severity, assessment concern score, care priority, disease-risk availability, and urgency separate.
 - `docs/` – model and safety documentation.

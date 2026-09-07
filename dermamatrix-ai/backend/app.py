@@ -34,6 +34,7 @@ from presentation_case_service import presentation_case_care_plan, presentation_
 from recommendation_service import build_recommendations, catalog_for_area, product_discovery_catalog, search_product_discovery
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
+from risk_engine import RISK_ENGINE_VERSION, calculate_assessment_risk
 from segmentation_service import extract_visual_candidate_region, segment_dermoscopic_lesion, unavailable_candidate_region
 from sweat_service import sweat_questionnaire_result
 
@@ -44,6 +45,7 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 AUTH_SCHEMA_VERSION = "20260907_auth_profile_preferences_v1"
+RISK_SCHEMA_VERSION = "20260907_assessment_risk_engine_v1"
 
 app = Flask(__name__, static_folder=FRONTEND_DIR, static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_BYTES
@@ -115,35 +117,51 @@ def apply_schema_migrations(connection: pymysql.Connection) -> None:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
         )
         cursor.execute("SELECT version FROM schema_migrations WHERE version=%s", (AUTH_SCHEMA_VERSION,))
-        if cursor.fetchone():
-            return
-        additive_columns = {
-            "updated_at": "DATETIME NULL",
-            "last_login_at": "DATETIME NULL",
-            "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
-        }
-        for column, definition in additive_columns.items():
-            if not _column_exists(cursor, "users", column):
-                cursor.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
-        cursor.execute(
-            """CREATE TABLE IF NOT EXISTS user_preferences (
-                id BIGINT PRIMARY KEY AUTO_INCREMENT,
-                user_id BIGINT UNIQUE NOT NULL,
-                theme VARCHAR(10) NOT NULL DEFAULT 'light',
-                notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                reduced_motion BOOLEAN NOT NULL DEFAULT FALSE,
-                updated_at DATETIME NOT NULL,
-                CONSTRAINT fk_preferences_user FOREIGN KEY (user_id) REFERENCES users(id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
-        )
-        cursor.execute("UPDATE users SET updated_at=created_at WHERE updated_at IS NULL")
-        cursor.execute(
-            """INSERT INTO user_preferences (user_id, theme, notifications_enabled, reduced_motion, updated_at)
-               SELECT u.id, 'light', TRUE, FALSE, %s FROM users u
-               LEFT JOIN user_preferences p ON p.user_id=u.id WHERE p.user_id IS NULL""",
-            (now(),),
-        )
-        cursor.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (%s, %s)", (AUTH_SCHEMA_VERSION, now()))
+        if not cursor.fetchone():
+            additive_columns = {
+                "updated_at": "DATETIME NULL",
+                "last_login_at": "DATETIME NULL",
+                "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
+            }
+            for column, definition in additive_columns.items():
+                if not _column_exists(cursor, "users", column):
+                    cursor.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+            cursor.execute(
+                """CREATE TABLE IF NOT EXISTS user_preferences (
+                    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                    user_id BIGINT UNIQUE NOT NULL,
+                    theme VARCHAR(10) NOT NULL DEFAULT 'light',
+                    notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    reduced_motion BOOLEAN NOT NULL DEFAULT FALSE,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT fk_preferences_user FOREIGN KEY (user_id) REFERENCES users(id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"""
+            )
+            cursor.execute("UPDATE users SET updated_at=created_at WHERE updated_at IS NULL")
+            cursor.execute(
+                """INSERT INTO user_preferences (user_id, theme, notifications_enabled, reduced_motion, updated_at)
+                   SELECT u.id, 'light', TRUE, FALSE, %s FROM users u
+                   LEFT JOIN user_preferences p ON p.user_id=u.id WHERE p.user_id IS NULL""",
+                (now(),),
+            )
+            cursor.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (%s, %s)", (AUTH_SCHEMA_VERSION, now()))
+
+        cursor.execute("SELECT version FROM schema_migrations WHERE version=%s", (RISK_SCHEMA_VERSION,))
+        if not cursor.fetchone():
+            risk_columns = {
+                "assessment_risk_score": "INT NULL",
+                "assessment_risk_level": "VARCHAR(30) NULL",
+                "urgency_level": "VARCHAR(50) NULL",
+                "risk_factors_json": "LONGTEXT NULL",
+                "risk_explanation": "TEXT NULL",
+                "risk_methodology_version": "VARCHAR(100) NULL",
+                "risk_inputs_json": "LONGTEXT NULL",
+                "risk_calculated_at": "DATETIME NULL",
+            }
+            for column, definition in risk_columns.items():
+                if not _column_exists(cursor, "assessments", column):
+                    cursor.execute(f"ALTER TABLE assessments ADD COLUMN {column} {definition}")
+            cursor.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (%s, %s)", (RISK_SCHEMA_VERSION, now()))
 
 
 def initialise_database() -> None:
@@ -473,13 +491,47 @@ def attach_condition_intelligence(response: dict) -> dict:
     return response
 
 
+def assessment_concern_indicator(*, area: str, classifier: dict, severity: dict, duration: int | None,
+                                 discomfort: int | None, change: int | None, symptoms: list[str],
+                                 urgent_selected: bool, quality: int | None, quality_status: str | None,
+                                 validation: dict, segmentation: dict | None = None,
+                                 questionnaire: dict | None = None) -> dict:
+    """Build the one project-defined assessment indicator from actual inputs.
+
+    A condition profile is enabled only by a configured scoped classifier; no
+    educational topic or user-entered label is used as model evidence.
+    """
+    classifier = classifier or {}
+    top_prediction = classifier.get("top_prediction") or {}
+    classifier_available = bool(classifier.get("available") and top_prediction.get("condition"))
+    likelihood = classifier.get("condition_likelihood") or {}
+    return calculate_assessment_risk(
+        area=area,
+        condition_name=top_prediction.get("condition") if classifier_available else None,
+        condition_source="scoped research classifier" if classifier_available else None,
+        model_confidence=likelihood.get("estimated_likelihood") if likelihood.get("available") else None,
+        severity=severity,
+        duration=duration,
+        discomfort=discomfort,
+        recent_change=change,
+        symptoms=symptoms,
+        urgent_selected=urgent_selected,
+        image_quality=quality,
+        quality_status=quality_status,
+        uncertainty_status=(classifier.get("uncertainty") or {}).get("status"),
+        input_validation_status=(validation or {}).get("status"),
+        affected_area_percent=(segmentation or {}).get("affected_area_percent"),
+        questionnaire=questionnaire,
+    )
+
+
 def stored_analysis_summary(response: dict) -> dict:
     """Persist reproducible result metadata without retaining image pixels or base64 assets."""
     classifier = response.get("research_classifier", {})
     segmentation = response.get("segmentation", {})
     candidate = response.get("candidate_region", {})
     return {
-        "created_at": response["created_at"], "area": response["area"], "input_type": response.get("input_type", "image"), "quality": response["quality"], "input_validation": response.get("input_validation", {}), "risk": response["risk"], "pirs": response.get("pirs", {}), "model_metadata": response.get("model_metadata", {}), "model_pipeline": response.get("model_pipeline", {}),
+        "created_at": response["created_at"], "area": response["area"], "input_type": response.get("input_type", "image"), "quality": response["quality"], "input_validation": response.get("input_validation", {}), "risk": response["risk"], "assessment_risk": response.get("assessment_risk", {}), "pirs": response.get("pirs", {}), "model_metadata": response.get("model_metadata", {}), "model_pipeline": response.get("model_pipeline", {}),
         "screening": response["screening"], "manual_context": response["manual_context"], "patient_context": response.get("patient_context", {}), "severity": response.get("severity", {}), "clinical_decision_support": response.get("clinical_decision_support", {}), "progress_comparison": response.get("progress_comparison", {}), "journey": response.get("journey"),
         "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
@@ -950,6 +1002,36 @@ def list_analysis_history():
         connection.close()
 
 
+@app.get("/api/assessments/<assessment_id>")
+def get_assessment(assessment_id: str):
+    """Return one saved assessment only to its signed-in owner."""
+    connection = database()
+    try:
+        user = current_user(connection)
+        if not user:
+            return jsonify({"error": "Sign in to view a saved assessment."}), 401
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT assessment_id, area, result_json, image_stored, created_at FROM analysis_records WHERE assessment_id=%s AND user_id=%s",
+                (assessment_id, user["id"]),
+            )
+            record = cursor.fetchone()
+        if not record:
+            return jsonify({"error": "Saved assessment not found."}), 404
+        try:
+            summary = json.loads(record["result_json"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return jsonify({"error": "Saved assessment metadata is unreadable."}), 500
+        return jsonify({
+            "assessment_id": record["assessment_id"], "area": record["area"],
+            "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
+            "image_stored": bool(record["image_stored"]), "summary": summary,
+            "assessment": summary.get("assessment_result") or {},
+        })
+    finally:
+        connection.close()
+
+
 @app.get("/api/reports/<assessment_id>/download")
 def download_assessment_report(assessment_id: str):
     """Generate a PDF from one account-scoped stored assessment record."""
@@ -1265,8 +1347,14 @@ def create_assessment():
     risk_score = model_output["risk_score"]
     priority = reported_priority(area, risk_score, urgent_concern)
     severity = reported_symptom_severity(discomfort=discomfort, change=change, symptoms=manual_symptoms, urgent_selected=urgent_concern)
+    assessment_risk = assessment_concern_indicator(
+        area=area, classifier=research_classifier, severity=severity, duration=duration,
+        discomfort=discomfort, change=change, symptoms=manual_symptoms,
+        urgent_selected=urgent_concern, quality=quality, quality_status=image_features["status"],
+        validation=validation, segmentation=segmentation,
+    )
     patient_context = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment)
-    cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern)
+    cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk)
     pirs = calculate_pirs(
         area=area,
         priority=priority,
@@ -1282,9 +1370,9 @@ def create_assessment():
     persistence = "mysql"
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
-        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
+        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "assessment_risk": assessment_risk, "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
         "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": severity, "clinical_decision_support": cdss, "candidate_region": candidate_region, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
-        "recommendations": build_recommendations(area, research_classifier, cdss=cdss), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(risk_score), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
+        "recommendations": build_recommendations(area, research_classifier, cdss=cdss), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(assessment_risk["score"]), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
     }
     if area in {"Hair", "Nails"}:
         modality = "Hair/scalp" if area == "Hair" else "Nail"
@@ -1318,6 +1406,12 @@ def create_assessment():
         response["model_pipeline"]["presentation_case"] = "Exact SHA-256 match to an opt-in, pre-labelled teaching file; not AI inference."
         response["recommendations"] = presentation_case_recommendations(presentation_case, response["recommendations"])
         response["care_plan"] = presentation_case_care_plan(presentation_case)
+        response["assessment_risk"] = {
+            "available": False, "score": None, "level": "NOT_APPLICABLE", "urgency": None,
+            "factors": [], "factor_labels": [], "methodology_version": RISK_ENGINE_VERSION,
+            "validation_status": "not_applicable_teaching_case",
+            "label": "Exact-file teaching cases do not generate a patient-specific assessment concern indicator.",
+        }
     # Guests get an ephemeral result. Authenticated requests persist under the
     # user resolved from the signed cookie, never from a submitted patient id.
     if not session.get("user_id"):
@@ -1339,7 +1433,7 @@ def create_assessment():
             cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user_id, area))
             previous_count = int(cursor.fetchone()["count"])
         response["patient_context"] = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment, history=history, previous_assessment_count=previous_count)
-        response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern)
+        response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=response["assessment_risk"])
         response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"])
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
         attach_condition_intelligence(response)
@@ -1348,8 +1442,14 @@ def create_assessment():
         timestamp = now()
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (assessment_id, user_id, area, priority["score"], quality, response["clinical_status"], timestamp),
+                """INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at,
+                   assessment_risk_score, assessment_risk_level, urgency_level, risk_factors_json, risk_explanation,
+                   risk_methodology_version, risk_inputs_json, risk_calculated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (assessment_id, user_id, area, priority["score"], quality, response["clinical_status"], timestamp,
+                 response["assessment_risk"].get("score"), response["assessment_risk"].get("level"), response["assessment_risk"].get("urgency"),
+                 json.dumps(response["assessment_risk"].get("factors", [])), response["assessment_risk"].get("explanation"),
+                 response["assessment_risk"].get("methodology_version"), json.dumps(response["assessment_risk"].get("calculation_inputs", {})), timestamp),
             )
             cursor.execute(
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
@@ -1390,7 +1490,16 @@ def create_sweat_assessment():
     severity = reported_symptom_severity(discomfort=0, change=0, symptoms=sweat_symptoms, urgent_selected=urgent_concern)
     patient_context = patient_context_snapshot(area="Sweat", symptoms=sweat_symptoms, previous_treatment="")
     sweat_classifier = {"available": False, "uncertainty": {"status": "NOT_AVAILABLE_NO_VALIDATED_TABULAR_MODEL"}}
-    cdss = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation={"status": "VALID_RELEVANT"}, classifier=sweat_classifier, context=patient_context, urgent_selected=urgent_concern)
+    sweat_questionnaire = {
+        "pattern": pattern, "frequency": payload.get("frequency"), "duration": payload.get("duration"),
+        "daily_impact": bool(payload.get("daily_impact")), "medication_change": bool(payload.get("medication_change")),
+    }
+    assessment_risk = assessment_concern_indicator(
+        area="Sweat", classifier=sweat_classifier, severity=severity, duration=payload.get("duration"),
+        discomfort=0, change=0, symptoms=sweat_symptoms, urgent_selected=urgent_concern,
+        quality=None, quality_status=None, validation={"status": "VALID_RELEVANT"}, questionnaire=sweat_questionnaire,
+    )
+    cdss = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation={"status": "VALID_RELEVANT"}, classifier=sweat_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk)
     pirs = calculate_pirs(
         area="Sweat",
         priority=priority,
@@ -1407,9 +1516,10 @@ def create_sweat_assessment():
         "quality": {"score": None, "image_quality_score": None, "quality_passed": True, "label": "Questionnaire complete", "issues": [], "visibility": "Not applicable to questionnaire input."},
         "input_validation": {"status": "VALID_RELEVANT", "category_relevance": "Sweat concerns use the dedicated questionnaire pathway; no image is accepted.", "normal_appearance": "NOT_APPLICABLE", "notice": "Questionnaire completion does not determine a diagnosis or a sweat-gland disorder."},
         "risk": priority_payload(priority, "Questionnaire-based reported-concern priority, not disease risk"),
+        "assessment_risk": assessment_risk,
         "pirs": pirs,
         "screening": {"title": priority["title"], "summary": sweat["summary"] if not urgent_concern else priority["summary"]},
-        "manual_context": {"symptoms": sweat_symptoms, "previous_treatment": "", "sweat_questionnaire": {"pattern": pattern, "body_location": str(payload.get("body_location", "")).strip()[:120]}},
+        "manual_context": {"symptoms": sweat_symptoms, "previous_treatment": "", "sweat_questionnaire": {**sweat_questionnaire, "body_location": str(payload.get("body_location", "")).strip()[:120]}},
         "patient_context": patient_context,
         "severity": severity,
         "clinical_decision_support": cdss,
@@ -1436,7 +1546,7 @@ def create_sweat_assessment():
         "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete",
         "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None,
         "persistence": "mysql",
-        "care_plan": clinician_first_care_plan(risk_score),
+        "care_plan": clinician_first_care_plan(assessment_risk["score"]),
         "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
     }
     if not session.get("user_id"):
@@ -1457,7 +1567,7 @@ def create_sweat_assessment():
             cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user["id"], "Sweat"))
             previous_count = int(cursor.fetchone()["count"])
         response["patient_context"] = patient_context_snapshot(area="Sweat", symptoms=sweat_symptoms, previous_treatment="", history=history, previous_assessment_count=previous_count)
-        response["clinical_decision_support"] = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation=response["input_validation"], classifier=sweat_classifier, context=response["patient_context"], urgent_selected=urgent_concern)
+        response["clinical_decision_support"] = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation=response["input_validation"], classifier=sweat_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=assessment_risk)
         response["recommendations"] = build_recommendations("Sweat", None, cdss=response["clinical_decision_support"])
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
         attach_condition_intelligence(response)
@@ -1466,8 +1576,14 @@ def create_sweat_assessment():
         timestamp = now()
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (assessment_id, user["id"], "Sweat", priority["score"], 0, response["clinical_status"], timestamp),
+                """INSERT INTO assessments (assessment_id, user_id, area, risk_score, quality_score, clinical_status, created_at,
+                   assessment_risk_score, assessment_risk_level, urgency_level, risk_factors_json, risk_explanation,
+                   risk_methodology_version, risk_inputs_json, risk_calculated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (assessment_id, user["id"], "Sweat", priority["score"], 0, response["clinical_status"], timestamp,
+                 assessment_risk["score"], assessment_risk["level"], assessment_risk["urgency"],
+                 json.dumps(assessment_risk.get("factors", [])), assessment_risk.get("explanation"),
+                 assessment_risk.get("methodology_version"), json.dumps(assessment_risk.get("calculation_inputs", {})), timestamp),
             )
             cursor.execute(
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
