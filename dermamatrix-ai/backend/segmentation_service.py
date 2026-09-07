@@ -47,10 +47,22 @@ def _otsu_threshold(values: np.ndarray) -> int:
     return best_threshold
 
 
-def _data_url(image: Image.Image) -> str:
+def _data_url(image: Image.Image, *, image_format: str = "PNG") -> str:
+    """Encode visual artifacts compactly without changing their pixel source.
+
+    The browser only displays overlays; sending them as WebP avoids inflating
+    each JSON assessment response with a large Base64 PNG. Binary masks stay
+    lossless PNG so a configured segmentation provider never receives a
+    lossy mask artifact.
+    """
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+    if image_format == "WEBP":
+        image.convert("RGB").save(buffer, format="WEBP", quality=82, method=4)
+        mime_type = "image/webp"
+    else:
+        image.save(buffer, format="PNG")
+        mime_type = "image/png"
+    return f"data:{mime_type};base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
 @lru_cache(maxsize=1)
@@ -146,7 +158,7 @@ def segment_dermoscopic_lesion(image_bytes: bytes) -> dict:
         "model": "Configured TorchScript binary lesion segmentation model",
         "affected_area_percent": round(coverage, 1),
         "segmentation_confidence": round(confidence, 4),
-        "overlay": _data_url(_overlay(image, mask)),
+        "overlay": _data_url(_overlay(image, mask), image_format="WEBP"),
         "mask": _data_url(Image.fromarray((mask * 255).astype("uint8"), mode="L")),
         "notice": "Segmentation confidence is the model's mean foreground output, not medical certainty.",
         "message": "Trained model segmentation completed.",
@@ -170,7 +182,7 @@ def extract_visual_candidate_region(image_bytes: bytes) -> dict:
         "reliable": plausible,
         "affected_area_percent": round(coverage, 1) if plausible else None,
         "contrast_signal": round(contrast, 1),
-        "overlay": _data_url(_overlay(image, mask)),
+        "overlay": _data_url(_overlay(image, mask), image_format="WEBP"),
         "mask": _data_url(Image.fromarray((mask * 255).astype("uint8"), mode="L")),
         "notice": CANDIDATE_NOTICE,
         "message": "Visual candidate region extracted." if plausible else "Visual candidate region is unreliable; retake a centred, evenly lit dermatoscopic image.",
