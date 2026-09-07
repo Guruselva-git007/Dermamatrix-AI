@@ -55,6 +55,8 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     result_priority = result.get("care_priority") or {}
     result_urgency = result.get("urgency") or {}
     result_input = result.get("input") or {}
+    result_visual_evidence = result.get("visual_evidence") or summary.get("visual_evidence") or {}
+    presentation_case = result.get("presentation") or summary.get("presentation_case") or {}
 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
@@ -90,13 +92,26 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         classification_value += f"<br/><font color='#5C6E80'>Estimated likelihood: {_text(round(float(likelihood) * 100))}% · calibration: {_text(calibration.get('calibration_version'))} · certainty: {_text(uncertainty.get('certainty'))}</font>"
     elif classification.get("available"):
         classification_value += "<br/><font color='#5C6E80'>Research ranking only. Calibration artifact unavailable, so no condition likelihood is shown.</font>"
-    knowledge_finding = _text(result_condition.get("name") or finding.get("name"), "No model-supported condition finding")
-    knowledge_finding_note = _text(result_condition.get("notice") or finding.get("label"), "The condition-knowledge layer did not add a diagnosis.")
+    reference_label = presentation_case.get("label") or presentation_case.get("teaching_label")
+    knowledge_finding = _text(reference_label or result_condition.get("name") or finding.get("name"), "No model-supported condition finding")
+    knowledge_finding_note = _text(
+        presentation_case.get("notice") if reference_label else result_condition.get("notice") or finding.get("label"),
+        "The condition-knowledge layer did not add a diagnosis.",
+    )
     result_likelihood = result_condition.get("estimated_likelihood")
-    likelihood_value = f"{round(float(result_likelihood) * 100)}% calibrated research-model likelihood" if result_likelihood is not None else "Not available"
+    likelihood_value = (
+        "Exact reference-file match; not a model probability"
+        if reference_label
+        else f"{round(float(result_likelihood) * 100)}% calibrated research-model likelihood" if result_likelihood is not None else "Not available"
+    )
     severity_value = result_severity.get("level") or severity.get("level") or "Not assessed"
     severity_note = result_severity.get("notice") or severity.get("label") or "No symptom severity was assessed."
     input_quality = (result_input.get("quality") or {}).get("label") or quality.get("label")
+    visual_evidence_value = (
+        f"{round(float(result_visual_evidence['affected_area_percent']))}% of frame · {_text(result_visual_evidence.get('source'))}"
+        if result_visual_evidence.get("available") and result_visual_evidence.get("affected_area_percent") is not None
+        else _text(result_visual_evidence.get("notice"), "No reliable visual candidate-region evidence was used.")
+    )
     urgency_value = result_urgency.get("level") or "ROUTINE MONITORING"
     reported_factors = [
         f"{factor.get('label', 'Reported context')}: {factor.get('interpretation', '')}"
@@ -114,6 +129,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
         [Paragraph("Possible finding", eyebrow), Paragraph(knowledge_finding, body)],
         [Paragraph("Estimated likelihood", eyebrow), Paragraph(_text(likelihood_value), body)],
+        [Paragraph("Visual evidence", eyebrow), Paragraph(_text(visual_evidence_value), body)],
         [Paragraph("Assessment concern score", eyebrow), Paragraph(_text(assessment_risk_value), body)],
         [Paragraph("Reported symptom severity", eyebrow), Paragraph(f"{_text(severity_value)} · {_text(severity_note)}", body)],
         [Paragraph("Care priority", eyebrow), Paragraph(f"{priority_value}<br/><font color='#5C6E80'>Reported concern priority, not disease risk.</font>", body)],

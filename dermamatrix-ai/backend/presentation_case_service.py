@@ -165,7 +165,7 @@ def presentation_case_for_digest(digest: str, area: str) -> dict | None:
         "common_symptoms": topic.get("common_symptoms", []),
         "common_contributors": topic.get("common_contributors", []),
         "differential_diagnoses": topic.get("differential_diagnoses", []),
-        "notice": "Presentation mode matched this exact supplied teaching file. This is a pre-labelled educational case, not AI inference, a diagnosis, a probability, a risk score, or a result for any other image.",
+        "notice": "Presentation mode matched this exact supplied teaching file. It adds pre-labelled educational reference metadata, not AI inference, a diagnosis, or a condition probability. The shared assessment concern calculation still uses the image and reported input evidence.",
         "medication_notice": "Treatment topics are for a doctor or pharmacist discussion only. No medicine, dose, or personal treatment plan is generated.",
     }
 

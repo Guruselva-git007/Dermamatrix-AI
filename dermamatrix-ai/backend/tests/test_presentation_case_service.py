@@ -46,7 +46,7 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertTrue(chart["common_contributors"])
         self.assertEqual(avif_acne["topic_id"], "acne")
 
-    def test_assessment_exposes_case_only_through_opt_in_matcher(self):
+    def test_reference_metadata_uses_the_shared_risk_pipeline(self):
         from app import app
 
         image = Image.new("RGB", (640, 640), color=(225, 235, 245))
@@ -57,7 +57,7 @@ class PresentationCaseTests(unittest.TestCase):
         case = presentation_case_for_digest(
             "f229ef0cf5e9318dea63fd500ca3a72d0f9bd7709cbd76912773e8614a2e5733", "Skin"
         )
-        with patch("app.presentation_case_for_image", return_value=case):
+        with patch("app.presentation_case_for_image", side_effect=lambda _image, _area, enabled: case if enabled else None):
             response = app.test_client().post("/api/assessments", data={
                 "image": (BytesIO(payload.getvalue()), "teaching.png"), "area": "Skin",
                 "image_context": "face_skin", "image_consent": "true",
@@ -68,9 +68,48 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertTrue(result["presentation_case"]["matched"])
         self.assertEqual(result["research_classifier"]["available"], False)
         self.assertEqual(result["assessment_result"]["condition"]["available"], False)
-        self.assertFalse(result["assessment_risk"]["available"])
+        self.assertTrue(result["assessment_risk"]["available"])
+        self.assertIsInstance(result["assessment_risk"]["score"], int)
+        self.assertEqual(result["assessment_risk"]["condition_profile"]["key"], "acne")
+        self.assertEqual(result["assessment_risk"]["condition_profile"]["condition_source"], "exact teaching-reference metadata")
+        self.assertTrue(result["assessment_result"]["presentation"]["is_reference_case"])
         self.assertEqual(result["recommendations"]["medication_information"]["status"], "EDUCATIONAL_DISCUSSION_ONLY")
         self.assertTrue(result["recommendations"]["diet"])
+
+    def test_checkbox_combinations_do_not_suppress_reference_risk(self):
+        from app import app
+
+        image = Image.new("RGB", (640, 640), color=(225, 235, 245))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((180, 180, 430, 430), fill=(90, 45, 45))
+        payload = BytesIO(); image.save(payload, format="PNG")
+        case = presentation_case_for_digest(
+            "f229ef0cf5e9318dea63fd500ca3a72d0f9bd7709cbd76912773e8614a2e5733", "Skin"
+        )
+
+        def submit(*, presentation: bool, prompt: bool):
+            with patch("app.presentation_case_for_image", side_effect=lambda _image, _area, enabled: case if enabled else None):
+                return app.test_client().post("/api/assessments", data={
+                    "image": (BytesIO(payload.getvalue()), "review.png"), "area": "Skin",
+                    "image_context": "face_skin", "image_consent": "true",
+                    "presentation_case_enabled": str(presentation).lower(), "urgent_concern": str(prompt).lower(),
+                    "duration": "0", "discomfort": "0", "change": "0",
+                }, content_type="multipart/form-data").get_json()
+
+        standard = submit(presentation=False, prompt=False)
+        reference = submit(presentation=True, prompt=False)
+        prompt_standard = submit(presentation=False, prompt=True)
+        prompt_reference = submit(presentation=True, prompt=True)
+        repeated_prompt_reference = submit(presentation=True, prompt=True)
+        for result in (standard, reference, prompt_standard, prompt_reference):
+            self.assertTrue(result["assessment_risk"]["available"])
+            self.assertIsInstance(result["assessment_risk"]["score"], int)
+            self.assertGreaterEqual(result["assessment_risk"]["score"], 0)
+            self.assertLessEqual(result["assessment_risk"]["score"], 100)
+        self.assertTrue(reference["presentation_case"]["matched"])
+        self.assertEqual(prompt_standard["assessment_risk"]["urgency"], "URGENT_EVALUATION")
+        self.assertEqual(prompt_reference["assessment_risk"]["urgency"], "URGENT_EVALUATION")
+        self.assertEqual(prompt_reference["assessment_risk"]["score"], repeated_prompt_reference["assessment_risk"]["score"])
 
 
 if __name__ == "__main__":

@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-RISK_ENGINE_VERSION = "dermamatrix-assessment-risk-v1.0"
-RISK_METHOD = "Explainable weighted assessment-evidence model"
+RISK_ENGINE_VERSION = "dermamatrix-assessment-risk-v1.1"
+RISK_METHOD = "Explainable weighted assessment-evidence model with visual candidate-region input"
 RISK_THRESHOLDS = (
     (20, "LOW"),
     (40, "MILD"),
@@ -148,12 +148,14 @@ def calculate_assessment_risk(
     uncertainty_status: str | None = None,
     input_validation_status: str | None = None,
     affected_area_percent: float | None = None,
+    affected_area_source: str | None = None,
     questionnaire: dict | None = None,
 ) -> dict:
     """Calculate one reproducible assessment-level concern indicator.
 
-    A condition label is optional and only adjusts the profile when it came
-    from a scoped model. Low model confidence and poor image quality are
+    A condition label is optional. Its source is retained with the calculation
+    so a scoped research-model label can never be confused with exact
+    reference metadata. Low model confidence and poor image quality are
     reliability context, not automatic risk escalators.
     """
     severity = severity or {}
@@ -222,11 +224,12 @@ def calculate_assessment_risk(
         extent = max(0.0, min(100.0, float(affected_area_percent)))
         extent_points = 0 if extent < 5 else 3 if extent < 20 else 7 if extent < 45 else 11
         total += extent_points
-        inputs_used.append("model-reported visual extent")
+        extent_source = affected_area_source or "visual candidate-region extraction"
+        inputs_used.append(extent_source)
         if extent_points:
-            factors.append(_as_factor("visual_extent", f"Model-reported candidate region: {round(extent)}% of frame", extent_points, "visual extent"))
+            factors.append(_as_factor("visual_extent", f"Visual candidate region: {round(extent)}% of frame", extent_points, extent_source))
     else:
-        missing_inputs.append("model-reported visual extent")
+        missing_inputs.append("reliable visual candidate-region extent")
 
     if area == "Sweat":
         pattern = str(questionnaire.get("pattern", "usual")).lower()
@@ -272,7 +275,7 @@ def calculate_assessment_risk(
         factor_labels = ["Low reported symptom burden in the available assessment"]
     explanation = (
         f"This {level.lower().replace('_', ' ')} assessment concern indicator uses the reported symptoms, severity, timing, "
-        f"change, and relevant modality-specific indicators available in this assessment. "
+        f"change, and available image-region evidence where reliable. "
         "It is not a disease probability, diagnosis, or clinically validated medical risk score."
     )
     return {

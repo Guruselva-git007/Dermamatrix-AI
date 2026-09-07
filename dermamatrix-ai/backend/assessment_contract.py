@@ -11,7 +11,7 @@ explainability artifact when an underlying service did not produce one.
 from __future__ import annotations
 
 
-ASSESSMENT_RESULT_VERSION = "assessment-result-v1.1"
+ASSESSMENT_RESULT_VERSION = "assessment-result-v1.2"
 
 
 def _urgency(cdss: dict, urgent_notice: str | None, assessment_risk: dict) -> dict:
@@ -97,6 +97,8 @@ def build_assessment_result(response: dict) -> dict:
     cdss = response.get("clinical_decision_support") or {}
     segmentation = response.get("segmentation") or {}
     candidate = response.get("candidate_region") or {}
+    visual_evidence = response.get("visual_evidence") or {}
+    presentation_case = response.get("presentation_case") or {}
     questionnaire = response.get("input_type") == "questionnaire"
     condition = _condition(classifier, intelligence)
     attention = classifier.get("attention_map") or classifier.get("explainability") or {}
@@ -128,6 +130,13 @@ def build_assessment_result(response: dict) -> dict:
             "source": "Self-reported symptoms",
             "notice": severity.get("label") or "This is not disease severity.",
             "validation_status": severity.get("validation_status"),
+        },
+        "visual_evidence": {
+            "available": bool(visual_evidence.get("available")),
+            "affected_area_percent": visual_evidence.get("affected_area_percent"),
+            "source": visual_evidence.get("source"),
+            "notice": visual_evidence.get("notice") or candidate.get("notice") or candidate.get("message"),
+            "scope": "Contrast-based candidate-region evidence only; it is not disease severity, anatomy detection, or segmentation.",
         },
         "disease_risk": {
             "available": False,
@@ -169,6 +178,13 @@ def build_assessment_result(response: dict) -> dict:
             "status": segmentation.get("status", "NOT_RUN"),
             "notice": segmentation.get("notice") or segmentation.get("message"),
             "candidate_region_available": bool(candidate.get("available") and candidate.get("reliable")),
+        },
+        "presentation": {
+            "is_reference_case": bool(presentation_case.get("matched")),
+            "reference_case_id": presentation_case.get("case_id"),
+            "label": presentation_case.get("teaching_label"),
+            "matching_method": presentation_case.get("matching_method"),
+            "notice": presentation_case.get("notice"),
         },
         "evidence": {
             "reported_context_factors": intelligence.get("reported_context_factors") or [],
