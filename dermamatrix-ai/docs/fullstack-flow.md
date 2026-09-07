@@ -14,7 +14,7 @@ validation.
 | Assessment result | existing result dialog, `renderPatientResult()`, `renderAnalysisDashboard()` and `renderResultOverview()` | `assessment-result-v1` plus legacy-compatible technical fields | result can be reviewed immediately; no image storage is added |
 | My Journey | `progress` section and `renderProgress()` | `GET /api/routines`, `GET /api/progress-checkins`, `GET /api/analysis-history` | routines, self-reported check-ins, assessment summaries |
 | Reports | `renderReportRegister()` | `GET /api/reports/<assessment_id>/download`, `GET /api/history/download` | PDFs are generated from account-scoped stored metadata |
-| Care Discovery | `products` section and `renderDiscoveryCatalog()` | backend-owned, non-medicinal catalogue with neutral external discovery links | no medical ranking or diagnosis-specific product recommendation |
+| Products | `products` section and `renderDiscoveryCatalog()` | backend-owned user-initiated product/ingredient discovery with neutral external links | no image-derived product recommendation, prescription, dosage, medical ranking, or claimed retailer data |
 | Find a Doctor | `support` section and `openDirectorySearch()` | browser hand-off to Google Maps | location stays in browser state; doctor listings/availability are not copied into the database |
 | Accounts and profile | auth and profile modals | `/api/auth/*`, `/api/profiles` | salted password hash, account/profile data, and consented history in MySQL |
 
@@ -58,10 +58,10 @@ medical probability or disease risk.
 ## Consumer navigation
 
 ```text
-Home → Check My Health → Assessment result → Care Discovery / Find a Doctor / My Journey
+Home → Check My Health → Assessment result → Products / Find a Doctor / My Journey
 ```
 
 Each destination reuses the existing SPA page key (`dashboard`, `home`,
 `products`, `support`, `progress`) to preserve bookmark, history, and API behavior.
-Only the visible names changed: Home, Check My Health, My Journey, Care Discovery, and
+Only the visible names changed: Home, Check My Health, My Journey, Products, and
 Find a Doctor.

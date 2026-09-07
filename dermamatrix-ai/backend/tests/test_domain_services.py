@@ -28,7 +28,7 @@ from model_metadata import model_metadata
 from pirs_service import calculate_pirs
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
-from recommendation_service import build_recommendations, catalog_for_area
+from recommendation_service import build_recommendations, catalog_for_area, search_product_discovery
 from sweat_service import sweat_questionnaire_result
 
 
@@ -446,6 +446,28 @@ class CommerceBoundaryTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["domain"], "Nails")
         self.assertIn("commerce", payload["items"][0])
         self.assertIn("No prescription medicine", payload["policy"])
+
+    def test_user_initiated_product_search_is_separate_from_assessment_catalog(self):
+        products = search_product_discovery("ketoconazole shampoo")
+        self.assertTrue(any(product["id"] == "ketoconazole-shampoo" for product in products))
+        self.assertTrue(all(product["commerce"]["primary"]["destination_type"] == "GOOGLE_SHOPPING_SEARCH" for product in products))
+        self.assertNotIn("ketoconazole-shampoo", {product["id"] for product in catalog_for_area("Hair", risk_score=0)})
+
+    def test_exact_user_product_search_preserves_the_entered_query(self):
+        product = search_product_discovery("Vaseline Intensive Care Lotion")[0]
+        self.assertEqual(product["id"], "exact-user-search")
+        self.assertEqual(product["commerce"]["query"], "Vaseline Intensive Care Lotion")
+        self.assertIn("Vaseline+Intensive+Care+Lotion", product["commerce"]["primary"]["url"])
+
+    def test_product_search_api_is_user_led(self):
+        from app import app
+
+        response = app.test_client().get("/api/products/search?q=acne")
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["priority_gate"], "USER_INITIATED_DISCOVERY")
+        self.assertIn("user-initiated", payload["policy"])
+        self.assertTrue(payload["items"])
 
 
 class KnowledgeBoundaryTests(unittest.TestCase):

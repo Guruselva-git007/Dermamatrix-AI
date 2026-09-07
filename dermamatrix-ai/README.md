@@ -58,7 +58,7 @@ The browser uses an explicit assessment state machine (`IDLE`, `CATEGORY_SELECTE
 
 ## Source-linked condition guides
 
-The Care Discovery page can load structured educational guides for common concerns including acne, eczema, psoriasis, fungal infection, seborrheic dermatitis, pattern hair loss, alopecia areata, nail fungus, nail changes that may warrant testing, blue nails, and excessive sweating. Guides are served by the backend knowledge boundary and include evidence links, general care context, medication discussion categories, red flags, and clinician-first notices. They are intentionally **not** image-model classes: opening a guide never changes an assessment result or infers a diagnosis from a photo.
+The Products page can load structured educational guides for common concerns including acne, eczema, psoriasis, fungal infection, seborrheic dermatitis, pattern hair loss, alopecia areata, nail fungus, nail changes that may warrant testing, blue nails, and excessive sweating. Guides are served by the backend knowledge boundary and include evidence links, general care context, medication discussion categories, red flags, and clinician-first notices. They are intentionally **not** image-model classes: opening a guide never changes an assessment result or infers a diagnosis from a photo.
 
 ## History and reports
 
@@ -76,7 +76,7 @@ No prescription medicine, dosage, diagnosis-specific treatment, or product recom
 
 ## Product discovery and external shopping
 
-The Care Discovery page and eligible general-care result cards use a backend-owned catalogue of non-medicinal care categories. It never uses an assessment label to select a product. Each external handoff follows a transparent order: an explicitly configured partner URL, an explicitly configured direct product page, or a neutral exact search link. Partner status is labelled only when a partner URL is genuinely configured; price, stock, ratings, reviews, and product suitability are never claimed by DermaMatrix. High-priority or uncertain assessments defer product discovery. Configure optional local URLs only in the ignored `backend/.env` using the documented variables in `backend/.env.example`.
+The Products page and eligible general-care result cards use a backend-owned catalogue. It never uses an assessment label to select a product. Product and ingredient searches are user-initiated, while assessment-result cards remain limited to non-medicinal general-care categories. Each external handoff follows a transparent order: an explicitly configured partner URL, an explicitly configured direct product page, or a neutral exact search link. Partner status is labelled only when a partner URL is genuinely configured; price, stock, ratings, reviews, and product suitability are never claimed by DermaMatrix. High-priority or uncertain assessments defer result-linked product discovery. Configure optional local URLs only in the ignored `backend/.env` using the documented variables in `backend/.env.example`.
 
 ## Verification
 

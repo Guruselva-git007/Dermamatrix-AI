@@ -25,7 +25,8 @@ For local configuration, copy `backend/.env.example` to `backend/.env`, then add
 - `POST /api/auth/register` – creates a local account; only a salted password hash is stored
 - `POST /api/auth/login` / `POST /api/auth/logout` – local account session controls
 - `GET /api/auth/session` – restores the signed local browser session
-- `GET /api/products` – returns gated, non-medicinal personal-care discovery categories and transparent external handoffs
+- `GET /api/products` – returns assessment-gated general-care categories or user-led discovery categories when `mode=discovery`
+- `GET /api/products/search?q=...` – resolves a user-initiated product, ingredient, or care-topic search to safe external discovery handoffs
 - `GET /api/knowledge/conditions` and `GET /api/knowledge/conditions/<id>` – source-linked educational guides that are never represented as image-model predictions
 - `POST /api/assessments` – accepts `image`, `area`, `duration`, `discomfort`, and `change` as multipart form data
 - `POST /api/sweat-assessments` – accepts structured sweat questionnaire data only; it never accepts an image
@@ -36,4 +37,4 @@ The runnable `screening-triage-v1-demo` engine combines symptom inputs with imag
 
 Assessment metadata is written only when the request is bound to the signed-in account. Guest results are intentionally returned without a database record. The report endpoints check the signed session and `user_id` before reading any data; PDFs are generated in memory and do not create an image store. The product policy is education-only: the API does not return prescription medicine, dosage, diagnosis-specific treatment, or an image-derived medicine recommendation.
 
-`GET /api/products` exposes only non-medicinal, general personal-care discovery categories. Its backend resolver uses a configured affiliate URL first, then an optional approved direct page, then an encoded external search. Affiliate status is emitted only for a configured partner URL; the API does not claim product availability, price, ratings, reviews, or suitability.
+`GET /api/products` keeps assessment-linked output limited to non-medicinal, general personal-care categories. The dedicated discovery mode and search endpoint are explicitly user-led and never receive an image-model result, diagnosis, or risk score as a product selector. The backend resolver uses a configured affiliate URL first, then an optional approved direct page, then an encoded external search. Affiliate status is emitted only for a configured partner URL; the API does not claim product availability, price, ratings, reviews, or suitability.

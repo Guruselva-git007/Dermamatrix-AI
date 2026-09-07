@@ -29,7 +29,7 @@ from clinical_intelligence_service import clinical_decision_support, normalise_s
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
-from recommendation_service import build_recommendations, catalog_for_area
+from recommendation_service import build_recommendations, catalog_for_area, product_discovery_catalog, search_product_discovery
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
 from segmentation_service import extract_visual_candidate_region, segment_dermoscopic_lesion, unavailable_candidate_region
@@ -895,23 +895,47 @@ def request_clinical_review():
 @app.get("/api/products")
 def products():
     area = request.args.get("area", "All").strip()[:30] or "All"
-    if area not in {"All", "Skin", "Hair", "Nails", "Sweat"}:
-        return jsonify({"error": "Choose All, Skin, Hair, Nails, or Sweat."}), 400
+    if area not in {"All", "Skin", "Hair", "Nails", "Sweat", "Wellness"}:
+        return jsonify({"error": "Choose All, Skin, Hair, Nails, Sweat, or Wellness."}), 400
+    mode = request.args.get("mode", "assessment").strip().lower()
+    if mode not in {"assessment", "discovery"}:
+        return jsonify({"error": "Choose assessment or discovery mode."}), 400
     try:
         risk_score = int(request.args.get("risk_score", 28))
     except ValueError:
         return jsonify({"error": "Invalid risk score."}), 400
-    items = catalog_for_area(area, risk_score=risk_score)
+    items = product_discovery_catalog(area) if mode == "discovery" else catalog_for_area(area, risk_score=risk_score)
     affiliate_links_present = any(bool((item.get("commerce") or {}).get("primary", {}).get("is_affiliate")) for item in items)
     return jsonify({
         "items": items,
         "eligible": bool(items),
-        "priority_gate": "DEFER_PRODUCT_DISCOVERY" if risk_score >= 40 else "GENERAL_SELF_CARE_ONLY",
+        "priority_gate": "USER_INITIATED_DISCOVERY" if mode == "discovery" else ("DEFER_PRODUCT_DISCOVERY" if risk_score >= 40 else "GENERAL_SELF_CARE_ONLY"),
         "consultation_required": True,
         "affiliate_links_present": affiliate_links_present,
         "affiliate_disclosure": "DermaMatrix AI may earn a commission from a clearly labelled partner link. Affiliate status never changes medical suitability, ordering, or access to care." if affiliate_links_present else None,
-        "policy": "No prescription medicine, diagnosis-specific treatment, dosage, paid ranking, retailer availability, price, rating, or review is provided by this prototype.",
+        "policy": "No prescription medicine, dosage, paid ranking, retailer availability, price, rating, review, or image-derived treatment recommendation is provided by this prototype. Discovery searches are user-led.",
         "pharmacy_notice": "Before using a suggested product or routine, consult an RMP or pharmacist and use a licensed pharmacy.",
+    })
+
+
+@app.get("/api/products/search")
+def product_search():
+    """Serve a safe user-initiated product/ingredient discovery search."""
+    query = " ".join(request.args.get("q", "").split())
+    if len(query) < 2 or len(query) > 120:
+        return jsonify({"error": "Enter a product, ingredient, or care topic between 2 and 120 characters."}), 400
+    items = search_product_discovery(query)
+    affiliate_links_present = any(bool((item.get("commerce") or {}).get("primary", {}).get("is_affiliate")) for item in items)
+    return jsonify({
+        "items": items,
+        "query": query,
+        "eligible": bool(items),
+        "priority_gate": "USER_INITIATED_DISCOVERY",
+        "consultation_required": True,
+        "affiliate_links_present": affiliate_links_present,
+        "affiliate_disclosure": "DermaMatrix AI may earn a commission from a clearly labelled partner link. Affiliate status never changes medical suitability, ordering, or access to care." if affiliate_links_present else None,
+        "policy": "This is a user-initiated external product search, not a diagnosis, treatment plan, prescription, dose, or image-derived recommendation.",
+        "pharmacy_notice": "Confirm suitability, ingredients, interactions, and use with a qualified doctor or pharmacist before purchase or use.",
     })
 
 

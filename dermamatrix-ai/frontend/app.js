@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -305,7 +305,7 @@ function showPage(page, { syncHistory = true } = {}) {
   const target = allowed.includes(page) ? page : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
   $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
-  const titles = { dashboard: 'Home', home: 'Check My Health', progress: 'My Journey', products: 'Care Discovery', support: 'Find a Doctor', settings: 'Settings' };
+  const titles = { dashboard: 'Home', home: 'Check My Health', progress: 'My Journey', products: 'Products', support: 'Find a Doctor', settings: 'Settings' };
   $('#workspaceTitle').textContent = titles[target];
   if (target === 'progress' || target === 'dashboard') loadProgress();
   if (target === 'products') loadCommerceCatalog();
@@ -909,29 +909,16 @@ async function hydrateProfile() {
   }
 }
 
-const discoveryItems = [
-  { category: 'skin', icon: '◌', type: 'SKIN ESSENTIAL', name: 'Barrier moisturiser', copy: 'A simple, fragrance-conscious option to discuss for everyday dryness or barrier comfort.', keywords: 'barrier moisture dry gentle sensitive skin comfort eczema', knowledgeId: 'atopic-dermatitis' },
-  { category: 'skin', icon: '☼', type: 'SKIN ESSENTIAL', name: 'Daily sun protection', copy: 'Explore broad-spectrum sun protection choices with a clinician or pharmacist for your skin needs.', keywords: 'sun sunscreen uv broad spectrum protection pigmentation acne', knowledgeId: 'acne' },
-  { category: 'skin', icon: '◍', type: 'SKIN ESSENTIAL', name: 'Gentle cleanser', copy: 'A minimal cleanser category for a routine review; stop use if irritation develops.', keywords: 'cleanser gentle wash irritation routine acne', knowledgeId: 'acne' },
-  { category: 'hair', icon: '〰', type: 'HAIR + SCALP', name: 'Gentle scalp cleanser', copy: 'A product category to discuss for routine scalp cleansing and comfort.', keywords: 'hair scalp shampoo cleanser flakes comfort dandruff', knowledgeId: 'seborrheic-dermatitis' },
-  { category: 'hair', icon: '⌁', type: 'HAIR + SCALP', name: 'Hair-care basics', copy: 'Review heat, traction, and product build-up habits before adding new products.', keywords: 'hair care breakage traction heat routine thinning', knowledgeId: 'pattern-hair-loss' },
-  { category: 'hair', icon: '✦', type: 'HAIR + SCALP', name: 'Scalp care routine', copy: 'Use a clinician discussion to decide whether a scalp concern needs examination.', keywords: 'scalp itch comfort routine dermatologist dandruff', knowledgeId: 'seborrheic-dermatitis' },
-  { category: 'vitamins', icon: 'D', type: 'SUPPLEMENT INFO', name: 'Vitamin D information', copy: 'Ask a clinician whether testing or supplementation is relevant to your history. No self-dosing.', keywords: 'vitamin d sunlight test deficiency bone wellbeing use case nail', knowledgeId: 'nail-change-deficiency' },
-  { category: 'vitamins', icon: 'B', type: 'SUPPLEMENT INFO', name: 'Vitamin B12 information', copy: 'Discuss testing when a clinician considers it appropriate for your symptoms and history.', keywords: 'vitamin b12 energy diet test nutrition use case nail', knowledgeId: 'nail-change-deficiency' },
-  { category: 'vitamins', icon: 'Fe', type: 'SUPPLEMENT INFO', name: 'Iron & folate information', copy: 'Testing and professional advice come before starting iron or folate products.', keywords: 'iron folate blood test nutrition tablet use case nail', knowledgeId: 'nail-change-deficiency' },
-  { category: 'vitamins', icon: 'Bi', type: 'SUPPLEMENT INFO', name: 'Biotin information', copy: 'Hair and nail changes have many causes; ask a pharmacist about medicine interactions.', keywords: 'biotin hair nails supplement interaction pharmacist deficiency', knowledgeId: 'nail-change-deficiency' }
-];
-
 function commerceDestinationMarkup(product, className = 'catalog-destination') {
   const commerce = product.commerce || {};
   const primary = commerce.primary || {};
   const destination = supportedExternalUrl(primary.url || product.url);
   const action = destination
-    ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener${primary.is_affiliate ? ' sponsored' : ''}">${primary.is_affiliate ? 'Visit partner' : 'Find product'} ↗</a>`
-    : '<button class="patient-text-link" type="button" data-result-action="products">Explore care discovery →</button>';
+    ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener noreferrer${primary.is_affiliate ? ' sponsored' : ''}">${primary.is_affiliate ? 'Visit partner' : 'Find product'} ↗</a>`
+    : '<button class="patient-text-link" type="button" data-result-action="products">Explore products →</button>';
   const alternatives = (commerce.alternatives || []).map(option => {
     const url = supportedExternalUrl(option.url);
-    return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener">${escapeHTML(option.merchant || 'External search')} ↗</a>` : '';
+    return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(option.merchant || 'External search')} ↗</a>` : '';
   }).filter(Boolean).join('');
   const partnerNote = primary.is_affiliate ? '<small class="commerce-affiliate-label">Partner link · may earn commission</small>' : '';
   return `<div class="${className}">${action}${partnerNote}${alternatives ? `<details><summary>More places to search</summary><div class="commerce-alternatives">${alternatives}</div></details>` : ''}</div>`;
@@ -939,12 +926,8 @@ function commerceDestinationMarkup(product, className = 'catalog-destination') {
 
 function commerceCard(product) {
   const category = String(product.domain || 'care').toLowerCase();
-  const icon = category === 'hair' ? '〰' : category === 'nails' ? '▣' : '◌';
-  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><span class="catalog-icon">${icon}</span><span class="catalog-type">GENERAL ${escapeHTML(product.category || 'CARE').toUpperCase()}</span><h3>${escapeHTML(product.name || 'Personal-care category')}</h3><p>${escapeHTML(product.purpose || 'General personal-care discovery.')}</p><small class="catalog-precaution">${escapeHTML(product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product)}</article>`;
-}
-
-function topicCard(item) {
-  return `<article class="catalog-card" data-category="${item.category}"><span class="catalog-icon">${item.icon}</span><span class="catalog-type">${item.type}</span><h3>${item.name}</h3><p>${item.copy}</p><button class="text-button" data-knowledge-topic="${item.knowledgeId}">Learn about this →</button></article>`;
+  const icon = category === 'hair' ? '〰' : category === 'nails' ? '▣' : category === 'wellness' ? '✦' : category === 'search' ? '⌕' : '◌';
+  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><span class="catalog-icon">${icon}</span><span class="catalog-type">${escapeHTML(product.category || 'PRODUCT DISCOVERY').toUpperCase()}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(product.purpose || 'User-led product discovery.')}</p><small class="catalog-precaution">${escapeHTML(product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product)}</article>`;
 }
 
 function knowledgeList(items, emptyMessage) {
@@ -972,7 +955,7 @@ async function openKnowledgeTopic(topicId) {
     const topic = payload.topic || {};
     const references = (topic.evidence_references || []).map(reference => {
       const url = supportedExternalUrl(reference.url);
-      return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener">${escapeHTML(reference.title)} ↗</a>` : escapeHTML(reference.title || 'Source');
+      return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(reference.title)} ↗</a>` : escapeHTML(reference.title || 'Source');
     }).join(' · ');
     panel.innerHTML = `<div class="knowledge-topic-head"><div><p class="eyebrow">EDUCATIONAL CONDITION GUIDE</p><h3>${escapeHTML(topic.name || 'Condition guide')}</h3><p>${escapeHTML(topic.description || '')}</p></div><button class="text-button" type="button" data-close-knowledge>Close</button></div><div class="knowledge-topic-grid"><article><strong>Common features</strong>${knowledgeList(topic.visual_features, 'Features can overlap with other conditions.')}</article><article><strong>What can contribute</strong>${knowledgeList(topic.common_contributors, 'A clinician can help identify relevant contributors.')}</article><article><strong>Care to discuss</strong>${knowledgeList(topic.care_options, 'Discuss suitable care with a clinician or pharmacist.')}</article><article><strong>When to seek care</strong>${knowledgeList(topic.red_flags, 'Seek care if the concern persists, changes, or worries you.')}</article></div><section class="knowledge-treatment"><strong>Medication topics to discuss</strong>${knowledgeMedicationCards(topic.medication_topics)}</section><div class="knowledge-topic-grid"><article><strong>Routine</strong>${knowledgeList(topic.daily_routine, 'No routine is suggested.')}</article><article><strong>Diet & lifestyle</strong>${knowledgeList(topic.diet_lifestyle, 'Use a balanced diet and avoid self-treating a presumed deficiency.')}</article></div><p class="knowledge-notice">${escapeHTML(topic.medical_notice || '')} ${escapeHTML(topic.medication_notice || '')}</p>${references ? `<p class="knowledge-sources"><strong>Sources:</strong> ${references}</p>` : ''}`;
     panel.querySelector('[data-close-knowledge]')?.addEventListener('click', () => { panel.hidden = true; });
@@ -985,40 +968,60 @@ async function openKnowledgeTopic(topicId) {
 function renderDiscoveryCatalog() {
   const query = $('#productSearch').value.trim().toLowerCase();
   const commerceItems = state.productCatalog.map(product => ({
-    kind: 'commerce', category: String(product.domain || '').toLowerCase(), product,
-    searchText: `${product.name || ''} ${product.purpose || ''} ${product.key_property || ''} ${(product.commerce || {}).query || ''}`.toLowerCase(),
+    category: String(product.domain || '').toLowerCase(), product,
+    searchText: `${product.name || ''} ${product.purpose || ''} ${product.key_property || ''} ${(product.tags || []).join(' ')} ${(product.commerce || {}).query || ''}`.toLowerCase(),
   }));
-  const topicItems = discoveryItems.map(item => ({ kind: 'topic', category: item.category, item, searchText: `${item.name} ${item.copy} ${item.keywords}`.toLowerCase() }));
-  const visible = [...commerceItems, ...topicItems].filter(item => {
+  const isServerSearch = Boolean(state.productCatalogQuery) && query === state.productCatalogQuery.toLowerCase();
+  const visible = commerceItems.filter(item => {
     const matchesCategory = state.productFilter === 'all' || item.category === state.productFilter;
-    return matchesCategory && (!query || item.searchText.includes(query));
+    return matchesCategory && (isServerSearch || !query || item.searchText.includes(query));
   });
   $('#productCatalog').innerHTML = visible.length
-    ? visible.map(item => item.kind === 'commerce' ? commerceCard(item.product) : topicCard(item.item)).join('')
-    : '<div class="catalog-empty">No matching information. Try “barrier”, “scalp”, “nail”, or “vitamin”.</div>';
-  $$('[data-knowledge-topic]').forEach(button => { button.onclick = () => openKnowledgeTopic(button.dataset.knowledgeTopic); });
+    ? visible.map(item => commerceCard(item.product)).join('')
+    : '<div class="catalog-empty">No matching product category. Search for the exact product, an ingredient, or a care topic.</div>';
 }
 
-async function loadCommerceCatalog({ force = false } = {}) {
+async function loadCommerceCatalog({ force = false, query = null } = {}) {
+  const requestedQuery = String(query ?? state.productCatalogQuery ?? '').trim();
   if (state.productCatalogLoadPromise && !force) return state.productCatalogLoadPromise;
-  if (state.productCatalogLoaded && !force) return state.productCatalog;
-  state.productCatalogLoadPromise = requestJSON('/api/products?area=All&risk_score=0', {}, 10000)
+  if (state.productCatalogLoaded && !force && requestedQuery === state.productCatalogQuery) return state.productCatalog;
+  const endpoint = requestedQuery
+    ? `/api/products/search?q=${encodeURIComponent(requestedQuery)}`
+    : '/api/products?area=All&mode=discovery&risk_score=0';
+  const requestKey = ++state.productCatalogRequestKey;
+  state.productCatalogLoadPromise = requestJSON(endpoint, {}, 10000)
     .then(payload => {
+      if (requestKey !== state.productCatalogRequestKey) return state.productCatalog;
       state.productCatalog = Array.isArray(payload.items) ? payload.items : [];
       state.productCatalogMeta = payload;
+      state.productCatalogQuery = requestedQuery;
       state.productCatalogLoaded = true;
       renderDiscoveryCatalog();
       return state.productCatalog;
     })
     .catch(() => {
+      if (requestKey !== state.productCatalogRequestKey) return state.productCatalog;
       state.productCatalog = [];
       state.productCatalogMeta = null;
+      state.productCatalogQuery = requestedQuery;
       state.productCatalogLoaded = true;
       renderDiscoveryCatalog();
       return [];
     })
-    .finally(() => { state.productCatalogLoadPromise = null; });
+    .finally(() => { if (requestKey === state.productCatalogRequestKey) state.productCatalogLoadPromise = null; });
   return state.productCatalogLoadPromise;
+}
+
+function setProductFilter(filter = 'all') {
+  state.productFilter = filter;
+  $$('.product-tabs button').forEach(tab => tab.classList.toggle('selected', tab.dataset.filter === filter));
+}
+
+async function searchProducts(event) {
+  event?.preventDefault();
+  const query = $('#productSearch').value.trim();
+  setProductFilter('all');
+  await loadCommerceCatalog({ force: true, query });
 }
 
 function restoreSettings() {
@@ -1365,13 +1368,15 @@ $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => $('.sidebar').classList.toggle('open');
 document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeResult(); closeProfile(); } });
-$$('.product-tabs button').forEach(button => { button.onclick = () => { state.productFilter = button.dataset.filter; $$('.product-tabs button').forEach(tab => tab.classList.toggle('selected', tab === button)); renderDiscoveryCatalog(); }; });
+$$('.product-tabs button').forEach(button => { button.onclick = () => { setProductFilter(button.dataset.filter); renderDiscoveryCatalog(); }; });
 $('#productSearch').oninput = renderDiscoveryCatalog;
+$('#productSearchForm').onsubmit = searchProducts;
+$$('[data-product-query]').forEach(button => { button.onclick = () => { $('#productSearch').value = button.dataset.productQuery || ''; searchProducts(); }; });
 $('#workspaceSearch').onkeydown = event => {
   if (event.key !== 'Enter') return;
   const query = event.currentTarget.value.trim();
   if (!query) return;
-  $('#productSearch').value = query; renderDiscoveryCatalog(); showPage('products');
+  $('#productSearch').value = query; showPage('products'); searchProducts();
 };
 $('#notificationsToggle').onchange = event => { localStorage.setItem('dermamatrix_notifications', String(event.target.checked)); toast(event.target.checked ? 'Local care reminders enabled.' : 'Local care reminders disabled.'); };
 $('#motionToggle').onchange = event => { localStorage.setItem('dermamatrix_reduced_motion', String(event.target.checked)); document.body.classList.toggle('reduce-motion', event.target.checked); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };

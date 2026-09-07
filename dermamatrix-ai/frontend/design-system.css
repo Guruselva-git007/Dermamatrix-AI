@@ -282,15 +282,21 @@ main { background: transparent; }
 .action-row { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--dm-line); }
 .action-row p { color: var(--dm-muted); font-size: 13px; }
 
-/* Care Hub */
+/* Product discovery */
 .products-heading, .progress-heading { align-items: end; }
 .products-heading h2, .support-heading h2, .progress-heading h2, .settings-section h2 { margin: 0 0 8px; color: var(--dm-ink); font-size: clamp(30px, 3vw, 38px); line-height: 1.08; letter-spacing: -.06em; }
 .products-heading p:not(.eyebrow), .support-heading p, .progress-heading p:not(.eyebrow), .settings-intro { color: var(--dm-muted); font-size: 16px; line-height: 1.55; }
-.product-search { width: min(100%, 290px); }
+.product-search { width: min(100%, 370px); }
+.product-search label { display: block; }
+.product-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 7px; }
+.product-search-row .button { min-height: 42px; white-space: nowrap; }
 .care-context-card { margin: 34px 0 22px; padding: 0 0 18px; border: 0; border-bottom: 1px solid var(--dm-line); border-radius: 0; background: transparent; }
 .care-context-card > span { width: 36px; height: 36px; border-radius: 10px; background: var(--dm-blue-soft); color: var(--dm-blue); }
 .care-context-card strong { color: var(--dm-ink); font-size: 16px; }
 .care-context-card p { color: var(--dm-muted); font-size: 14px; }
+.product-search-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 0; }
+.product-search-pills button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--dm-line); border-radius: 999px; background: var(--dm-surface); color: var(--dm-muted); font-size: 12px; font-weight: 600; transition: color var(--dm-ease), border-color var(--dm-ease), background var(--dm-ease), transform var(--dm-ease); }
+.product-search-pills button:hover { transform: translateY(-1px); border-color: var(--dm-line-strong); background: var(--dm-blue-soft); color: var(--dm-blue-strong); }
 .product-tabs { gap: 8px; margin: 22px 0; }
 .product-tabs button { min-height: 36px; border-color: var(--dm-line); background: transparent; color: var(--dm-muted); font-size: 13px; }
 .product-tabs button.selected, .product-tabs button:hover { border-color: var(--dm-blue); background: var(--dm-blue); color: #fff; }
@@ -299,7 +305,7 @@ main { background: transparent; }
 .catalog-card { min-height: 196px; padding: 20px; border-color: var(--dm-line); border-radius: var(--dm-radius); background: var(--dm-surface); box-shadow: none; }
 .catalog-card:hover { transform: translateY(-2px); border-color: var(--dm-line-strong); box-shadow: var(--dm-shadow-sm); }
 .catalog-card .catalog-icon { width: 40px; height: 40px; border-radius: 11px; background: var(--dm-blue-soft); color: var(--dm-blue); }
-.catalog-card[data-category="hair"] .catalog-icon, .catalog-card[data-category="vitamins"] .catalog-icon { background: var(--dm-blue-soft); color: var(--dm-blue); }
+.catalog-card[data-category="hair"] .catalog-icon, .catalog-card[data-category="wellness"] .catalog-icon { background: var(--dm-blue-soft); color: var(--dm-blue); }
 .catalog-type { margin: 16px 0 4px; color: var(--dm-blue); font-size: 9px; }
 .catalog-card h3 { color: var(--dm-ink); font-size: 18px; }
 .catalog-card p { color: var(--dm-muted); font-size: 13px; line-height: 1.45; }
@@ -336,12 +342,14 @@ main { background: transparent; }
 .directory-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--dm-blue-soft); color: var(--dm-blue); }
 .directory-card strong { color: var(--dm-ink); font-size: 18px; }
 .directory-card p { color: var(--dm-muted); font-size: 14px; }
-.directory-card form { display: flex; align-items: end; gap: 10px; }
-.directory-card form label { flex: 1; color: var(--dm-muted); font-size: 13px; font-weight: 600; }
+.directory-search-form, .directory-utility-row { grid-column: 2; }
+.directory-search-form { display: grid; grid-template-columns: minmax(230px, 1fr) auto auto; align-items: end; gap: 10px; }
+.directory-location-field { display: grid; gap: 7px; min-width: 0; color: var(--dm-muted); font-size: 13px; font-weight: 600; }
+.directory-search-form .button { min-height: 42px; white-space: nowrap; }
 .directory-card input { width: 100%; min-height: 42px; margin-top: 7px; padding: 9px 11px; border: 1px solid var(--dm-line); border-radius: 9px; background: var(--dm-surface); }
-.directory-actions, .directory-status { grid-column: 2; }
-.directory-actions { gap: 8px; }
-.directory-status { color: var(--dm-muted) !important; font-size: 13px !important; }
+.directory-location-field input { margin-top: 0; }
+.directory-utility-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.directory-status { margin: 0; color: var(--dm-muted) !important; font-size: 13px !important; }
 .support-note { margin: 16px 0 0; color: var(--dm-muted); font-size: 13px; }
 .doctor-flow-cards { gap: 0; margin-top: 32px; border-top: 1px solid var(--dm-line); }
 .doctor-flow-cards article { padding: 18px 12px 18px 0; border: 0; border-bottom: 1px solid var(--dm-line); border-radius: 0; background: transparent; }
@@ -660,6 +668,8 @@ body[data-theme="dark"] .auth-guest { background: var(--dm-bg-soft); border-colo
   .result-layout { grid-template-columns: 1fr; }
   .segmentation-stage { height: 300px; }
   .directory-card { grid-template-columns: 42px minmax(0, 1fr); }
+  .directory-search-form { grid-template-columns: minmax(200px, 1fr) auto; }
+  .directory-search-form #appointmentSearchButton { grid-column: 2; }
   .doctor-flow-cards { grid-template-columns: 1fr; }
 }
 
@@ -696,11 +706,16 @@ body[data-theme="dark"] .auth-guest { background: var(--dm-bg-soft); border-colo
   .action-row .button { justify-content: center; }
   .products-heading, .progress-heading { display: block; }
   .product-search { width: 100%; margin-top: 20px; }
+  .product-search-row { grid-template-columns: 1fr; }
+  .product-search-row .button { width: 100%; justify-content: center; }
   .care-context-card { align-items: flex-start; flex-wrap: wrap; }
   .care-context-card .text-button { margin-left: 50px; }
   .directory-card { grid-template-columns: 1fr; }
-  .directory-actions, .directory-status { grid-column: auto; }
-  .directory-card form { display: grid; }
+  .directory-search-form, .directory-utility-row { grid-column: auto; }
+  .directory-search-form { grid-template-columns: 1fr; }
+  .directory-search-form #appointmentSearchButton { grid-column: auto; }
+  .directory-search-form .button { width: 100%; justify-content: center; }
+  .directory-utility-row { align-items: flex-start; flex-direction: column; gap: 10px; }
   .modal-card, .profile-card { max-height: calc(100vh - 24px); padding: 24px 18px; border-radius: 16px; }
   .result-modal, .profile-modal { padding: 12px; }
   .result-tabs { gap: 16px; margin: 22px 0 18px; }
