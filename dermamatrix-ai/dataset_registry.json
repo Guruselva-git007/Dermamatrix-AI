@@ -1,0 +1,34 @@
+{
+  "registry_version": "2026-09-09",
+  "storage_policy": {
+    "raw_data_location": "External research storage only; never commit raw images, source metadata, checkpoints, calibration artifacts, or evaluation predictions to Git.",
+    "application_inference_policy": "A dataset declaration or successful script run never enables application inference. Promotion requires the documented research, governance, and clinical-review gates."
+  },
+  "scin": {
+    "purpose": "Diverse clinical dermatology image classification research",
+    "categories": ["skin", "hair", "nail"],
+    "supported_current_experiment_category": ["skin"],
+    "license": "SCIN Data Use License",
+    "license_url": "https://github.com/google-research-datasets/scin/blob/main/LICENSE",
+    "source": "official SCIN release",
+    "source_url": "https://github.com/google-research-datasets/scin",
+    "dataset_version": "SCIN-public-1.0.0-metadata-2024-03-05",
+    "enabled_for_training": true,
+    "training_scope": "offline research only after license review and manifest-bound acquisition",
+    "runtime_deployment_enabled": false,
+    "notes": "SCIN records support dermatology research. This repository currently selects no hair or nail classifier from SCIN and does not claim patient-level splitting."
+  },
+  "isic": {
+    "purpose": "Potential external dermoscopic validation source",
+    "enabled_for_training": false,
+    "notes": "Collection-specific licensing and modality governance are required before use."
+  },
+  "scin_like": {
+    "purpose": "Reserved for future, separately governed clinical-photo datasets",
+    "enabled_for_training": false
+  },
+  "future_datasets": {
+    "purpose": "Reserved for future datasets after provenance, consent, label, split, and license review",
+    "enabled_for_training": false
+  }
+}

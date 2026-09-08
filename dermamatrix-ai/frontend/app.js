@@ -1125,13 +1125,51 @@ async function clearLocalProfile() {
   showAuthGate('login'); setAuthMessage('You have been signed out.', true);
 }
 
-const escapeHTML = value => String(value || '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 
 function currentDate() { return new Date().toISOString().slice(0, 10); }
 
 function updateDashboardIdentity() {
   const name = state.profile?.full_name?.trim().split(/\s+/)[0] || 'there';
   $('#dashboardUser').textContent = name;
+}
+
+function assessmentConcernScore(analysis) {
+  const value = analysis?.summary?.assessment_risk?.score ?? analysis?.summary?.assessment_result?.assessment_risk?.score ?? analysis?.summary?.risk?.score;
+  const numeric = Number(value);
+  return value !== null && value !== '' && Number.isFinite(numeric) ? numeric : null;
+}
+
+function renderDashboardInsight(analyses, routines) {
+  let insight = $('#dashboardInsight');
+  if (!insight) {
+    insight = document.createElement('section');
+    insight.id = 'dashboardInsight'; insight.className = 'dashboard-insight'; insight.hidden = true;
+    $('#dashboardSnapshot')?.closest('.health-snapshot')?.insertAdjacentElement('afterend', insight);
+  }
+  const latest = analyses[0];
+  const latestScore = assessmentConcernScore(latest);
+  const earlierSameArea = latest && analyses.slice(1).find(item => item.area === latest.area && assessmentConcernScore(item) !== null);
+  const previousScore = assessmentConcernScore(earlierSameArea);
+  if (latest && latestScore !== null && earlierSameArea && previousScore !== null) {
+    const delta = latestScore - previousScore;
+    const direction = delta === 0 ? 'unchanged from' : delta < 0 ? `${Math.abs(delta)} points lower than` : `${delta} points higher than`;
+    insight.hidden = false;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR PERSONAL ASSESSMENT TREND</p><h2>${escapeHTML(String(latest.area))} concern indicator is ${escapeHTML(direction)} your previous recorded assessment.</h2><p>This compares stored project concern indicators, not disease likelihood or proof of medical improvement.</p></div><div class="dashboard-insight-metric"><small>LATEST / PREVIOUS</small><strong>${latestScore}<span>/100</span> <b>·</b> ${previousScore}<span>/100</span></strong><button class="text-button" data-dashboard-nav="progress">Review your journey →</button></div>`;
+    return;
+  }
+  if (latest) {
+    insight.hidden = false;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your personal assessment trend starts with another check-in.</h2><p>Record a future ${escapeHTML(String(latest.area).toLowerCase())} assessment when something meaningfully changes. DermaMatrix will keep the values separate from clinical diagnosis.</p></div><div class="dashboard-insight-metric"><small>RECORDED ASSESSMENTS</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check My Health →</button></div>`;
+    return;
+  }
+  if (routines.length) {
+    insight.hidden = false;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR NEXT STEP</p><h2>Keep your care plan connected to your health story.</h2><p>When you notice a meaningful change, add a self-reported check-in to the routine you are tracking.</p></div><div class="dashboard-insight-metric"><small>ACTIVE ROUTINES</small><strong>${routines.length}</strong><button class="text-button" data-dashboard-nav="progress">Open My Journey →</button></div>`;
+    return;
+  }
+  insight.hidden = true;
+  insight.innerHTML = '';
 }
 
 function renderDashboard() {
@@ -1160,6 +1198,7 @@ function renderDashboard() {
       ? cards.slice(0, 4).join('')
       : '<article class="snapshot-card snapshot-empty"><span>◌</span><div><small>FIRST STEP</small><strong>Your journey starts here</strong><p>Complete an assessment to begin.</p></div><button class="text-button" data-dashboard-nav="home">Check My Health →</button></article>';
   }
+  renderDashboardInsight(analyses, routines);
   $('#dashboardActivity').innerHTML = !analyses.length
     ? '<p class="empty-state">No assessments yet. Complete your first assessment to begin your timeline.</p>'
     : analyses.slice(0, 4).map(item => {

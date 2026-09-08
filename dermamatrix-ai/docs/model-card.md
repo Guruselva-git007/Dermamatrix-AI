@@ -9,13 +9,16 @@
 
 ## Rejected research experiment
 
-An external SCIN clinical-photo ResNet-18 experiment was run on 212 strictly
-filtered, case-grouped images (Eczema versus Urticaria only). The independent
-32-image test produced balanced accuracy 0.520243, macro-F1 0.51952, and
-AUROC 0.477733. It was calibrated with validation-only temperature scaling but
-is `REJECTED_FOR_APPLICATION_INFERENCE`: the checkpoint and calibration file
-remain outside Git and are not loaded by the Flask service. This is a valuable
-negative baseline, not an app capability or a medical performance claim.
+Two external SCIN clinical-photo ResNet-18 feasibility experiments were run on
+212 strictly filtered, case-grouped images (Eczema versus Urticaria only). The
+latest reproducibility run added source-gradability and duplicate-integrity
+auditing; its independent 32-image test produced balanced accuracy **0.414980**,
+macro-F1 **0.405670**, and AUROC **0.437247**. Temperature scaling was fitted
+only on the validation split and did not produce deployment-quality calibration.
+Both runs are `REJECTED_FOR_APPLICATION_INFERENCE`: checkpoints and calibration
+files remain outside Git and are not loaded by Flask. This is a negative
+baseline, not an app capability or a medical performance claim. See
+[the latest run report](scin-experiment-20260909.md).
 
 ### Nail feasibility experiment — rejected
 

@@ -1,0 +1,20 @@
+{
+  "taxonomy_version": "dermamatrix-skin-taxonomy-v1",
+  "purpose": "Explicit source-label normalisation for the scoped SCIN feasibility experiment. A mapping is not a disease claim beyond the source label.",
+  "mappings": [
+    {
+      "source_label": "Eczema",
+      "canonical_label": "Eczema",
+      "category": "skin",
+      "mapping_reason": "The official SCIN source label already maps directly to the DermaMatrix eczema label for this two-class research experiment.",
+      "mapping_confidence": "DIRECT_SOURCE_TERM"
+    },
+    {
+      "source_label": "Urticaria",
+      "canonical_label": "Urticaria",
+      "category": "skin",
+      "mapping_reason": "The official SCIN source label already maps directly to the DermaMatrix urticaria label for this two-class research experiment.",
+      "mapping_confidence": "DIRECT_SOURCE_TERM"
+    }
+  ]
+}

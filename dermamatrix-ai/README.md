@@ -25,6 +25,39 @@ checkbox off for every ordinary/patient image. See
 
 See [the model card](docs/model-card.md), [research-data protocol](docs/research-data-protocol.md), and [UNM atlas governance audit](docs/unm-atlas-governance.md) before any model training or evaluation. The public UNM Inclusive Dermatology Atlas is recorded as an educational reference only; it is not downloaded, scraped, or used for model training because public pages do not grant that permission.
 
+### SCIN research pipeline
+
+The project has a reproducible, external-storage-only pipeline for the
+official [SCIN](https://github.com/google-research-datasets/scin) clinical
+photo release. Its governed layout is documented in [DATASETS.md](DATASETS.md)
+and [`dataset_registry.json`](dataset_registry.json). A fresh strict two-class
+feasibility run was rejected after actual held-out testing, so SCIN does not
+enable a live condition classifier in this app.
+
+After reviewing the current SCIN Data Use License, a researcher can reproduce
+the offline manifest, acquisition, and run using external storage (never a
+Git-tracked directory):
+
+```bash
+PYTHONPATH=backend .ml-venv/bin/python backend/scripts/prepare_scin_clinical_manifest.py \
+  --cases-csv /external/scin/metadata/scin_cases.csv \
+  --labels-csv /external/scin/metadata/scin_labels.csv \
+  --taxonomy-json backend/configs/canonical_condition_map.json \
+  --output-csv /external/scin/manifest_remote.csv \
+  --summary-json /external/scin/manifest_summary.json
+PYTHONPATH=backend .ml-venv/bin/python backend/scripts/acquire_scin_images.py \
+  --manifest-csv /external/scin/manifest_remote.csv --output-root /external/scin/run \
+  --accept-scin-license
+PYTHONPATH=backend .ml-venv/bin/python backend/scripts/train_scin_clinical_experiment.py \
+  --manifest-csv /external/scin/run/manifest_local.csv --output-dir /external/scin/run/model \
+  --config-json backend/configs/scin_training.json
+```
+
+The training command refuses missing image hashes or exact duplicate content
+across splits. A completed run remains external and `EXPERIMENTAL_NOT_DEPLOYABLE`
+until it independently passes the documented data, evaluation, and governance
+requirements.
+
 ## Run the complete app (local MySQL included)
 
 ```bash

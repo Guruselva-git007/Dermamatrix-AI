@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import platform
 import random
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -98,11 +99,21 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=20260906)
     parser.add_argument("--device", choices=("mps", "cuda", "cpu"), default="mps")
     parser.add_argument("--no-pretrained", action="store_true")
+    parser.add_argument("--config-json", help="Optional reviewed configuration copied into the external experiment artifact.")
     args = parser.parse_args()
     if args.epochs < 1 or args.batch_size < 1:
         raise SystemExit("epochs and batch-size must be positive")
     seed_everything(args.seed)
-    with open(args.manifest_csv, encoding="utf-8", newline="") as file:
+    manifest_path = Path(args.manifest_csv)
+    manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    integrity_path = manifest_path.parent / "integrity_report.json"
+    if not integrity_path.is_file():
+        raise SystemExit("Missing integrity_report.json beside the local manifest. Re-run acquisition before training.")
+    with integrity_path.open(encoding="utf-8") as file:
+        integrity_report = json.load(file)
+    if integrity_report.get("status") != "PASSED_DUPLICATE_AND_NEAR_DUPLICATE_AUDIT":
+        raise SystemExit("Image integrity audit did not pass. Resolve duplicate/near-duplicate findings before training.")
+    with manifest_path.open(encoding="utf-8", newline="") as file:
         rows = list(csv.DictReader(file))
     required = {"image_id", "group_id", "label", "split", "image_path"}
     if not rows or required - set(rows[0]):
@@ -113,6 +124,17 @@ def main() -> None:
     missing_images = [row["image_path"] for row in rows if not Path(row["image_path"]).is_file()]
     if missing_images:
         raise SystemExit(f"{len(missing_images)} local image paths are missing; acquire images before training.")
+    if "image_sha256" not in rows[0]:
+        raise SystemExit("Manifest lacks image integrity hashes. Re-run acquire_scin_images.py with the current pipeline before training.")
+    hashes: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        value = str(row.get("image_sha256", "")).strip()
+        if not value:
+            raise SystemExit("Manifest contains a missing image integrity hash. Re-run acquisition before training.")
+        hashes[value].add(row["split"])
+    leaked_hashes = [value for value, splits_seen in hashes.items() if len(splits_seen) > 1]
+    if leaked_hashes:
+        raise SystemExit("Exact duplicate image content crosses SCIN splits; resolve the integrity report before training.")
 
     labels = sorted({row["label"] for row in rows})
     splits = {name: [row for row in rows if row["split"] == name] for name in ("train", "validation", "test")}
@@ -186,6 +208,12 @@ def main() -> None:
     }
     with (output / "calibration.json").open("w", encoding="utf-8") as file:
         json.dump(calibration, file, indent=2)
+    reviewed_config = None
+    if args.config_json:
+        with Path(args.config_json).open(encoding="utf-8") as file:
+            reviewed_config = json.load(file)
+        with (output / "training_config.json").open("w", encoding="utf-8") as file:
+            json.dump(reviewed_config, file, indent=2)
     predictions = []
     for image_id, true_label, raw, calibrated in zip(test_ids, test_labels, raw_test, calibrated_test):
         predictions.append({"image_id": image_id, "true_label": labels[int(true_label)], "raw_probabilities": raw.tolist(), "calibrated_probabilities": calibrated.tolist()})
@@ -195,7 +223,7 @@ def main() -> None:
         "status": "EXPERIMENTAL_NOT_DEPLOYABLE",
         "prohibition": "This experiment is not clinically validated and must not be wired into the DermaMatrix inference API or described as diagnostic.",
         "model": {key: checkpoint[key] for key in ("model_id", "model_version", "architecture", "classes", "preprocessing_version")},
-        "dataset": {"name": "SCIN", "selection": "strict single weighted label >= 0.7; one first image per SCIN case", "grouping": "SCIN case ID, not verified patient ID", "split_counts": {key: len(value) for key, value in splits.items()}},
+        "dataset": {"name": "SCIN", "selection": "strict single weighted label >= configured threshold; gradable image only", "grouping": "SCIN case ID, not verified patient ID", "manifest_sha256": manifest_sha256, "split_counts": {key: len(value) for key, value in splits.items()}, "image_integrity": "PASSED_DUPLICATE_AND_NEAR_DUPLICATE_AUDIT"},
         "environment": {"python": platform.python_version(), "torch": torch.__version__, "device": str(device), "seed": args.seed},
         "training": {"epochs": args.epochs, "batch_size": args.batch_size, "learning_rate": args.learning_rate, "class_weights": class_weight.detach().cpu().tolist(), "augmentation": "horizontal flip plus brightness/contrast jitter ±5%", "history": history, "best_validation_loss": round(best_loss, 6)},
         "validation_calibration": calibration_metrics,
@@ -204,6 +232,8 @@ def main() -> None:
         "subgroup_evaluation": "NOT_PERFORMED; do not infer fairness from this small subset.",
         "limitations": ["Small selected dataset; performance estimates are unstable.", "SCIN case IDs are not verified patient IDs.", "Classes are dermatologist weighted labels, not a confirmed diagnosis for every image.", "No normal/healthy class, segmentation model, OOD detector, hair model, nail model, or clinical validation is supplied by this experiment."],
     }
+    if reviewed_config is not None:
+        report["reviewed_training_config"] = {"artifact": "training_config.json", "status": reviewed_config.get("experiment_status", "UNSPECIFIED")}
     with (output / "evaluation_report.json").open("w", encoding="utf-8") as file:
         json.dump(report, file, indent=2)
     print(json.dumps({"model_version": version, "status": report["status"], "output_dir": str(output), "held_out_test": report["held_out_test"]["temperature_scaled"]}, indent=2))

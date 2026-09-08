@@ -7,3 +7,13 @@ dermamatrix.db
 .ml-venv/
 backend/models/*.ptw
 backend/.local-mysql/
+# Never version research data or model artifacts. The source-only dataset layout
+# and declarative registry remain tracked for reproducibility.
+datasets/*/**
+!datasets/README.md
+!datasets/scin/.gitkeep
+!datasets/isic/.gitkeep
+!datasets/scin_like/.gitkeep
+!datasets/future_datasets/.gitkeep
+data/
+research-data/

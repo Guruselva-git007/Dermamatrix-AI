@@ -1,0 +1,16 @@
+{
+  "experiment_status": "RESEARCH_ONLY_NOT_FOR_APPLICATION_INFERENCE",
+  "dataset_key": "scin_v1",
+  "dataset_version": "SCIN-public-1.0.0-metadata-2024-03-05",
+  "task": "Two-class clinical-photo feasibility experiment",
+  "source_classes": ["Eczema", "Urticaria"],
+  "taxonomy_file": "backend/configs/canonical_condition_map.json",
+  "minimum_label_weight": 0.7,
+  "image_slots": ["image_1"],
+  "split": {"strategy": "case_grouped_not_patient_grouped", "train": 0.7, "validation": 0.15, "test": 0.15, "seed": 20260906},
+  "integrity": {"exact_hash_cross_split": "fail", "dhash_hamming_threshold": 4, "near_duplicate_cross_split": "researcher_review"},
+  "model": {"architecture": "ResNet-18", "initialization": "ImageNet1K", "trainable_layers": "classification_head", "input_size": 224},
+  "training": {"epochs": 4, "batch_size": 16, "learning_rate": 0.001, "optimizer": "AdamW", "class_imbalance": "inverse-frequency weighted cross entropy"},
+  "calibration": {"method": "temperature_scaling", "fit_split": "validation_only"},
+  "promotion": {"application_inference": false, "reason": "This narrow SCIN experiment has no normal/open-set class, verified patient split, external validation, or clinical validation."}
+}

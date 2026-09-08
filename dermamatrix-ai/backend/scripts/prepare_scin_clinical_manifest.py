@@ -1,38 +1,39 @@
 #!/usr/bin/env python3
-"""Create a deterministic, case-grouped SCIN clinical-photo experiment manifest.
+"""Write a governed, strict SCIN manifest for an offline experiment.
 
-It uses a strict single-label subset only.  SCIN exposes contribution/case
-identifiers rather than verified longitudinal patient identifiers, so the
-result is case-grouped—not claimed as patient-level splitting.
+This script only prepares a manifest. It never downloads data, trains a
+model, or enables application inference.
 """
 
 from __future__ import annotations
 
 import argparse
-import ast
 import csv
-import hashlib
 import json
-from collections import Counter
+import sys
 from pathlib import Path
 
-from sklearn.model_selection import train_test_split
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND_DIR))
+from scin_pipeline import DEFAULT_CLASSES, build_strict_manifest  # noqa: E402
 
 
-DEFAULT_CLASSES = ("Eczema", "Urticaria")
-IMAGE_BASE_URL = "https://storage.googleapis.com/dx-scin-public-data/"
-
-
-def stable_id(case_id: str, path: str) -> str:
-    return hashlib.sha256(f"{case_id}|{path}".encode("utf-8")).hexdigest()[:24]
-
-
-def parse_weighted_label(value: str) -> dict:
-    try:
-        parsed = ast.literal_eval(value or "{}")
-    except (ValueError, SyntaxError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+def load_taxonomy(path: str | None) -> tuple[dict[str, dict[str, str]] | None, str]:
+    if not path:
+        return None, "source-labels-unmapped"
+    with Path(path).open(encoding="utf-8") as file:
+        document = json.load(file)
+    mappings = document.get("mappings") if isinstance(document, dict) else None
+    if not isinstance(mappings, list):
+        raise ValueError("Taxonomy JSON must contain a mappings array.")
+    result: dict[str, dict[str, str]] = {}
+    for mapping in mappings:
+        if not isinstance(mapping, dict):
+            continue
+        source_label = str(mapping.get("source_label", "")).strip()
+        if source_label:
+            result[source_label] = mapping
+    return result, str(document.get("taxonomy_version", "unversioned-taxonomy"))
 
 
 def main() -> None:
@@ -41,69 +42,35 @@ def main() -> None:
     parser.add_argument("--labels-csv", required=True)
     parser.add_argument("--output-csv", required=True)
     parser.add_argument("--summary-json", required=True)
-    parser.add_argument("--classes", default=",".join(DEFAULT_CLASSES), help="Strict, exact SCIN weighted labels.")
+    parser.add_argument("--classes", default=",".join(DEFAULT_CLASSES), help="Exact SCIN labels for one scoped experiment.")
+    parser.add_argument("--image-slots", default="image_1", help="Comma-separated subset of image_1,image_2,image_3. Case grouping is preserved.")
     parser.add_argument("--seed", type=int, default=20260906)
     parser.add_argument("--minimum-class-cases", type=int, default=20)
+    parser.add_argument("--minimum-label-weight", type=float, default=0.70)
+    parser.add_argument("--taxonomy-json", help="Optional explicit SCIN-source to DermaMatrix canonical mapping.")
     args = parser.parse_args()
-    classes = tuple(value.strip() for value in args.classes.split(",") if value.strip())
-    if len(classes) < 2:
-        raise SystemExit("Choose at least two classes for a multiclass experiment.")
+    try:
+        taxonomy, taxonomy_version = load_taxonomy(args.taxonomy_json)
+        rows, summary = build_strict_manifest(
+            args.cases_csv,
+            args.labels_csv,
+            (value.strip() for value in args.classes.split(",")),
+            seed=args.seed,
+            minimum_class_cases=args.minimum_class_cases,
+            minimum_label_weight=args.minimum_label_weight,
+            image_slots=(value.strip() for value in args.image_slots.split(",")),
+            taxonomy=taxonomy,
+            taxonomy_version=taxonomy_version,
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
-    with open(args.cases_csv, encoding="utf-8", newline="") as file:
-        cases = {row["case_id"]: row for row in csv.DictReader(file)}
-    selected = []
-    with open(args.labels_csv, encoding="utf-8", newline="") as file:
-        for label_row in csv.DictReader(file):
-            case = cases.get(label_row.get("case_id", ""))
-            weights = parse_weighted_label(label_row.get("weighted_skin_condition_label", ""))
-            if not case or len(weights) != 1:
-                continue
-            label, confidence = next(iter(weights.items()))
-            image_path = str(case.get("image_1_path", "")).strip()
-            if label not in classes or not image_path or not isinstance(confidence, (int, float)) or confidence < 0.7:
-                continue
-            selected.append({
-                "image_id": stable_id(label_row["case_id"], image_path),
-                "group_id": label_row["case_id"],
-                "group_id_type": "SCIN_CASE_ID_NOT_VERIFIED_PATIENT_ID",
-                "label": label,
-                "source_dataset": "SCIN-public-1.0.0",
-                "modality": "CLINICAL_PHOTO",
-                "image_url": IMAGE_BASE_URL + image_path,
-                "body_site": "self-reported source metadata retained outside manifest",
-                "annotation": "single weighted dermatologist label >= 0.7",
-            })
-    counts = Counter(row["label"] for row in selected)
-    insufficient = [label for label in classes if counts[label] < args.minimum_class_cases]
-    if insufficient:
-        raise SystemExit(f"Insufficient strict single-label cases for: {', '.join(insufficient)}. Counts: {dict(counts)}")
-
-    labels = [row["label"] for row in selected]
-    train_rows, held_rows = train_test_split(selected, test_size=0.30, random_state=args.seed, stratify=labels)
-    held_labels = [row["label"] for row in held_rows]
-    validation_rows, test_rows = train_test_split(held_rows, test_size=0.50, random_state=args.seed, stratify=held_labels)
-    for split, rows in (("train", train_rows), ("validation", validation_rows), ("test", test_rows)):
-        for row in rows:
-            row["split"] = split
-    rows = sorted(train_rows + validation_rows + test_rows, key=lambda item: (item["split"], item["label"], item["image_id"]))
-    output_path = Path(args.output_csv)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8", newline="") as file:
+    output = Path(args.output_csv); output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=list(rows[0]))
         writer.writeheader(); writer.writerows(rows)
-    summary = {
-        "dataset": "SCIN-public-1.0.0",
-        "task": "Experimental clinical-photo skin classification",
-        "classes": list(classes),
-        "case_count": len(rows),
-        "split_counts": {split: sum(row["split"] == split for row in rows) for split in ("train", "validation", "test")},
-        "label_counts": dict(Counter(row["label"] for row in rows)),
-        "split_label_counts": {split: dict(Counter(row["label"] for row in rows if row["split"] == split)) for split in ("train", "validation", "test")},
-        "grouping": "SCIN case ID. SCIN does not expose verified patient IDs in this manifest; no patient-level leakage claim is made.",
-        "selection": "One image_1 per case; exactly one weighted dermatologist label; weight >= 0.7; no multilabel/differential cases.",
-        "status": "EXPERIMENTAL_MANIFEST_ONLY",
-    }
-    with open(args.summary_json, "w", encoding="utf-8") as file:
+    summary_path = Path(args.summary_json); summary_path.parent.mkdir(parents=True, exist_ok=True)
+    with summary_path.open("w", encoding="utf-8") as file:
         json.dump(summary, file, indent=2)
     print(json.dumps(summary, indent=2))
 

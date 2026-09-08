@@ -1,0 +1,84 @@
+/* Small, data-first product refinements layered on the established system.
+   This is intentionally not a second design system. */
+:root {
+  --premium-line: rgba(57, 129, 201, .18);
+  --premium-wash: rgba(222, 242, 255, .72);
+  --premium-glow: rgba(76, 162, 237, .16);
+  --premium-ease: 220ms cubic-bezier(.16, 1, .3, 1);
+}
+
+[data-page].page-active { animation: premium-page-in 260ms var(--premium-ease) both; }
+.dashboard-heading-actions .button.primary,
+.action-row .button.primary,
+.modal-actions .button.primary { isolation: isolate; }
+.dashboard-heading-actions .button.primary::before,
+.action-row .button.primary::before,
+.modal-actions .button.primary::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(112deg, rgba(255,255,255,.16), transparent 38%, rgba(181,226,255,.18));
+  opacity: 0;
+  transition: opacity var(--premium-ease);
+}
+.dashboard-heading-actions .button.primary:hover::before,
+.action-row .button.primary:hover::before,
+.modal-actions .button.primary:hover::before { opacity: 1; }
+
+.dashboard-insight {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 30px;
+  align-items: end;
+  margin-top: 24px;
+  padding: 22px 24px;
+  border: 1px solid var(--premium-line);
+  border-radius: var(--dm-radius);
+  background:
+    radial-gradient(circle at 92% 14%, var(--premium-glow), transparent 14rem),
+    linear-gradient(112deg, var(--premium-wash), rgba(255,255,255,.72));
+  box-shadow: 0 12px 30px rgba(45, 111, 174, .06);
+}
+.dashboard-insight h2 { max-width: 660px; margin: 0; color: var(--dm-ink); font-size: clamp(19px, 2vw, 25px); line-height: 1.18; letter-spacing: -.035em; }
+.dashboard-insight p:not(.eyebrow) { max-width: 700px; margin: 9px 0 0; color: var(--dm-muted); font-size: 13px; line-height: 1.55; }
+.dashboard-insight-metric { min-width: 190px; padding-left: 24px; border-left: 1px solid var(--premium-line); }
+.dashboard-insight-metric small { display: block; color: var(--dm-faint); font: 600 9px/1.2 var(--dm-mono); letter-spacing: .1em; }
+.dashboard-insight-metric strong { display: block; margin: 7px 0 12px; color: var(--dm-blue-strong); font: 600 26px/1 var(--dm-display); letter-spacing: -.055em; }
+.dashboard-insight-metric strong span { color: var(--dm-muted); font: 600 13px/1 var(--dm-font); letter-spacing: 0; }
+.dashboard-insight-metric strong b { color: var(--dm-faint); font-size: 14px; }
+.dashboard-insight-metric .text-button { font-size: 12px; }
+
+.dashboard-action, .snapshot-card, .catalog-card { will-change: transform; }
+.dashboard-action:focus-visible, .snapshot-card:focus-within, .catalog-card:focus-within { border-color: var(--dm-blue); box-shadow: 0 0 0 3px var(--premium-glow); }
+.dashboard-record { transition: background var(--premium-ease), padding var(--premium-ease); }
+.dashboard-record:hover { padding-left: 8px; background: linear-gradient(90deg, var(--premium-wash), transparent 70%); }
+
+body[data-theme="dark"] {
+  --premium-line: rgba(112, 192, 255, .22);
+  --premium-wash: rgba(18, 54, 87, .66);
+  --premium-glow: rgba(67, 177, 255, .18);
+}
+body[data-theme="dark"] .dashboard-insight {
+  background:
+    radial-gradient(circle at 92% 18%, rgba(66, 191, 255, .19), transparent 15rem),
+    linear-gradient(112deg, rgba(13, 42, 69, .92), rgba(10, 29, 51, .82));
+  box-shadow: 0 16px 38px rgba(0, 0, 0, .18), 0 0 28px rgba(61, 172, 246, .06);
+}
+body[data-theme="dark"] .dashboard-record:hover { background: linear-gradient(90deg, rgba(23, 65, 101, .72), transparent 70%); }
+
+@keyframes premium-page-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .dashboard-insight { grid-template-columns: 1fr; gap: 18px; padding: 19px; }
+  .dashboard-insight-metric { min-width: 0; padding: 14px 0 0; border-top: 1px solid var(--premium-line); border-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-page].page-active { animation: none; }
+  .dashboard-record { transition: none; }
+}

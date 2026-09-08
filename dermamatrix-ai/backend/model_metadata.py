@@ -97,7 +97,7 @@ MODEL_METADATA = {
     "scin-clinical-resnet18-experiment": {
         "model_id": "scin-clinical-resnet18-experiment",
         "model_name": "SCIN clinical-photo ResNet-18 experiment",
-        "model_version": "scin-clinical-resnet18-experiment-20260906T003738Z",
+        "model_version": "scin-clinical-resnet18-experiment-20260908T184548Z",
         "dataset_version": "SCIN-public-1.0.0-strict-single-label",
         "pipeline_version": "scin-clinical-resnet18-v1",
         "status": "REJECTED_FOR_APPLICATION_INFERENCE",
@@ -106,9 +106,9 @@ MODEL_METADATA = {
         "input_modality": "CLINICAL_PHOTO",
         "evaluation": {
             "held_out_sample_count": 32,
-            "balanced_accuracy": 0.520243,
-            "macro_f1": 0.51952,
-            "auroc_ovr_macro": 0.477733,
+            "balanced_accuracy": 0.41498,
+            "macro_f1": 0.40567,
+            "auroc_ovr_macro": 0.437247,
             "external_validation": "NOT_PERFORMED",
         },
         "calibration": {
@@ -116,7 +116,7 @@ MODEL_METADATA = {
             "validation_split": "32-image independent validation split",
             "status": "EXPERIMENTAL_ONLY_NOT_RUNTIME_CONFIGURED",
         },
-        "limitations": "Rejected from the app because held-out performance is near chance. No normal class, segmentation, OOD detection, patient-level identifier, external validation, or clinical validation. Checkpoint is external and deliberately not loaded by this runtime.",
+        "limitations": "Rejected from the app because a reproducibility run was below chance-level discrimination after the strengthened source-gradability and duplicate audit. No normal class, segmentation, OOD detection, patient-level identifier, external validation, or clinical validation. Checkpoint is external and deliberately not loaded by this runtime.",
     },
     "sweat-questionnaire-v1": {
         "model_id": "sweat-questionnaire-v1",

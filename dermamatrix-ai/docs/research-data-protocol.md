@@ -24,9 +24,12 @@ Only reconsider the source after the rightsholder has supplied written authoriza
 The SCIN adapter is intentionally **manifest-bound**, not a general-purpose
 bulk downloader. It requires explicit licence acknowledgement and downloads
 only images already selected by `prepare_scin_clinical_manifest.py`; its output
-must remain outside Git. The current downloadable research weight is installed
-by `backend/scripts/download_research_model.sh` and is sufficient to run the
-narrowly scoped dermatoscopic research path.
+must remain outside Git. The current pipeline verifies image bytes, records
+exact SHA-256 and dHash integrity metadata, and refuses training if exact or
+thresholded near-duplicate content crosses case-grouped splits. See [DATASETS.md](../DATASETS.md) and the
+[SCIN 2026-09-09 run report](scin-experiment-20260909.md). The downloadable
+research weight installed by `backend/scripts/download_research_model.sh` is a
+separate, narrowly scoped dermatoscopic research path.
 
 ## Nail feasibility data run (rejected; reproducible offline only)
 
