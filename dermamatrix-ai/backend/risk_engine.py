@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-RISK_ENGINE_VERSION = "dermamatrix-assessment-risk-v1.1"
+RISK_ENGINE_VERSION = "dermamatrix-assessment-risk-v1.2"
 RISK_METHOD = "Explainable weighted assessment-evidence model with visual candidate-region input"
 RISK_THRESHOLDS = (
     (20, "LOW"),
@@ -154,9 +154,10 @@ def calculate_assessment_risk(
     """Calculate one reproducible assessment-level concern indicator.
 
     A condition label is optional. Its source is retained with the calculation
-    so a scoped research-model label can never be confused with exact
-    reference metadata. Low model confidence and poor image quality are
-    reliability context, not automatic risk escalators.
+    so the calling boundary can restrict it to calibrated scoped-model output;
+    teaching/reference metadata is never a valid source. Low model confidence
+    and poor image quality are reliability context, not automatic risk
+    escalators.
     """
     severity = severity or {}
     questionnaire = questionnaire or {}

@@ -46,7 +46,7 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertTrue(chart["common_contributors"])
         self.assertEqual(avif_acne["topic_id"], "acne")
 
-    def test_reference_metadata_uses_the_shared_risk_pipeline(self):
+    def test_reference_metadata_keeps_the_shared_risk_pipeline_label_independent(self):
         from app import app
 
         image = Image.new("RGB", (640, 640), color=(225, 235, 245))
@@ -70,8 +70,8 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertEqual(result["assessment_result"]["condition"]["available"], False)
         self.assertTrue(result["assessment_risk"]["available"])
         self.assertIsInstance(result["assessment_risk"]["score"], int)
-        self.assertEqual(result["assessment_risk"]["condition_profile"]["key"], "acne")
-        self.assertEqual(result["assessment_risk"]["condition_profile"]["condition_source"], "exact teaching-reference metadata")
+        self.assertEqual(result["assessment_risk"]["condition_profile"]["key"], "undifferentiated-skin")
+        self.assertEqual(result["assessment_risk"]["condition_profile"]["condition_source"], "No condition label used")
         self.assertTrue(result["assessment_result"]["presentation"]["is_reference_case"])
         self.assertEqual(result["recommendations"]["medication_information"]["status"], "EDUCATIONAL_DISCUSSION_ONLY")
         self.assertTrue(result["recommendations"]["diet"])
@@ -107,8 +107,10 @@ class PresentationCaseTests(unittest.TestCase):
             self.assertGreaterEqual(result["assessment_risk"]["score"], 0)
             self.assertLessEqual(result["assessment_risk"]["score"], 100)
         self.assertTrue(reference["presentation_case"]["matched"])
+        self.assertEqual(reference["assessment_risk"]["score"], standard["assessment_risk"]["score"])
         self.assertEqual(prompt_standard["assessment_risk"]["urgency"], "URGENT_EVALUATION")
         self.assertEqual(prompt_reference["assessment_risk"]["urgency"], "URGENT_EVALUATION")
+        self.assertEqual(prompt_reference["assessment_risk"]["score"], prompt_standard["assessment_risk"]["score"])
         self.assertEqual(prompt_reference["assessment_risk"]["score"], repeated_prompt_reference["assessment_risk"]["score"])
 
 

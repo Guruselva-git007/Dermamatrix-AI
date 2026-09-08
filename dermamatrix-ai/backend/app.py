@@ -13,6 +13,7 @@ import json
 import os
 import re
 import uuid
+import warnings
 from datetime import datetime, timedelta, timezone
 
 import pymysql
@@ -43,6 +44,16 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
+# Keep client uploads comfortably within a local prototype's processing budget.
+# This is an input-safety limit, not an image-quality or clinical threshold.
+MAX_IMAGE_PIXELS = 16_000_000
+EXPECTED_IMAGE_FORMATS = {
+    "png": "PNG",
+    "jpg": "JPEG",
+    "jpeg": "JPEG",
+    "webp": "WEBP",
+    "avif": "AVIF",
+}
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 AUTH_SCHEMA_VERSION = "20260907_auth_profile_preferences_v1"
 RISK_SCHEMA_VERSION = "20260907_assessment_risk_engine_v1"
@@ -306,6 +317,47 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+class ImageValidationError(ValueError):
+    """A display-safe validation error for an uploaded image."""
+
+
+def _opened_image(image_bytes: bytes, filename: str | None = None) -> tuple[Image.Image, str, int, int]:
+    """Decode one bounded upload and reject misleading or unsafe image inputs.
+
+    The upload endpoint is the only supported entry to the image pipeline, so
+    this check runs before quality heuristics, candidate-region extraction, or
+    any optional model adapter.  It deliberately validates file bytes instead
+    of trusting a browser-provided MIME type.
+    """
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(image_bytes)) as probe:
+                detected_format = str(probe.format or "").upper()
+                width, height = probe.size
+                if width <= 0 or height <= 0:
+                    raise ImageValidationError("The uploaded image has invalid dimensions.")
+                if width * height > MAX_IMAGE_PIXELS:
+                    raise ImageValidationError("Use an image no larger than 16 megapixels.")
+                probe.verify()
+        if detected_format not in set(EXPECTED_IMAGE_FORMATS.values()):
+            raise ImageValidationError("Use a PNG, JPG, JPEG, WEBP, or AVIF image.")
+        if filename and "." in filename:
+            extension = filename.rsplit(".", 1)[1].lower()
+            expected_format = EXPECTED_IMAGE_FORMATS.get(extension)
+            if expected_format and detected_format != expected_format:
+                raise ImageValidationError("The file extension does not match the image content. Export the image again and retry.")
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            image = source.convert("RGB")
+    except ImageValidationError:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ImageValidationError("This image is too large to process safely. Use an image no larger than 16 megapixels.") from None
+    except (OSError, ValueError, SyntaxError):
+        raise ImageValidationError("The selected file could not be read as a complete supported image.") from None
+    return image, detected_format, width, height
+
+
 def user_for_patient(connection: pymysql.Connection, patient_id: str) -> dict | None:
     """Legacy compatibility guard for routes that still receive a patient id.
 
@@ -419,14 +471,12 @@ def routine_payload(payload: dict) -> tuple[str, str, str, str] | None:
     return condition_label, routine_name, start_date, notes
 
 
-def image_quality(image_bytes: bytes) -> tuple[int, dict]:
+def image_quality(image_bytes: bytes, filename: str | None = None) -> tuple[int, dict]:
     """Return non-diagnostic image usability checks; never a disease classifier."""
-    with Image.open(io.BytesIO(image_bytes)) as image:
-        image = image.convert("RGB")
-        width, height = image.size
-        resized = image.resize((1, 1))
-        brightness = sum(ImageStat.Stat(resized).mean) / 3
-        edge_variance = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES).convert("L")).var[0]
+    image, image_format, width, height = _opened_image(image_bytes, filename)
+    resized = image.resize((1, 1))
+    brightness = sum(ImageStat.Stat(resized).mean) / 3
+    edge_variance = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES).convert("L")).var[0]
     issues = []
     if min(width, height) < 450:
         issues.append("The image is too small; retake it at a higher resolution.")
@@ -442,7 +492,7 @@ def image_quality(image_bytes: bytes) -> tuple[int, dict]:
     quality = int(max(0, min(98, 46 + resolution_score + light_score + focus_score)))
     quality_status = "LOW_QUALITY" if issues else "GOOD" if quality >= 85 else "ACCEPTABLE"
     return quality, {
-        "width": width, "height": height, "brightness": round(brightness, 1),
+        "width": width, "height": height, "pixel_count": width * height, "format": image_format, "brightness": round(brightness, 1),
         "edge_variance": round(edge_variance, 1), "usable_for_research_model": not issues,
         "status": quality_status, "issues": issues,
     }
@@ -496,26 +546,31 @@ def assessment_concern_indicator(*, area: str, classifier: dict, severity: dict,
                                  urgent_selected: bool, quality: int | None, quality_status: str | None,
                                  validation: dict, segmentation: dict | None = None,
                                  candidate_region: dict | None = None,
-                                 reference_condition: str | None = None,
                                  questionnaire: dict | None = None) -> dict:
     """Build the one project-defined assessment indicator from actual inputs.
 
-    A scoped classifier label and an exact reference-case label are kept
-    distinct. Reference metadata can select the documented project risk
-    profile for that exact supplied file, but is never represented as model
-    inference or a calibrated condition likelihood.
+    Only a calibrated, non-low-confidence scoped classifier output may select
+    a condition-specific project profile.  Exact teaching-file metadata is
+    display-only and intentionally cannot alter this score or its urgency.
     """
     classifier = classifier or {}
     candidate_region = candidate_region or {}
     top_prediction = classifier.get("top_prediction") or {}
-    classifier_available = bool(classifier.get("available") and top_prediction.get("condition"))
     likelihood = classifier.get("condition_likelihood") or {}
+    uncertainty = classifier.get("uncertainty") or {}
+    classifier_available = bool(
+        classifier.get("available")
+        and top_prediction.get("condition")
+        and likelihood.get("available")
+        and likelihood.get("estimated_likelihood") is not None
+        and uncertainty.get("status") != "LOW_CONFIDENCE"
+    )
     model_extent = (segmentation or {}).get("affected_area_percent")
     candidate_extent = candidate_region.get("affected_area_percent") if candidate_region.get("reliable") else None
     extent = model_extent if isinstance(model_extent, (int, float)) else candidate_extent
     extent_source = "trained model segmentation" if isinstance(model_extent, (int, float)) else "contrast-based visual candidate-region extraction" if isinstance(candidate_extent, (int, float)) else None
-    condition_name = top_prediction.get("condition") if classifier_available else reference_condition
-    condition_source = "scoped research classifier" if classifier_available else "exact teaching-reference metadata" if reference_condition else None
+    condition_name = top_prediction.get("condition") if classifier_available else None
+    condition_source = "calibrated scoped research classifier" if classifier_available else None
     return calculate_assessment_risk(
         area=area,
         condition_name=condition_name,
@@ -529,7 +584,7 @@ def assessment_concern_indicator(*, area: str, classifier: dict, severity: dict,
         urgent_selected=urgent_selected,
         image_quality=quality,
         quality_status=quality_status,
-        uncertainty_status=(classifier.get("uncertainty") or {}).get("status"),
+        uncertainty_status=uncertainty.get("status"),
         input_validation_status=(validation or {}).get("status"),
         affected_area_percent=extent,
         affected_area_source=extent_source,
@@ -1298,7 +1353,9 @@ def create_assessment():
     if not image_bytes:
         return jsonify({"error": "The uploaded image was empty."}), 400
     try:
-        quality, image_features = image_quality(image_bytes)
+        quality, image_features = image_quality(image_bytes, image_file.filename)
+    except ImageValidationError as error:
+        return jsonify({"error": str(error)}), 422
     except Exception:
         return jsonify({"error": "The selected file could not be read as an image."}), 422
     area = request.form.get("area", "Skin").strip()[:30] or "Skin"
@@ -1371,7 +1428,6 @@ def create_assessment():
         discomfort=discomfort, change=change, symptoms=manual_symptoms,
         urgent_selected=urgent_concern, quality=quality, quality_status=image_features["status"],
         validation=validation, segmentation=segmentation, candidate_region=candidate_region,
-        reference_condition=presentation_case.get("teaching_label") if presentation_case else None,
     )
     patient_context = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment)
     cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk)
@@ -1632,9 +1688,21 @@ def mysql_unavailable(_error):
 
 
 @app.after_request
-def prevent_stale_local_assets(response):
-    """Keep the local demo browser from retaining an old client after a live update."""
-    if request.path in {"/", "/index.html"} or request.path.endswith((".css", ".js")):
+def protect_local_responses(response):
+    """Apply browser privacy and content-safety defaults without adding a proxy.
+
+    This is intentionally modest: the app remains a local Flask prototype, so
+    HTTPS termination, rate limiting and security monitoring remain deployment
+    requirements rather than claims made by these headers.
+    """
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(self), geolocation=(self), microphone=()")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    if request.path.startswith("/api/") or request.path in {"/", "/index.html"} or request.path.endswith((".css", ".js")):
+        # API responses may contain account, health-history, or assessment
+        # metadata, so neither browser nor intermediary caching is appropriate.
         response.headers["Cache-Control"] = "no-store, max-age=0"
     return response
 

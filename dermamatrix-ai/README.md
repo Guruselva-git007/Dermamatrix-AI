@@ -6,6 +6,9 @@ An educational prototype for integumentary-health screening workflows. It covers
 
 The India-aligned guardrails and production requirements are documented in `docs/india-compliance-guardrails.md`. The app never issues a verified diagnosis or prescription; registered medical practitioner review remains mandatory.
 
+The concrete controls and intentionally unresolved local-prototype security
+limits are documented in [docs/security.md](docs/security.md).
+
 ## What an uploaded image can do today
 
 - **Face, hair/scalp, nail, or ordinary skin photo:** image-usability feedback and a non-diagnostic discussion-priority based on what the user reports. It does not identify a deficiency or classify a disease.

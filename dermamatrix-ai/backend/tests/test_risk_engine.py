@@ -59,13 +59,13 @@ class AssessmentRiskEngineTests(unittest.TestCase):
         self.assertIn("image-quality score", uncertain["calculation_inputs"]["missing_optional"])
 
     def test_reliable_image_region_contributes_without_becoming_disease_severity(self):
-        without_region = indicator(condition_name="Acne", condition_source="exact teaching-reference metadata")
+        without_region = indicator(condition_name="Acne", condition_source="calibrated scoped research classifier fixture")
         smaller_region = indicator(
-            condition_name="Acne", condition_source="exact teaching-reference metadata",
+            condition_name="Acne", condition_source="calibrated scoped research classifier fixture",
             affected_area_percent=12.0, affected_area_source="contrast-based visual candidate-region extraction",
         )
         larger_region = indicator(
-            condition_name="Acne", condition_source="exact teaching-reference metadata",
+            condition_name="Acne", condition_source="calibrated scoped research classifier fixture",
             affected_area_percent=52.0, affected_area_source="contrast-based visual candidate-region extraction",
         )
         self.assertGreater(smaller_region["score"], without_region["score"])

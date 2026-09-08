@@ -185,6 +185,64 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 413)
         self.assertEqual(response.get_json()["error"], "The image is larger than 10 MB.")
 
+    def test_image_content_must_match_the_selected_extension(self):
+        from app import app
+
+        image = Image.new("RGB", (640, 640), color=(120, 140, 160))
+        payload = BytesIO()
+        image.save(payload, format="PNG")
+        response = app.test_client().post(
+            "/api/assessments",
+            data={"image": (BytesIO(payload.getvalue()), "misleading.jpg")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("extension does not match", response.get_json()["error"])
+
+    def test_excessive_pixel_upload_is_rejected_before_pixel_processing(self):
+        from app import app
+
+        # A one-bit uniform PNG stays tiny on disk but declares over 16 MP.
+        # The endpoint must reject it before RGB conversion can allocate it.
+        image = Image.new("1", (4001, 4000), color=0)
+        payload = BytesIO()
+        image.save(payload, format="PNG")
+        response = app.test_client().post(
+            "/api/assessments",
+            data={"image": (BytesIO(payload.getvalue()), "large.png")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("16 megapixels", response.get_json()["error"])
+
+    def test_api_responses_have_private_browser_safety_headers(self):
+        from app import app
+
+        response = app.test_client().get("/api/model-registry")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
+        self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
+        self.assertEqual(response.headers.get("Referrer-Policy"), "same-origin")
+
+    def test_uncalibrated_research_ranking_cannot_select_a_risk_condition_profile(self):
+        from app import assessment_concern_indicator
+
+        risk = assessment_concern_indicator(
+            area="Skin",
+            classifier={
+                "available": True,
+                "top_prediction": {"condition": "Melanoma"},
+                "condition_likelihood": {"available": False, "estimated_likelihood": None},
+                "uncertainty": {"status": "UNCERTAIN"},
+            },
+            severity={"score": 0}, duration=0, discomfort=0, change=0,
+            symptoms=[], urgent_selected=False, quality=90, quality_status="GOOD",
+            validation={"status": "VALID"},
+        )
+        self.assertEqual(risk["condition_profile"]["key"], "undifferentiated-skin")
+        self.assertEqual(risk["condition_profile"]["condition_source"], "No condition label used")
+
     def test_health_area_router_never_routes_general_images_to_lesion_classifier(self):
         clear_image = {"status": "GOOD", "usable_for_research_model": True}
         skin = route_image_assessment(area="Skin", image_context="face_skin", dermoscopy_attested=False, image_features=clear_image)

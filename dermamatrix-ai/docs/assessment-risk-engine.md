@@ -18,15 +18,16 @@ It uses only evidence available for the current assessment:
 - self-reported symptom severity, duration, change, discomfort, and relevant
   symptoms;
 - the optional prompt-care selection;
-- a compatible scoped-model label and visual extent only if that model really
-  ran;
+- a compatible **calibrated, non-low-confidence** scoped-model label and
+  visual extent only if that model really ran;
 - sweat questionnaire responses for the questionnaire-only pathway.
 
 Image quality, missing calibration, and uncertainty are recorded as
 reliability context. They do not silently increase the score or get presented
 as medical evidence. Educational condition guides and presentation teaching
-labels are never passed into the engine. Exact-file teaching cases return no
-patient-specific indicator.
+labels are never passed into the engine. An exact-file teaching case therefore
+keeps the same concern result as the identical upload with presentation mode
+off, given the same reported inputs.
 
 ## Output
 
