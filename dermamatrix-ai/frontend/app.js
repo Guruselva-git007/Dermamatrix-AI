@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -66,6 +66,16 @@ function transitionAssessment(nextState, detail = '') {
   return true;
 }
 
+function updateAssessmentProgress(step) {
+  const activeStep = Math.max(1, Math.min(4, Number(step) || 1));
+  $$('.assessment-steps li').forEach((item, index) => {
+    const itemStep = index + 1;
+    item.classList.toggle('active', itemStep === activeStep);
+    item.classList.toggle('complete', itemStep < activeStep);
+    item.setAttribute('aria-current', itemStep === activeStep ? 'step' : 'false');
+  });
+}
+
 async function requestJSON(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
@@ -96,6 +106,7 @@ function selectArea(area) {
   const areaChanged = state.area !== area;
   if (areaChanged) resetImage();
   state.area = area;
+  updateAssessmentProgress(1);
   transitionAssessment(AssessmentState.CATEGORY_SELECTED, `${area.toUpperCase()} SELECTED`);
   $$('.area-choice button').forEach(button => {
     const selected = button.dataset.area === area;
@@ -155,6 +166,7 @@ function setImage(file) {
   $('#uploadPreviewName').textContent = file.name;
   $('#uploadPreview').hidden = false;
   $('#analyzeButton').disabled = false; $('#stepCount').textContent = 'STEP 2 OF 3';
+  updateAssessmentProgress(2);
   transitionAssessment(AssessmentState.INPUT_REQUIRED, 'IMAGE READY FOR REVIEW');
 }
 
@@ -320,6 +332,7 @@ function processingStages(area) {
 
 function openProcessing(area) {
   installProcessingOverlay();
+  updateAssessmentProgress(4);
   const modal = $('#processingModal');
   const stages = processingStages(area);
   $('#processingTitle').textContent = area === 'Sweat' ? 'Preparing your questionnaire summary' : 'Preparing your image summary';
@@ -931,6 +944,12 @@ function openDirectorySearch(locationValue, { appointment = false } = {}) {
   state.nearbySearchLocation = location;
   const specialty = state.recommendedSpecialty || 'dermatologist';
   const query = encodeURIComponent(appointment ? `${specialty} appointment options near ${location}` : `${specialty} near ${location}`);
+  const handoff = $('#directoryHandoffState');
+  if (handoff) {
+    handoff.classList.add('is-active');
+    handoff.querySelector('strong').textContent = appointment ? 'Opening appointment options in Maps' : 'Opening current specialist listings in Maps';
+    handoff.querySelector('p').textContent = `${specialty.replace(/^./, letter => letter.toUpperCase())} listings near ${location} open in a new tab. Confirm credentials, availability, ratings, and booking details directly with the provider.`;
+  }
   window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank', 'noopener,noreferrer');
 }
 
@@ -1020,12 +1039,12 @@ async function hydrateProfile() {
   }
 }
 
-function commerceDestinationMarkup(product, className = 'catalog-destination') {
+function commerceDestinationMarkup(product, className = 'catalog-destination', actionLabel = null) {
   const commerce = product.commerce || {};
   const primary = commerce.primary || {};
   const destination = supportedExternalUrl(primary.url || product.url);
   const action = destination
-    ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener noreferrer${primary.is_affiliate ? ' sponsored' : ''}">${primary.is_affiliate ? 'Visit partner' : 'Find product'} ↗</a>`
+    ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener noreferrer${primary.is_affiliate ? ' sponsored' : ''}">${actionLabel || (primary.is_affiliate ? 'Visit partner' : 'View options')} ↗</a>`
     : '<button class="patient-text-link" type="button" data-result-action="products">Explore products →</button>';
   const alternatives = (commerce.alternatives || []).map(option => {
     const url = supportedExternalUrl(option.url);
@@ -1038,7 +1057,8 @@ function commerceDestinationMarkup(product, className = 'catalog-destination') {
 function commerceCard(product) {
   const category = String(product.domain || 'care').toLowerCase();
   const icon = category === 'hair' ? '〰' : category === 'nails' ? '▣' : category === 'wellness' ? '✦' : category === 'search' ? '⌕' : '◌';
-  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><span class="catalog-icon">${icon}</span><span class="catalog-type">${escapeHTML(product.category || 'PRODUCT DISCOVERY').toUpperCase()}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(product.purpose || 'User-led product discovery.')}</p><small class="catalog-precaution">${escapeHTML(product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product)}</article>`;
+  const badge = category === 'search' ? 'Exact search' : 'Discovery';
+  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><div class="catalog-media" aria-hidden="true"><span class="catalog-icon">${icon}</span><small>${badge}</small></div><div class="catalog-card-body"><span class="catalog-type">${escapeHTML(product.category || 'PRODUCT DISCOVERY')}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(product.purpose || 'User-led product discovery.')}</p></div><div class="catalog-card-footer"><small class="catalog-precaution">${escapeHTML(product.key_property || product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product, 'catalog-destination', category === 'search' ? 'Open search' : 'View options')}</div></article>`;
 }
 
 function knowledgeList(items, emptyMessage) {
@@ -1076,7 +1096,60 @@ async function openKnowledgeTopic(topicId) {
   }
 }
 
+function productCatalogSkeletons() {
+  return Array.from({ length: 8 }, () => '<article class="catalog-card catalog-skeleton" aria-hidden="true"><div></div><span></span><strong></strong><p></p><p></p></article>').join('');
+}
+
+function setProductTag(tag = '') {
+  state.productTag = tag;
+  renderDiscoveryCatalog();
+}
+
+function renderProductTagFilters(items) {
+  const tagContainer = $('#productTagFilters');
+  if (!tagContainer) return;
+  const tags = [...new Set(items.flatMap(item => item.product.tags || []))]
+    .sort((first, second) => first.localeCompare(second))
+    .slice(0, 12);
+  if (state.productTag && !tags.includes(state.productTag)) state.productTag = '';
+  tagContainer.innerHTML = tags.length
+    ? tags.map(tag => `<button class="${tag === state.productTag ? 'selected' : ''}" type="button" data-product-tag="${escapeHTML(tag)}" aria-pressed="${String(tag === state.productTag)}">${escapeHTML(tag)}</button>`).join('')
+    : '<p class="filter-empty">No additional care-focus filters are available for this search.</p>';
+  $$('[data-product-tag]').forEach(button => { button.onclick = () => setProductTag(button.dataset.productTag); });
+}
+
+function renderActiveProductFilters() {
+  const container = $('#activeProductFilters');
+  if (!container) return;
+  const filters = [
+    state.productFilter !== 'all' ? { label: state.productFilter === 'hair' ? 'Hair & scalp' : readableStatus(state.productFilter), action: 'category' } : null,
+    state.productTag ? { label: state.productTag, action: 'tag' } : null,
+  ].filter(Boolean);
+  container.hidden = !filters.length;
+  container.innerHTML = filters.length
+    ? `<span>Applied</span>${filters.map(filter => `<button type="button" data-clear-product-filter="${filter.action}">${escapeHTML(filter.label)} <b aria-hidden="true">×</b></button>`).join('')}<button class="clear-product-filters" type="button" data-clear-product-filter="all">Clear all</button>`
+    : '';
+  $$('[data-clear-product-filter]').forEach(button => {
+    button.onclick = () => {
+      const target = button.dataset.clearProductFilter;
+      if (target === 'all' || target === 'category') state.productFilter = 'all';
+      if (target === 'all' || target === 'tag') state.productTag = '';
+      $$('.product-tabs button').forEach(tab => {
+        const selected = tab.dataset.filter === state.productFilter;
+        tab.classList.toggle('selected', selected); tab.setAttribute('aria-selected', String(selected));
+      });
+      renderDiscoveryCatalog();
+    };
+  });
+}
+
 function renderDiscoveryCatalog() {
+  if (state.productLoading) {
+    $('#productCatalog').innerHTML = productCatalogSkeletons();
+    $('#productResultCount').textContent = 'Loading products';
+    $('#productResultMeta').textContent = 'Refreshing discovery categories';
+    return;
+  }
   const query = $('#productSearch').value.trim().toLowerCase();
   const commerceItems = state.productCatalog.map(product => ({
     category: String(product.domain || '').toLowerCase(), product,
@@ -1085,11 +1158,18 @@ function renderDiscoveryCatalog() {
   const isServerSearch = Boolean(state.productCatalogQuery) && query === state.productCatalogQuery.toLowerCase();
   const visible = commerceItems.filter(item => {
     const matchesCategory = state.productFilter === 'all' || item.category === state.productFilter;
-    return matchesCategory && (isServerSearch || !query || item.searchText.includes(query));
+    const matchesTag = !state.productTag || (item.product.tags || []).includes(state.productTag);
+    return matchesCategory && matchesTag && (isServerSearch || !query || item.searchText.includes(query));
   });
+  if (state.productSort === 'name') visible.sort((first, second) => String(first.product.name || '').localeCompare(String(second.product.name || '')));
+  if (state.productSort === 'category') visible.sort((first, second) => String(first.product.category || '').localeCompare(String(second.product.category || '')) || String(first.product.name || '').localeCompare(String(second.product.name || '')));
   $('#productCatalog').innerHTML = visible.length
     ? visible.map(item => commerceCard(item.product)).join('')
-    : '<div class="catalog-empty">No matching product category. Search for the exact product, an ingredient, or a care topic.</div>';
+    : '<div class="catalog-empty"><span aria-hidden="true">⌕</span><strong>No products found</strong><p>Try a broader search, remove a filter, or browse another category.</p><button class="text-button" type="button" data-clear-product-filter="all">Clear filters</button></div>';
+  $('#productResultCount').textContent = `${visible.length} ${visible.length === 1 ? 'result' : 'results'}`;
+  $('#productResultMeta').textContent = state.productCatalogQuery ? `Results for “${state.productCatalogQuery}”` : 'Curated discovery categories';
+  renderProductTagFilters(commerceItems);
+  renderActiveProductFilters();
 }
 
 async function loadCommerceCatalog({ force = false, query = null } = {}) {
@@ -1100,6 +1180,8 @@ async function loadCommerceCatalog({ force = false, query = null } = {}) {
     ? `/api/products/search?q=${encodeURIComponent(requestedQuery)}`
     : '/api/products?area=All&mode=discovery&risk_score=0';
   const requestKey = ++state.productCatalogRequestKey;
+  state.productLoading = true;
+  renderDiscoveryCatalog();
   state.productCatalogLoadPromise = requestJSON(endpoint, {}, 10000)
     .then(payload => {
       if (requestKey !== state.productCatalogRequestKey) return state.productCatalog;
@@ -1119,13 +1201,23 @@ async function loadCommerceCatalog({ force = false, query = null } = {}) {
       renderDiscoveryCatalog();
       return [];
     })
-    .finally(() => { if (requestKey === state.productCatalogRequestKey) state.productCatalogLoadPromise = null; });
+    .finally(() => {
+      if (requestKey === state.productCatalogRequestKey) {
+        state.productCatalogLoadPromise = null;
+        state.productLoading = false;
+        renderDiscoveryCatalog();
+      }
+    });
   return state.productCatalogLoadPromise;
 }
 
 function setProductFilter(filter = 'all') {
   state.productFilter = filter;
-  $$('.product-tabs button').forEach(tab => tab.classList.toggle('selected', tab.dataset.filter === filter));
+  state.productTag = '';
+  $$('.product-tabs button').forEach(tab => {
+    const selected = tab.dataset.filter === filter;
+    tab.classList.toggle('selected', selected); tab.setAttribute('aria-selected', String(selected));
+  });
 }
 
 async function searchProducts(event) {
@@ -1148,6 +1240,8 @@ function applyTheme(theme) {
   $('#themeToggle').setAttribute('aria-pressed', String(dark));
   $('#themeToggle').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
   $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Day</b>' : '<span aria-hidden="true">☾</span><b>Night</b>';
+  const settingsButton = $('#settingsThemeButton');
+  if (settingsButton) settingsButton.textContent = dark ? 'Use day theme' : 'Use night theme';
   document.querySelector('meta[name="theme-color"]').content = dark ? '#071a33' : '#f6f8fb';
 }
 
@@ -1500,6 +1594,7 @@ $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(b
 $$('[data-dashboard-area]').forEach(button => { button.onclick = () => startAreaAssessment(button.dataset.dashboardArea); });
 $('#imageInput').onchange = event => setImage(event.target.files[0]);
 $('#imageContext').onchange = updateImageContext;
+$('#screenDetails').addEventListener('toggle', event => { if (event.currentTarget.open) updateAssessmentProgress(3); });
 const drop = $('#dropZone');
 ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
@@ -1522,6 +1617,14 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') { cl
 $$('.product-tabs button').forEach(button => { button.onclick = () => { setProductFilter(button.dataset.filter); renderDiscoveryCatalog(); }; });
 $('#productSearch').oninput = renderDiscoveryCatalog;
 $('#productSearchForm').onsubmit = searchProducts;
+$('#productSort').onchange = event => { state.productSort = event.target.value; renderDiscoveryCatalog(); };
+$('#productFiltersToggle').onclick = event => {
+  const panel = $('#productFilterPanel');
+  const opening = panel.hidden;
+  panel.hidden = !opening;
+  event.currentTarget.setAttribute('aria-expanded', String(opening));
+  event.currentTarget.classList.toggle('selected', opening);
+};
 $$('[data-product-query]').forEach(button => { button.onclick = () => { $('#productSearch').value = button.dataset.productQuery || ''; searchProducts(); }; });
 $('#workspaceSearch').onkeydown = event => {
   if (event.key !== 'Enter') return;
@@ -1534,6 +1637,7 @@ $('#motionToggle').onchange = event => { persistPreferences({ reduced_motion: ev
 $('#clearProfileButton').onclick = clearLocalProfile;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
 $('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; persistPreferences({ theme: next }); };
+$('#settingsThemeButton').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; persistPreferences({ theme: next }); };
 $('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin; $('#downloadHistoryButton').onclick = downloadHistory;
 window.addEventListener('popstate', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
 window.addEventListener('hashchange', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
@@ -1551,9 +1655,6 @@ async function initialiseApp() {
   resetRoutineForm();
   $('#checkinDate').value = currentDate();
   $('#clearProfileButton').textContent = 'Sign out';
-  const accountSetting = $('#clearProfileButton').closest('article');
-  accountSetting.querySelector('h3').textContent = 'Account';
-  accountSetting.querySelector('p').textContent = 'End this browser session without deleting your local records.';
   $('#profileModal .profile-actions [data-close-profile]').textContent = 'Cancel';
   $('#resultTitle').textContent = 'Your AI assessment';
   $('[data-result-tab="summary"]').textContent = 'Overview';
