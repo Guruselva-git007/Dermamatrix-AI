@@ -24,7 +24,7 @@ from werkzeug.utils import secure_filename
 
 from model_service import MODEL_VERSION, run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
-from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata
+from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata, public_capability_matrix
 from assessment_router import public_workflows, route_image_assessment
 from assessment_contract import build_assessment_result
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
@@ -673,16 +673,26 @@ def health():
 
 @app.get("/api/model-registry")
 def model_registry():
-    """Expose real module readiness without claiming that missing models are available."""
+    """Expose the capability source used by API and frontend status copy."""
+    capabilities = public_capability_matrix()
     return jsonify({
         "shared_components": ["input validation", "reported-concern priority", "care guidance", "progress metadata", "doctor-directory handoff"],
         "health_area_workflows": public_workflows(),
+        "capabilities": capabilities,
         "condition_knowledge": {"version": KNOWLEDGE_VERSION, "capability_matrix": model_capability_matrix()},
+        # Keep this legacy field while deriving it from the same canonical
+        # capability records. Existing clients therefore do not receive a
+        # separate, hand-maintained claim about model readiness.
         "modalities": [
-            {"area": "Skin", "input": "dermatoscopic single-lesion image", "adapter": "HAM10000 ResNet-34 research adapter", "available": os.path.isfile(os.path.join(os.path.dirname(__file__), "models", "ham10000_resnet34_research.ptw")), "explainability": "Grad-CAM when the research model runs", "notice": "Research-only; not a diagnosis."},
-            {"area": "Hair", "input": "scalp / hair image", "adapter": "Hair/scalp image-model adapter", "available": False, "explainability": "Grad-CAM available after compatible trained weights are configured", "notice": "No trained hair/scalp model is bundled with this deployment."},
-            {"area": "Nails", "input": "nail image", "adapter": "Nail image-model adapter", "available": False, "explainability": "Grad-CAM available after compatible trained weights are configured", "notice": "No trained nail model is bundled with this deployment."},
-            {"area": "Sweat", "input": "symptom questionnaire", "adapter": "Sweat tabular-model adapter", "available": False, "explainability": "Questionnaire input-contribution summary", "notice": "The runnable prototype is rule-based; no validated XGBoost model or SHAP explainer is bundled."},
+            {
+                "area": capability["area"],
+                "input": capability["supported_input"],
+                "adapter": capability["model_name"],
+                "available": capability["runtime_inference_available"],
+                "explainability": capability["explainability"],
+                "notice": capability["user_message"],
+            }
+            for capability in capabilities
         ],
         "model_metadata": all_model_metadata(),
     })

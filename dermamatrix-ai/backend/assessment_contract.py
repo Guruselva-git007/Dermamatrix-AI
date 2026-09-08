@@ -11,7 +11,7 @@ explainability artifact when an underlying service did not produce one.
 from __future__ import annotations
 
 
-ASSESSMENT_RESULT_VERSION = "assessment-result-v1.2"
+ASSESSMENT_RESULT_VERSION = "assessment-result-v1.3"
 
 
 def _urgency(cdss: dict, urgent_notice: str | None, assessment_risk: dict) -> dict:
@@ -80,6 +80,64 @@ def _condition(classifier: dict, intelligence: dict) -> dict:
     }
 
 
+def _assessment_status(response: dict, classifier: dict, validation: dict) -> dict:
+    """Describe what the completed pathway could actually establish.
+
+    This is deliberately separate from a possible model label, condition
+    likelihood, reported severity, and the project-defined concern indicator.
+    It gives clients one stable, non-clinical outcome code without converting
+    an unavailable or research-only component into a medical conclusion.
+    """
+    input_type = response.get("input_type", "image")
+    quality = response.get("quality") or {}
+    validation_status = validation.get("status")
+    uncertainty = classifier.get("uncertainty") or {}
+    uncertainty_status = uncertainty.get("status")
+    ood_status = uncertainty.get("ood_status")
+
+    if input_type == "questionnaire":
+        return {
+            "code": "QUESTIONNAIRE_ASSESSMENT",
+            "label": "Questionnaire assessment completed",
+            "notice": "This transparent questionnaire pathway does not run an image classifier or validated condition model.",
+        }
+    if quality.get("status") == "LOW_QUALITY" or validation_status in {"LOW_QUALITY", "INVALID_INPUT", "UNSUPPORTED"}:
+        return {
+            "code": "INPUT_UNSUITABLE",
+            "label": "Input unsuitable for a condition assessment",
+            "notice": validation.get("notice") or "Retake a clear, relevant image before relying on this screening summary.",
+        }
+    if ood_status == "OUT_OF_DISTRIBUTION":
+        return {
+            "code": "OUT_OF_DISTRIBUTION",
+            "label": "Image is outside the configured model scope",
+            "notice": uncertainty.get("notice") or "No condition result is shown for an image outside the configured model scope.",
+        }
+    if classifier.get("available"):
+        if uncertainty_status == "LOW_CONFIDENCE":
+            return {
+                "code": "UNCERTAIN",
+                "label": "Research-model output is uncertain",
+                "notice": uncertainty.get("notice") or "The model output did not meet the configured certainty threshold.",
+            }
+        return {
+            "code": "RESEARCH_ONLY",
+            "label": "Research-only model output",
+            "notice": classifier.get("notice") or "This research result is not a diagnosis or a clinically validated decision.",
+        }
+    if uncertainty_status in {"UNCERTAIN", "LOW_CONFIDENCE"} and validation_status not in {"VALID", "VALID_RELEVANT"}:
+        return {
+            "code": "UNCERTAIN",
+            "label": "Assessment is uncertain",
+            "notice": uncertainty.get("notice") or validation.get("notice") or "The available input cannot support a confident condition assessment.",
+        }
+    return {
+        "code": "MODEL_UNAVAILABLE",
+        "label": "No compatible condition model is available",
+        "notice": classifier.get("reason") or validation.get("notice") or "This assessment preserves quality and reported concerns without assigning an unsupported condition.",
+    }
+
+
 def build_assessment_result(response: dict) -> dict:
     """Create the normalized, persisted result without changing legacy fields.
 
@@ -101,12 +159,14 @@ def build_assessment_result(response: dict) -> dict:
     presentation_case = response.get("presentation_case") or {}
     questionnaire = response.get("input_type") == "questionnaire"
     condition = _condition(classifier, intelligence)
+    assessment_status = _assessment_status(response, classifier, validation)
     attention = classifier.get("attention_map") or classifier.get("explainability") or {}
     recommendations = response.get("recommendations") or {}
 
     return {
         "contract_version": ASSESSMENT_RESULT_VERSION,
         "area": response.get("area"),
+        "status": assessment_status,
         "input": {
             "type": response.get("input_type", "image"),
             "quality": {

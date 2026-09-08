@@ -25,7 +25,7 @@ from longitudinal_service import build_progress_comparison
 from dataset_registry import DATASET_REGISTRY, training_eligibility
 from model_service import run_screening_model
 from ml_evaluation import multiclass_metrics, validate_grouped_splits, validate_patient_level_splits
-from model_metadata import model_metadata
+from model_metadata import model_metadata, public_capability_matrix
 from pirs_service import calculate_pirs
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
@@ -113,6 +113,7 @@ class MlContractTests(unittest.TestCase):
         result = build_assessment_result(response)
         self.assertEqual(result["contract_version"], ASSESSMENT_RESULT_VERSION)
         self.assertEqual(result["condition"]["estimated_likelihood"], 0.61)
+        self.assertEqual(result["status"]["code"], "RESEARCH_ONLY")
         self.assertEqual(result["severity"]["level"], "MILD")
         self.assertEqual(result["care_priority"]["score"], 34)
         self.assertFalse(result["disease_risk"]["available"])
@@ -132,6 +133,27 @@ class MlContractTests(unittest.TestCase):
         self.assertIsNone(result["condition"]["estimated_likelihood"])
         self.assertFalse(result["disease_risk"]["available"])
         self.assertEqual(result["care_priority"]["score"], 18)
+        self.assertEqual(result["status"]["code"], "MODEL_UNAVAILABLE")
+
+    def test_status_contract_preserves_ood_and_low_confidence_without_a_diagnosis(self):
+        base = {
+            "area": "Skin", "input_type": "image", "quality": {"status": "GOOD"},
+            "input_validation": {"status": "VALID"}, "risk": {}, "severity": {},
+            "clinical_decision_support": {}, "condition_intelligence": {"finding": {}},
+            "segmentation": {}, "candidate_region": {}, "recommendations": {}, "care_plan": {},
+        }
+        ood = build_assessment_result({
+            **base,
+            "research_classifier": {"available": True, "uncertainty": {"status": "CALIBRATED_OUTPUT", "ood_status": "OUT_OF_DISTRIBUTION"}},
+        })
+        uncertain = build_assessment_result({
+            **base,
+            "research_classifier": {"available": True, "uncertainty": {"status": "LOW_CONFIDENCE", "ood_status": "OOD_NOT_EVALUATED"}},
+        })
+        self.assertEqual(ood["status"]["code"], "OUT_OF_DISTRIBUTION")
+        self.assertEqual(uncertain["status"]["code"], "UNCERTAIN")
+        self.assertFalse(ood["condition"]["available"])
+        self.assertFalse(uncertain["condition"]["available"])
 
     def test_logout_clears_the_signed_browser_session(self):
         """A later guest/login view cannot recover a signed-out Flask session."""
@@ -224,6 +246,22 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(response.headers.get("X-Content-Type-Options"), "nosniff")
         self.assertEqual(response.headers.get("X-Frame-Options"), "DENY")
         self.assertEqual(response.headers.get("Referrer-Policy"), "same-origin")
+
+    def test_model_registry_and_knowledge_matrix_share_canonical_capability_states(self):
+        from app import app
+
+        payload = app.test_client().get("/api/model-registry").get_json()
+        capabilities = {item["area"]: item for item in payload["capabilities"]}
+        knowledge = {item["health_area"]: item for item in payload["condition_knowledge"]["capability_matrix"]}
+        canonical = {item["area"]: item for item in public_capability_matrix()}
+
+        self.assertEqual(capabilities["Skin"]["capability_status"], "RESEARCH_ONLY")
+        self.assertEqual(capabilities["Hair"]["capability_status"], "NOT_AVAILABLE")
+        self.assertEqual(capabilities["Sweat"]["capability_status"], "QUESTIONNAIRE_ASSESSMENT")
+        self.assertFalse(capabilities["Hair"]["runtime_inference_available"])
+        self.assertEqual(capabilities, canonical)
+        self.assertEqual(knowledge["Nails"]["status"], capabilities["Nails"]["capability_status"])
+        self.assertEqual(knowledge["Sweat"]["input"], capabilities["Sweat"]["supported_input"])
 
     def test_uncalibrated_research_ranking_cannot_select_a_risk_condition_profile(self):
         from app import assessment_concern_indicator
@@ -386,6 +424,7 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(result["input_validation"]["normal_appearance"], "NOT_ASSESSED")
         self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
         self.assertEqual(result["condition_intelligence"]["finding"]["status"], "NO_MODEL_SUPPORTED_FINDING")
+        self.assertEqual(result["assessment_result"]["status"]["code"], "INPUT_UNSUITABLE")
 
     def test_clear_declared_hair_photo_returns_quality_context_not_a_disease_label(self):
         from app import app
@@ -416,6 +455,7 @@ class MlContractTests(unittest.TestCase):
         self.assertFalse(result["research_classifier"]["available"])
         self.assertFalse(result["research_classifier"]["condition_likelihood"]["available"])
         self.assertEqual(result["model_pipeline"]["classification"], "Hair/scalp disorder classifier not configured")
+        self.assertEqual(result["assessment_result"]["status"]["code"], "MODEL_UNAVAILABLE")
 
     def test_sweat_path_is_questionnaire_only(self):
         from app import app
@@ -430,6 +470,7 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(result["assessment_result"]["input"]["type"], "questionnaire")
         self.assertFalse(result["assessment_result"]["condition"]["available"])
         self.assertFalse(result["assessment_result"]["disease_risk"]["available"])
+        self.assertEqual(result["assessment_result"]["status"]["code"], "QUESTIONNAIRE_ASSESSMENT")
 
     def test_context_uses_only_area_relevant_symptoms_and_not_history_as_model_features(self):
         symptoms = normalise_symptoms("Hair", ["hair_loss", "itching", "scalp_pain"])

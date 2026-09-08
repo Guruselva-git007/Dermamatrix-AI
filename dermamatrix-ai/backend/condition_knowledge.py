@@ -10,6 +10,7 @@ sweat-gland conditions that do not have a configured validated model.
 from __future__ import annotations
 
 from clinical_intelligence_service import AREA_SYMPTOMS
+from model_metadata import public_capability_matrix
 
 
 KNOWLEDGE_VERSION = "dermamatrix-condition-knowledge-v1.3"
@@ -459,53 +460,50 @@ CONDITION_ONTOLOGY = {
 
 
 def model_capability_matrix() -> list[dict]:
-    """Expose the evidence boundary used by UI, API, and future integrations."""
-    return [
-        {
-            "health_area": "Skin",
-            "input": "Attested dermatoscopic single-lesion image",
-            "model_supported_conditions": [entry["name"] for entry in CONDITION_ONTOLOGY.values()],
-            "knowledge_conditions": [entry["name"] for entry in CONDITION_ONTOLOGY.values()],
-            "likelihood": "Only with a version-matched independent-validation calibration artifact",
-            "xai": "Grad-CAM only when the configured research model runs",
-            "specialty": "Dermatologist",
-            "monitoring": "Assessment metadata and self-reported check-ins; no stored-image comparison",
-            "status": "RESEARCH_ONLY",
-        },
-        {
-            "health_area": "Hair",
-            "input": "Declared scalp or hair image",
-            "model_supported_conditions": [],
-            "knowledge_conditions": [],
-            "likelihood": "Unavailable: no configured validated hair/scalp classifier",
-            "xai": "Unavailable without a compatible classifier",
-            "specialty": "Dermatologist",
-            "monitoring": "Assessment metadata and self-reported check-ins",
-            "status": "MODEL_NOT_CONFIGURED",
-        },
-        {
-            "health_area": "Nails",
-            "input": "Declared fingernail, toenail, or nail close-up",
-            "model_supported_conditions": [],
-            "knowledge_conditions": [],
-            "likelihood": "Unavailable: no configured validated nail classifier",
-            "xai": "Unavailable without a compatible classifier",
-            "specialty": "Dermatologist",
-            "monitoring": "Assessment metadata and self-reported check-ins",
-            "status": "MODEL_NOT_CONFIGURED",
-        },
-        {
-            "health_area": "Sweat",
-            "input": "Questionnaire only",
-            "model_supported_conditions": [],
-            "knowledge_conditions": [],
-            "likelihood": "Unavailable: transparent questionnaire prioritisation is not a validated condition model",
-            "xai": "Questionnaire contribution summary; not SHAP",
-            "specialty": "Qualified clinician determines the appropriate specialty",
-            "monitoring": "Questionnaire assessment metadata and self-reported check-ins",
-            "status": "RULE_BASED_PROTOTYPE",
-        },
-    ]
+    """Expose knowledge scope without duplicating model-capability claims.
+
+    The versioned model registry owns input type, deployment status, runtime
+    readiness, explainability availability, and user-facing limitation copy.
+    This knowledge view only adds the ontology and care context that belong to
+    the result layer.  Keeping this adapter thin prevents the API from making
+    contradictory claims when a model is added, removed, or rejected.
+    """
+    ontology_names = [entry["name"] for entry in CONDITION_ONTOLOGY.values()]
+    specialty = {
+        "Skin": "Dermatologist",
+        "Hair": "Dermatologist",
+        "Nails": "Dermatologist",
+        "Sweat": "Qualified clinician determines the appropriate specialty",
+    }
+    monitoring = {
+        "Skin": "Assessment metadata and self-reported check-ins; no stored-image comparison",
+        "Hair": "Assessment metadata and self-reported check-ins",
+        "Nails": "Assessment metadata and self-reported check-ins",
+        "Sweat": "Questionnaire assessment metadata and self-reported check-ins",
+    }
+    likelihood = {
+        "Skin": "Only with a version-matched independent-validation calibration artifact",
+        "Hair": "Unavailable: no configured validated hair/scalp classifier",
+        "Nails": "Unavailable: no configured validated nail classifier",
+        "Sweat": "Unavailable: transparent questionnaire prioritisation is not a validated condition model",
+    }
+    matrix = []
+    for capability in public_capability_matrix():
+        area = capability["area"]
+        model_conditions = ontology_names if area == "Skin" else []
+        matrix.append({
+            "health_area": area,
+            "input": capability["supported_input"],
+            "model_supported_conditions": model_conditions,
+            "knowledge_conditions": model_conditions,
+            "likelihood": likelihood[area],
+            "xai": capability["explainability"],
+            "specialty": specialty[area],
+            "monitoring": monitoring[area],
+            "status": capability["capability_status"],
+            "runtime_inference_available": capability["runtime_inference_available"],
+        })
+    return matrix
 
 
 def _model_label_code(classifier: dict) -> str | None:

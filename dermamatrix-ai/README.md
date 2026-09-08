@@ -108,6 +108,8 @@ The browser uses an explicit assessment state machine (`IDLE`, `CATEGORY_SELECTE
 
 `backend/risk_engine.py` adds a versioned 0–100 **assessment concern indicator**. It is based on the reported assessment evidence and optional real scoped-model evidence, shows its contributing factors and urgency separately, and is stored with its methodology version. It is not a disease probability, diagnosis, prognosis, treatment recommendation, or clinically validated medical-risk score. See [the risk-engine note](docs/assessment-risk-engine.md).
 
+The backend exposes a single capability source at `/api/model-registry`, and every normalized assessment records an explicit non-clinical outcome code. See the [capability and assessment-status contract](docs/capability-contract.md) for the allowed states and compatibility details.
+
 ## Source-linked condition guides
 
 The Products page can load structured educational guides for common concerns including acne, eczema, psoriasis, fungal infection, seborrheic dermatitis, pattern hair loss, alopecia areata, nail fungus, nail changes that may warrant testing, blue nails, and excessive sweating. Guides are served by the backend knowledge boundary and include evidence links, general care context, medication discussion categories, red flags, and clinician-first notices. They are intentionally **not** image-model classes: opening a guide never changes an assessment result or infers a diagnosis from a photo.

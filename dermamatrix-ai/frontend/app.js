@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist' };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -109,13 +109,14 @@ function selectArea(area) {
     Nails: { title: 'Check your nails', status: 'Image-quality screening is available. A nail classifier is not configured in this deployment.', upload: 'Add a clear nail image', copy: 'Choose the image type that best matches your concern.' },
     Sweat: { title: 'Assess a sweat pattern', status: 'Short screening questionnaire · not a diagnosis.', upload: '', copy: '' },
   }[area];
+  const capability = state.modelCapabilities[area];
   $('#screenTitle').textContent = labels.title;
   $('#screenTitle').nextElementSibling.textContent = sweat ? 'Complete a short health assessment.' : 'Add a clear image, then review your summary.';
   $('#home h1').textContent = sweat ? 'Assess a sweat pattern.' : 'Check My Health.';
   $('#home p:last-child').textContent = sweat
     ? 'Complete a short questionnaire for a structured screening summary.'
     : 'Add a clear image for screening support and next-step guidance.';
-  $('#moduleStatus').textContent = labels.status;
+  $('#moduleStatus').textContent = capability?.user_message || labels.status;
   renderAreaSymptoms(area);
   $('#imageWorkflow').hidden = sweat;
   $('#sweatWorkflow').hidden = !sweat;
@@ -309,6 +310,8 @@ function installProcessingOverlay() {
 }
 
 function processingStages(area) {
+  const configuredStages = state.modelCapabilities[area]?.processing_stages;
+  if (Array.isArray(configuredStages) && configuredStages.length) return configuredStages;
   if (area === 'Skin') return ['Image received', 'Image-quality check', 'Input relevance and preprocessing', 'Configured model and explanation path', 'Reported-priority and structured summary'];
   if (area === 'Hair') return ['Image received', 'Image-quality check', 'Hair/scalp relevance and preprocessing', 'Configured model-path check', 'Reported-priority and structured summary'];
   if (area === 'Nails') return ['Image received', 'Image-quality check', 'Nail relevance and preprocessing', 'Configured model-path check', 'Reported-priority and structured summary'];
@@ -320,11 +323,26 @@ function openProcessing(area) {
   const modal = $('#processingModal');
   const stages = processingStages(area);
   $('#processingTitle').textContent = area === 'Sweat' ? 'Preparing your questionnaire summary' : 'Preparing your image summary';
-  $('#processingCopy').textContent = area === 'Skin'
+  const fallbackCopy = area === 'Skin'
     ? 'Image quality and research-model eligibility are checked before any scoped output is shown.'
     : area === 'Sweat' ? 'Questionnaire inputs are explained with transparent contributions; no image model runs.' : 'Image quality is checked first. A disorder label is shown only if this deployment has compatible trained weights.';
+  $('#processingCopy').textContent = state.modelCapabilities[area]?.user_message || fallbackCopy;
   $('#processingSteps').innerHTML = stages.map((stage, index) => `<li class="${index === 0 ? 'active' : ''}"><span>${index === 0 ? '…' : index + 1}</span>${stage}</li>`).join('');
   modal.classList.add('show'); modal.setAttribute('aria-hidden', 'false');
+}
+
+async function loadModelCapabilities() {
+  try {
+    const registry = await requestJSON('/api/model-registry', {}, 10000);
+    const capabilities = Array.isArray(registry.capabilities) ? registry.capabilities : [];
+    state.modelCapabilities = Object.fromEntries(
+      capabilities.filter(item => item?.area).map(item => [item.area, item]),
+    );
+  } catch (_) {
+    // The hard-coded copy remains a conservative offline fallback. It never
+    // says an unavailable classifier can diagnose a condition.
+    state.modelCapabilities = {};
+  }
 }
 
 function finishProcessing(succeeded = false) {
@@ -406,6 +424,7 @@ function patientImageQuality(value, fallback = 'Not assessed') {
 
 function normaliseAssessmentPresentation(data) {
   const result = data.assessment_result || {};
+  const assessmentStatus = result.status || {};
   const classifier = data.research_classifier || data.classification || {};
   const prediction = classifierPredictions(classifier)[0];
   const likelihood = classifier.condition_likelihood || {};
@@ -427,6 +446,14 @@ function normaliseAssessmentPresentation(data) {
   const presentationCase = data.presentation_case || result.presentation_case || null;
   const isPresentationCase = Boolean(presentationCase?.matched);
   const visualEvidence = result.visual_evidence || data.visual_evidence || {};
+  const statusCode = assessmentStatus.code || (questionnaire ? 'QUESTIONNAIRE_ASSESSMENT' : classifier.available ? 'RESEARCH_ONLY' : 'MODEL_UNAVAILABLE');
+  const unavailableDescription = statusCode === 'INPUT_UNSUITABLE'
+    ? 'This image needs improvement before it can support a condition assessment. The app did not assign a condition.'
+    : statusCode === 'OUT_OF_DISTRIBUTION'
+      ? 'This image is outside the configured model scope. The app did not assign a condition.'
+      : statusCode === 'UNCERTAIN'
+        ? 'The available research-model output is uncertain and should not be treated as a condition conclusion.'
+        : 'A compatible condition classifier was not available for this assessment. Image quality and the details you reported were still reviewed.';
 
   return {
     questionnaire,
@@ -448,7 +475,7 @@ function normaliseAssessmentPresentation(data) {
         : 'This is the highest-ranked research label. A calibrated likelihood is not available, and it is not a diagnosis.')
       : (questionnaire
         ? 'This questionnaire did not use condition classification. It provides a symptom and next-step summary.'
-        : 'A compatible condition classifier was not available for this assessment. Image quality and the details you reported were still reviewed.'),
+        : unavailableDescription),
     confidence: {
       heading: isPresentationCase ? 'REFERENCE MATCH' : 'MODEL CONFIDENCE',
       value: isPresentationCase ? 'Exact file' : likelihoodAvailable ? `${Math.round(likelihoodValue * 100)}%` : 'Not available',
@@ -475,9 +502,16 @@ function normaliseAssessmentPresentation(data) {
       factors: assessmentRisk.factor_labels || (assessmentRisk.factors || []).map(factor => factor.label).filter(Boolean),
       note: assessmentRisk.explanation || assessmentRisk.notice || 'Assessment concern indicator is not a disease probability or diagnosis.',
     },
+    assessmentStatus: {
+      code: statusCode,
+      label: assessmentStatus.label || readableStatus(statusCode),
+      notice: assessmentStatus.notice || '',
+    },
     nextAction: isPresentationCase ? `Teaching-case discussion: ${presentationCase.doctor_specialty}.` : cdss.next_step || carePlan.next_step || 'No next action is available for this assessment.',
     scope: isPresentationCase
       ? 'An exact supplied teaching file matched after you enabled Presentation case matching. Reference metadata is shown alongside the same assessment concern calculation; neither is a diagnosis or disease probability.'
+      : assessmentStatus.notice
+        ? `${assessmentStatus.label || readableStatus(statusCode)}. ${assessmentStatus.notice}`
       : questionnaire
       ? 'This assessment used your questionnaire responses. It did not use image classification.'
       : classifier.available
@@ -550,6 +584,7 @@ function renderResultOverview(data) {
 function renderAnalysisDashboard(data) {
   const presentation = normaliseAssessmentPresentation(data);
   const { classifier, prediction, likelihood, priority, quality, assessmentRisk } = presentation;
+  const assessmentOutcome = data.assessment_result?.status || {};
   const metadata = data.model_metadata || {};
   const pipeline = data.model_pipeline || {};
   const recommendation = data.recommendations || {};
@@ -588,6 +623,7 @@ function renderAnalysisDashboard(data) {
   const featureRows = questionnaireFeatures.map(feature => `${feature.feature}: ${feature.value} (${feature.points} points)`).join(' · ');
   const technicalGroups = [
     technicalEvidenceSection('Model', [
+      ['Assessment outcome', assessmentOutcome.code],
       ['Status', modelStatus],
       ['Model', classifierName || metadata.model_name || data.model?.name || 'Not configured'],
       ['Architecture', metadata.architecture],
@@ -810,12 +846,13 @@ async function analyze() {
     transitionAssessment(AssessmentState.GENERATING_EXPLANATION, 'PREPARING EXPLANATION');
     transitionAssessment(AssessmentState.FINALIZING, 'FINALIZING RESULT');
     const inputStatus = data.input_validation?.status;
+    const outcomeCode = data.assessment_result?.status?.code;
     const oodStatus = data.research_classifier?.uncertainty?.ood_status;
-    const finalState = inputStatus === 'LOW_QUALITY' || ['INVALID', 'UNSUPPORTED'].includes(inputStatus)
+    const finalState = outcomeCode === 'INPUT_UNSUITABLE' || inputStatus === 'LOW_QUALITY' || ['INVALID', 'UNSUPPORTED'].includes(inputStatus)
       ? AssessmentState.INVALID_IMAGE
-      : oodStatus === 'OUT_OF_DISTRIBUTION'
+      : outcomeCode === 'OUT_OF_DISTRIBUTION' || oodStatus === 'OUT_OF_DISTRIBUTION'
         ? AssessmentState.OOD_IMAGE
-        : data.research_classifier?.uncertainty?.status === 'LOW_CONFIDENCE'
+        : outcomeCode === 'UNCERTAIN' || data.research_classifier?.uncertainty?.status === 'LOW_CONFIDENCE'
           ? AssessmentState.LOW_CONFIDENCE
           : AssessmentState.RESULT_READY;
     finishProcessing(true);
@@ -1508,6 +1545,7 @@ async function initialiseApp() {
   restoreProfile();
   restoreSettings();
   restoreTheme();
+  await loadModelCapabilities();
   renderDiscoveryCatalog();
   selectArea(state.area);
   resetRoutineForm();
