@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -77,6 +77,9 @@ function updateAssessmentProgress(step) {
 }
 
 async function requestJSON(url, options = {}, timeoutMs = 15000) {
+  if (window.location.protocol === 'file:') {
+    throw Error('Open DermaMatrix through the local app server at http://127.0.0.1:8000. Opening index.html directly cannot reach its secure local API.');
+  }
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -103,6 +106,7 @@ function toast(message) {
 }
 
 function selectArea(area) {
+  if (state.assessmentInFlight) return toast('Please wait for the current assessment to finish before changing the health area.');
   const areaChanged = state.area !== area;
   if (areaChanged) resetImage();
   state.area = area;
@@ -154,6 +158,7 @@ function selectArea(area) {
 }
 
 function setImage(file) {
+  if (state.assessmentInFlight) return toast('The current image is being assessed. You can replace it when this review is complete.');
   if (state.area === 'Sweat') return toast('Sweat patterns use the questionnaire instead of an image.');
   const supported = /\.(jpe?g|png|webp|avif)$/i.test(file?.name || '');
   if (!file || !supported) return toast('Choose a JPG, PNG, WEBP, or AVIF image.');
@@ -180,6 +185,16 @@ function resetImage() {
   const input = $('#imageInput');
   if (input) input.value = '';
   if (state.assessmentState !== AssessmentState.IDLE) transitionAssessment(AssessmentState.CATEGORY_SELECTED, 'IMAGE REQUIRED');
+}
+
+function setAssessmentInputBusy(busy) {
+  const input = $('#imageInput');
+  const zone = $('#dropZone');
+  if (input) input.disabled = busy;
+  if (zone) {
+    zone.classList.toggle('is-busy', busy);
+    zone.setAttribute('aria-busy', String(busy));
+  }
 }
 
 function openProfile() {
@@ -438,13 +453,14 @@ function startAreaAssessment(area) {
 }
 
 function showCarePlan(plan) {
+  const safePlan = plan || {};
   let box = $('#careRecommendation');
   if (!box) {
     box = document.createElement('div'); box.id = 'careRecommendation'; box.className = 'care-recommendation';
     $('#carePlanSlot').append(box);
   }
   box.hidden = true;
-  box.innerHTML = `<span>✚</span><p><strong>${escapeHTML(plan.heading)}</strong><br>${escapeHTML(plan.next_step)}<br><em>${escapeHTML(plan.routine_guardrail)}</em><br><em>${escapeHTML(plan.diet_guidance)}</em></p>`;
+  box.innerHTML = `<span>✚</span><p><strong>${escapeHTML(safePlan.heading || 'Care guidance')}</strong><br>${escapeHTML(safePlan.next_step || 'No additional care guidance is available for this assessment.')}<br><em>${escapeHTML(safePlan.routine_guardrail || '')}</em><br><em>${escapeHTML(safePlan.diet_guidance || '')}</em></p>`;
 }
 
 function showResultTab(tab) {
@@ -887,7 +903,10 @@ async function analyze() {
   if (!sweat && !state.imageUrl) return;
   if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
   if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
-  const button = $('#analyzeButton'); button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
+  const button = $('#analyzeButton');
+  state.assessmentInFlight = true;
+  setAssessmentInputBusy(true);
+  button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
   transitionAssessment(AssessmentState.INPUT_VALIDATING, 'VALIDATING INPUT');
   openProcessing(state.area);
   try {
@@ -923,7 +942,8 @@ async function analyze() {
     finishProcessing(true);
     transitionAssessment(finalState, finalState === AssessmentState.INVALID_IMAGE ? 'IMAGE NEEDS IMPROVEMENT' : finalState === AssessmentState.LOW_CONFIDENCE ? 'LOW-CONFIDENCE RESULT' : 'RESULT READY');
     state.assessmentId = data.assessment_id;
-    const score = data.risk.score;
+    const responseRisk = data.risk || {};
+    const score = Number.isFinite(responseRisk.score) ? responseRisk.score : null;
     const questionnaire = data.input_type === 'questionnaire';
     const presentation = normaliseAssessmentPresentation(data);
     $('.segmentation-stage').classList.toggle('sweat-summary', questionnaire);
@@ -931,7 +951,7 @@ async function analyze() {
     if (questionnaire) $('#resultImage').removeAttribute('src');
     else $('#resultImage').src = state.imageUrl;
     $('#resultRisk').textContent = presentation.primaryLabel.toUpperCase();
-    const severityClass = { LOW: 'low', MODERATE: 'moderate', HIGH: 'high', URGENT: 'urgent' }[data.risk.severity] || (score < 40 ? 'low' : 'moderate');
+    const severityClass = { LOW: 'low', MODERATE: 'moderate', HIGH: 'high', URGENT: 'urgent' }[responseRisk.severity] || (score !== null && score < 40 ? 'low' : 'moderate');
     $('#resultRisk').className = `risk-label ${severityClass}`;
     $('#findingTitle').textContent = presentation.primaryTitle; $('#findingText').textContent = presentation.primaryDescription; renderResultOverview(data);
     $('#qualityScore').textContent = Number.isFinite(data.quality?.score) ? `${data.quality.score}% · ${data.quality.label}` : data.quality?.label || 'Not applicable';
@@ -954,10 +974,15 @@ async function analyze() {
     finishProcessing(false);
     transitionAssessment(AssessmentState.ERROR, 'ASSESSMENT UNAVAILABLE');
     const message = error?.message || '';
+    console.error('DermaMatrix assessment request or result rendering failed.', error);
     const internalFailure = /\b(?:ReferenceError|TypeError|SyntaxError)\b|is not defined|Failed to fetch|NetworkError/i.test(message);
-    toast(internalFailure ? 'We couldn’t complete this assessment. Check your information and try again.' : message || 'We couldn’t complete this assessment. Check your information and try again.');
+    toast(internalFailure ? 'The assessment could not be completed. Reload the app, confirm it is open at http://127.0.0.1:8000, then try again.' : message || 'We couldn’t complete this assessment. Check your information and try again.');
+  } finally {
+    state.assessmentInFlight = false;
+    setAssessmentInputBusy(false);
+    button.disabled = sweat ? false : !state.file;
+    button.innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
   }
-  button.disabled = false; button.innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
 }
 
 async function saveProgress() {
@@ -1714,6 +1739,11 @@ window.addEventListener('hashchange', () => showPage(location.hash.replace('#', 
 window.addEventListener('beforeunload', () => { if (state.imageUrl) URL.revokeObjectURL(state.imageUrl); });
 
 async function initialiseApp() {
+  if (window.location.protocol === 'file:') {
+    showAuthGate('login');
+    setAuthMessage('Open DermaMatrix through the local app server at http://127.0.0.1:8000. Opening this file directly cannot connect to your local account or assessment service.');
+    return;
+  }
   installImagePreview();
   installProcessingOverlay();
   restoreProfile();
