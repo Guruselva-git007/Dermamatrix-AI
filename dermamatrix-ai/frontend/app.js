@@ -834,7 +834,7 @@ function renderPatientResult(data) {
     ...(presentation.questionnaire ? questionnaireObservations : []),
   ].filter(Boolean);
   const products = (recommendation.products || []).map(product => {
-    return `<article class="patient-product"><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || 'General personal-care support.')}</p><small>${escapeHTML(product.precautions || '')}</small>${commerceDestinationMarkup(product, 'patient-product-destination')}</article>`;
+    return `<article class="patient-product"><div class="patient-product-top">${productPreviewMarkup(product, 'patient-product-preview')}<div><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || 'General personal-care support.')}</p></div></div><small>${escapeHTML(product.precautions || '')}</small>${commerceDestinationMarkup(product, 'patient-product-destination', 'Compare online')}</article>`;
   }).join('');
   const hasAffiliateDestination = (recommendation.products || []).some(product => Boolean(product.commerce?.primary?.is_affiliate));
   const medicationInformation = result.guidance?.medication_information || recommendation.medication_information || {};
@@ -1116,26 +1116,42 @@ async function hydrateProfile() {
   }
 }
 
+function productPreviewProfile(product) {
+  const source = `${product?.id || ''} ${product?.name || ''} ${product?.category || ''}`.toLowerCase();
+  if (source.includes('shampoo') || source.includes('cleanser')) return { kind: 'bottle', label: 'Cleansing care' };
+  if (source.includes('vitamin') || source.includes('iron') || source.includes('supplement')) return { kind: 'jar', label: 'Wellness care' };
+  if (source.includes('nail') || source.includes('cuticle')) return { kind: 'dropper', label: 'Nail care' };
+  if (source.includes('search')) return { kind: 'search', label: 'Product search' };
+  return { kind: 'tube', label: 'Topical care' };
+}
+
+function productPreviewMarkup(product, className = 'catalog-product-preview') {
+  const preview = productPreviewProfile(product);
+  return `<div class="${className} ${className}--${preview.kind}" role="img" aria-label="Illustrated ${escapeHTML(preview.label.toLowerCase())} category preview"><span class="${className}-pack"><i>${escapeHTML(preview.label)}</i></span><small>Category preview</small></div>`;
+}
+
 function commerceDestinationMarkup(product, className = 'catalog-destination', actionLabel = null) {
   const commerce = product.commerce || {};
   const primary = commerce.primary || {};
   const destination = supportedExternalUrl(primary.url || product.url);
+  const primaryLabel = actionLabel || (primary.is_affiliate ? `Visit ${primary.merchant || 'partner'}` : primary.destination_type === 'DIRECT_PRODUCT_URL' ? 'View product' : 'Compare online');
   const action = destination
-    ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener noreferrer${primary.is_affiliate ? ' sponsored' : ''}">${actionLabel || (primary.is_affiliate ? 'Visit partner' : 'View options')} ↗</a>`
+    ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener noreferrer${primary.is_affiliate ? ' sponsored' : ''}">${escapeHTML(primaryLabel)} ↗</a>`
     : '<button class="patient-text-link" type="button" data-result-action="products">Explore products →</button>';
-  const alternatives = (commerce.alternatives || []).map(option => {
+  const marketplaceLinks = [primary, ...(commerce.alternatives || [])].filter(option => (
+    option.destination_type === 'AMAZON_SEARCH' || option.destination_type === 'FLIPKART_SEARCH'
+  )).map(option => {
     const url = supportedExternalUrl(option.url);
-    return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(option.merchant || 'External search')} ↗</a>` : '';
+    const label = option.merchant === 'Amazon India' ? 'Amazon' : 'Flipkart';
+    return url ? `<a class="commerce-marketplace-link" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">Search ${label} <span aria-hidden="true">↗</span></a>` : '';
   }).filter(Boolean).join('');
   const partnerNote = primary.is_affiliate ? '<small class="commerce-affiliate-label">Partner link · may earn commission</small>' : '';
-  return `<div class="${className}">${action}${partnerNote}${alternatives ? `<details><summary>More places to search</summary><div class="commerce-alternatives">${alternatives}</div></details>` : ''}</div>`;
+  return `<div class="${className}">${action}${partnerNote}${marketplaceLinks ? `<div class="commerce-marketplace-links" aria-label="Search this product on marketplaces">${marketplaceLinks}</div><small class="commerce-search-note">External retailer searches</small>` : ''}</div>`;
 }
 
 function commerceCard(product) {
   const category = String(product.domain || 'care').toLowerCase();
-  const icon = category === 'hair' ? '〰' : category === 'nails' ? '▣' : category === 'wellness' ? '✦' : category === 'search' ? '⌕' : '◌';
-  const badge = category === 'search' ? 'Exact search' : 'Discovery';
-  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><div class="catalog-media" aria-hidden="true"><span class="catalog-icon">${icon}</span><small>${badge}</small></div><div class="catalog-card-body"><span class="catalog-type">${escapeHTML(product.category || 'PRODUCT DISCOVERY')}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(product.purpose || 'User-led product discovery.')}</p></div><div class="catalog-card-footer"><small class="catalog-precaution">${escapeHTML(product.key_property || product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product, 'catalog-destination', category === 'search' ? 'Open search' : 'View options')}</div></article>`;
+  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><div class="catalog-media">${productPreviewMarkup(product)}<small>${category === 'search' ? 'Exact search' : 'Discovery'}</small></div><div class="catalog-card-body"><span class="catalog-type">${escapeHTML(product.category || 'PRODUCT DISCOVERY')}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(product.purpose || 'User-led product discovery.')}</p></div><div class="catalog-card-footer"><small class="catalog-precaution">${escapeHTML(product.key_property || product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product, 'catalog-destination', category === 'search' ? 'Search retailers' : 'Compare online')}</div></article>`;
 }
 
 function knowledgeList(items, emptyMessage) {
@@ -1361,19 +1377,19 @@ function renderDashboardInsight(analyses, routines) {
   const previousScore = assessmentConcernScore(earlierSameArea);
   if (latest && latestScore !== null && earlierSameArea && previousScore !== null) {
     const delta = latestScore - previousScore;
-    const direction = delta === 0 ? 'unchanged from' : delta < 0 ? `${Math.abs(delta)} points lower than` : `${delta} points higher than`;
+    const direction = delta === 0 ? 'unchanged' : delta < 0 ? `${Math.abs(delta)} points lower` : `${delta} points higher`;
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">YOUR PERSONAL ASSESSMENT TREND</p><h2>${escapeHTML(String(latest.area))} concern indicator is ${escapeHTML(direction)} your previous recorded assessment.</h2><p>This compares stored project concern indicators, not disease likelihood or proof of medical improvement.</p></div><div class="dashboard-insight-metric"><small>LATEST / PREVIOUS</small><strong>${latestScore}<span>/100</span> <b>·</b> ${previousScore}<span>/100</span></strong><button class="text-button" data-dashboard-nav="progress">Review your journey →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR TREND</p><h2>${escapeHTML(String(latest.area))} score is ${escapeHTML(direction)}.</h2><p>Compare your saved check-ins when you notice a meaningful change.</p></div><div class="dashboard-insight-metric"><small>LATEST / PREVIOUS</small><strong>${latestScore}<span>/100</span> <b>·</b> ${previousScore}<span>/100</span></strong><button class="text-button" data-dashboard-nav="progress">View journey →</button></div>`;
     return;
   }
   if (latest) {
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your personal assessment trend starts with another check-in.</h2><p>Record a future ${escapeHTML(String(latest.area).toLowerCase())} assessment when something meaningfully changes. DermaMatrix will keep the values separate from clinical diagnosis.</p></div><div class="dashboard-insight-metric"><small>RECORDED ASSESSMENTS</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check My Health →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your first ${escapeHTML(String(latest.area).toLowerCase())} check-in is saved.</h2><p>Add another only when something meaningfully changes.</p></div><div class="dashboard-insight-metric"><small>SAVED CHECK-INS</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check an area →</button></div>`;
     return;
   }
   if (routines.length) {
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">YOUR NEXT STEP</p><h2>Keep your care plan connected to your health story.</h2><p>When you notice a meaningful change, add a self-reported check-in to the routine you are tracking.</p></div><div class="dashboard-insight-metric"><small>ACTIVE ROUTINES</small><strong>${routines.length}</strong><button class="text-button" data-dashboard-nav="progress">Open My Journey →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR ROUTINE</p><h2>Your care plan is ready for a check-in.</h2><p>Log an update whenever your symptoms or routine changes.</p></div><div class="dashboard-insight-metric"><small>ACTIVE ROUTINES</small><strong>${routines.length}</strong><button class="text-button" data-dashboard-nav="progress">Open journey →</button></div>`;
     return;
   }
   insight.hidden = true;
@@ -1394,13 +1410,13 @@ function renderDashboard() {
     if (latestAnalysis) {
       const result = latestFinding?.name || latestAnalysis.summary?.classification?.top_prediction?.condition || 'Screening summary saved';
       cards.push(`<article class="snapshot-card"><span>◌</span><div><small>LATEST ASSESSMENT</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div><button class="text-button" data-dashboard-nav="progress">View →</button></article>`);
-      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>ASSESSMENT RISK</small><strong>${latestRisk?.score === undefined || latestRisk?.score === null ? 'Not assessed' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(readableStatus(latestRisk.level || 'recorded'))}`}</strong><p>Transparent concern indicator, not a disease probability.</p></div></article>`);
+      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>PERSONAL SCORE</small><strong>${latestRisk?.score === undefined || latestRisk?.score === null ? 'No score yet' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(readableStatus(latestRisk.level || 'recorded'))}`}</strong><p>Based on your latest saved check-in.</p></div></article>`);
     }
     if (routines.length) {
       cards.push(`<article class="snapshot-card"><span>◔</span><div><small>ACTIVE ROUTINES</small><strong>${routines.length} ${routines.length === 1 ? 'routine' : 'routines'} in progress</strong><p>${escapeHTML(routines[0].routine_name)}${routines.length > 1 ? ` + ${routines.length - 1} more` : ''}</p></div><button class="text-button" data-dashboard-nav="progress">Manage →</button></article>`);
     }
     if (latestCheckin) {
-      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>LATEST CHECK-IN</small><strong>${escapeHTML(latestCheckin.reported_trend)}</strong><p>Self-reported on ${escapeHTML(latestCheckin.checkin_date)} · not a healing score.</p></div></article>`);
+      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>LATEST CHECK-IN</small><strong>${escapeHTML(latestCheckin.reported_trend)}</strong><p>Recorded on ${escapeHTML(latestCheckin.checkin_date)}.</p></div></article>`);
     }
     snapshot.innerHTML = cards.length
       ? cards.slice(0, 4).join('')
@@ -1412,10 +1428,10 @@ function renderDashboard() {
     : analyses.slice(0, 4).map(item => {
       const classification = item.summary?.classification || {};
       const prediction = classification.top_prediction;
-      const title = prediction ? prediction.condition : 'Visual screening snapshot';
+      const title = prediction ? prediction.condition : `${readableStatus(item.area)} assessment`;
       const meta = prediction
-        ? Number.isFinite(prediction.calibrated_probability) ? `${Math.round(prediction.calibrated_probability * 100)}% calibrated likelihood` : 'Research ranking; calibration unavailable'
-        : 'No scoped classifier output';
+        ? Number.isFinite(prediction.calibrated_probability) ? `${Math.round(prediction.calibrated_probability * 100)}% estimated likelihood` : 'Assessment saved'
+        : 'Assessment saved';
       return `<article class="dashboard-record"><span>◌</span><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.area)} · ${escapeHTML(meta)}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`;
     }).join('');
   const nextStep = $('#nextStepCard');
