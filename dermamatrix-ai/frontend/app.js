@@ -200,15 +200,63 @@ function setAuthMessage(message = '', success = false) {
   element.textContent = message; element.hidden = !message; element.classList.toggle('success', success);
 }
 
-function setAuthTab(tab) {
-  const target = tab === 'login' ? 'login' : 'register';
-  $$('.auth-tabs button').forEach(button => { const selected = button.dataset.authTab === target; button.classList.toggle('selected', selected); button.setAttribute('aria-selected', String(selected)); });
-  $('#registerForm').hidden = target !== 'register'; $('#loginForm').hidden = target !== 'login';
-  $('#authFormTitle').textContent = target === 'register' ? 'Create your secure workspace' : 'Sign in to your workspace';
-  setAuthMessage('');
+function clearAuthFieldState(form) {
+  form?.querySelectorAll('.auth-field').forEach(field => field.classList.remove('is-invalid'));
+  form?.querySelectorAll('input').forEach(input => input.removeAttribute('aria-invalid'));
 }
 
-function showAuthGate(tab = 'register') {
+function markAuthFields(form, message = '') {
+  const lower = String(message).toLowerCase();
+  const names = lower.includes('email') ? ['email_address']
+    : lower.includes('confirm') || lower.includes('match') ? ['confirm_password']
+      : lower.includes('password') ? ['password']
+        : lower.includes('name') ? ['full_name'] : [];
+  names.forEach(name => {
+    const input = form?.elements[name];
+    if (!input) return;
+    input.setAttribute('aria-invalid', 'true'); input.closest('.auth-field')?.classList.add('is-invalid');
+  });
+}
+
+function setAuthSubmitting(form, submitting, label) {
+  const button = form?.querySelector('[type="submit"]');
+  if (!button) return;
+  button.disabled = submitting; form.setAttribute('aria-busy', String(submitting));
+  button.querySelector('.auth-button-label').textContent = submitting ? `${label}…` : label;
+  button.classList.toggle('is-loading', submitting);
+}
+
+function authErrorMessage(error, fallback) {
+  const message = String(error?.message || '').trim();
+  if (error?.status === 401) return 'That email and password do not match. Please try again.';
+  if (error?.status === 409) return 'An account already exists for this email. Sign in instead.';
+  if (!message || error?.status >= 500 || /network|failed to fetch/i.test(message)) return fallback;
+  return message;
+}
+
+function setAuthTab(tab) {
+  const target = tab === 'login' ? 'login' : 'register';
+  const isLogin = target === 'login';
+  $$('[data-auth-tab]').forEach(button => {
+    const selected = button.dataset.authTab === target;
+    button.classList.toggle('active', selected);
+    button.removeAttribute('aria-pressed');
+  });
+  $('#registerForm').hidden = target !== 'register'; $('#loginForm').hidden = target !== 'login';
+  $('#authGate').dataset.mode = target;
+  $('#authTitle').textContent = isLogin ? 'Welcome back' : 'Create your account';
+  $('#authFormSubtitle').textContent = isLogin
+    ? 'Sign in to continue to your DermaMatrix account.'
+    : 'Join DermaMatrix to keep your health information and preferences in one place.';
+  clearAuthFieldState($('#registerForm')); clearAuthFieldState($('#loginForm'));
+  setAuthMessage('');
+  window.requestAnimationFrame(() => {
+    const input = (isLogin ? $('#loginForm') : $('#registerForm')).querySelector('input:not([type="checkbox"])');
+    input?.focus();
+  });
+}
+
+function showAuthGate(tab = 'login') {
   closeProfile(); closeResult(); setAuthTab(tab);
   $('#authGate').classList.add('show'); $('#authGate').setAttribute('aria-hidden', 'false'); document.body.classList.add('auth-open');
 }
@@ -264,23 +312,27 @@ async function registerAccount(event) {
   event.preventDefault();
   const form = event.currentTarget; const payload = Object.fromEntries(new FormData(form).entries());
   payload.account_consent = form.account_consent.checked;
-  const button = form.querySelector('[type="submit"]'); button.disabled = true; setAuthMessage('');
+  clearAuthFieldState(form); setAuthSubmitting(form, true, 'Creating account'); setAuthMessage('');
   try {
     const data = await requestJSON('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     form.reset(); await enterAccount(data, 'Account created. Add health details only when you are ready.');
-  } catch (error) { setAuthMessage(error.message || 'Unable to create your account.'); }
-  button.disabled = false;
+  } catch (error) {
+    const message = authErrorMessage(error, 'We could not create your account. Please check your connection and try again.');
+    markAuthFields(form, message); setAuthMessage(message);
+  } finally { setAuthSubmitting(form, false, 'Create account'); }
 }
 
 async function loginAccount(event) {
   event.preventDefault();
   const form = event.currentTarget; const payload = Object.fromEntries(new FormData(form).entries());
-  const button = form.querySelector('[type="submit"]'); button.disabled = true; setAuthMessage('');
+  clearAuthFieldState(form); setAuthSubmitting(form, true, 'Signing in'); setAuthMessage('');
   try {
     const data = await requestJSON('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     form.reset(); await enterAccount(data, 'Signed in to your local workspace.');
-  } catch (error) { setAuthMessage(error.message || 'Unable to sign in.'); }
-  button.disabled = false;
+  } catch (error) {
+    const message = authErrorMessage(error, 'We could not sign you in. Please check your connection and try again.');
+    markAuthFields(form, message); setAuthMessage(message);
+  } finally { setAuthSubmitting(form, false, 'Sign in'); }
 }
 
 async function continueAsGuest() {
@@ -1609,7 +1661,25 @@ $('#appointmentSearchButton').onclick = () => openAppointmentOptions($('#directo
 $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#navProfileButton').onclick = openProfile; $('#navLogoutButton').onclick = clearLocalProfile; $('#profileForm').onsubmit = saveProfile;
 $$('[data-auth-tab]').forEach(button => { button.onclick = () => setAuthTab(button.dataset.authTab); });
 $('#registerForm').onsubmit = registerAccount; $('#loginForm').onsubmit = loginAccount; $('#continueGuestButton').onclick = continueAsGuest;
-$('#forgotPasswordButton').onclick = () => setAuthMessage('Password reset needs an email delivery service, which is not configured for this local college-project server. Create a new test account or ask the local project administrator for help.');
+$$('[data-auth-password-toggle]').forEach(button => {
+  button.onclick = () => {
+    const input = document.getElementById(button.dataset.authPasswordToggle);
+    if (!input) return;
+    const showing = input.type === 'text'; input.type = showing ? 'password' : 'text';
+    button.setAttribute('aria-pressed', String(!showing));
+    button.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    button.querySelector('span').textContent = showing ? '◉' : '◌'; input.focus();
+  };
+});
+$$('.auth-form input').forEach(input => {
+  input.addEventListener('invalid', () => {
+    input.setAttribute('aria-invalid', 'true'); input.closest('.auth-field')?.classList.add('is-invalid');
+  });
+  input.addEventListener('input', () => {
+    input.removeAttribute('aria-invalid'); input.closest('.auth-field')?.classList.remove('is-invalid');
+  });
+});
+$('#forgotPasswordButton').onclick = () => setAuthMessage('Password reset is not available yet. Please contact the person who manages your DermaMatrix account for help.');
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => $('.sidebar').classList.toggle('open');
@@ -1667,7 +1737,7 @@ async function initialiseApp() {
   if (authenticated) await hydrateProfile();
   await loadProgress();
   showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false });
-  if (!authenticated) showAuthGate('register');
+  if (!authenticated) showAuthGate('login');
 }
 
 initialiseApp();
