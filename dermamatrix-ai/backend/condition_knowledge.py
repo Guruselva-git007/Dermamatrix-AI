@@ -556,14 +556,18 @@ def _care_pathway(cdss: dict) -> dict:
     }
 
 
-def build_assessment_intelligence(*, area: str, classifier: dict, priority: dict, severity: dict, input_validation: dict, context: dict, cdss: dict, recommendations: dict) -> dict:
+def build_assessment_intelligence(*, area: str, classifier: dict, priority: dict, severity: dict, input_validation: dict, context: dict, cdss: dict, recommendations: dict, assessment_state: str | None = None) -> dict:
     """Compose model scope, knowledge metadata, declared context, and next steps.
 
     The returned object is persisted with an assessment, so every report can
     explain whether a conclusion came from a model, the knowledge registry, or
     user-provided context.  It must remain useful when no image model exists.
     """
-    code = _model_label_code(classifier) if classifier.get("available") else None
+    # External callers that pre-date the normalized result contract retain the
+    # previous model-label view. The app itself always supplies an explicit
+    # state, so an uncertain assessment cannot leak a condition name.
+    state = assessment_state or ("CONDITION" if classifier.get("available") else "UNCERTAIN")
+    code = _model_label_code(classifier) if state == "CONDITION" and classifier.get("available") else None
     knowledge = CONDITION_ONTOLOGY.get(code) if code else None
     likelihood = classifier.get("condition_likelihood") or {}
     if knowledge and likelihood.get("available"):

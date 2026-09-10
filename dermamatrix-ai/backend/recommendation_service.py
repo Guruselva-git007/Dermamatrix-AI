@@ -106,8 +106,8 @@ def search_product_discovery(query: str) -> list[dict]:
     })]
 
 
-def build_recommendations(area: str, research_classifier: dict | None, *, cdss: dict | None = None) -> dict:
-    """Return general care only when the CDSS has not deferred product decisions."""
+def build_recommendations(area: str, research_classifier: dict | None, *, cdss: dict | None = None, assessment_state: str | None = None) -> dict:
+    """Return state-aware education without turning an image into a prescription."""
     research_note = "No condition classification was run for this image type."
     if area == "Sweat":
         research_note = "Sweat guidance is based on questionnaire inputs only. A tabular ML model is not configured in this deployment."
@@ -115,14 +115,19 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         research_note = "The research classifier output is shown for clinician discussion only; products and routine are not selected from its label."
     products = []
     product_guidance = (cdss or {}).get("product_guidance", "GENERAL_SELF_CARE_ONLY")
-    if product_guidance == "GENERAL_SELF_CARE_ONLY":
+    if assessment_state == "UNCERTAIN":
+        product_guidance = "DEFER_PRODUCT_DECISIONS"
+    elif assessment_state == "HEALTHY":
+        product_guidance = "HEALTHY_MAINTENANCE_ONLY"
+    if product_guidance in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"}:
         products = catalog_for_area(area)
+    healthy = assessment_state == "HEALTHY"
     return {
-        "scope": "General wellbeing and personal-care education",
+        "scope": "Healthy-appearance maintenance education" if healthy else "General wellbeing and personal-care education",
         "research_note": research_note,
-        "medicine_policy": "No medicine, prescription treatment, dose, or diagnosis-specific product is suggested from an uploaded image. A normal-looking or usable image is not interpreted as a treatment decision.",
+        "medicine_policy": "No treatment or medicine is needed based on this assessment. This does not replace care for symptoms, a changing concern, or a clinician recommendation." if healthy else "No medicine, prescription treatment, dose, or diagnosis-specific product is suggested from an uploaded image. A normal-looking or usable image is not interpreted as a treatment decision.",
         "product_guidance": product_guidance,
-        "product_notice": "Product choices are deferred until professional discussion because this assessment is uncertain or needs professional evaluation." if product_guidance != "GENERAL_SELF_CARE_ONLY" else "Only general personal-care categories are shown; they are not selected from a diagnosis or research label.",
+        "product_notice": "Product choices are deferred until professional discussion because this assessment is uncertain or needs professional evaluation." if product_guidance == "DEFER_PRODUCT_DECISIONS" else "Optional everyday-care categories are shown for a healthy-appearance maintenance routine; they are not treatment products." if healthy else "Only general personal-care categories are shown; they are not selected from a diagnosis or research label.",
         "medication_information": {
             "available": False,
             "status": "NO_MEDICATION_RECOMMENDATION",

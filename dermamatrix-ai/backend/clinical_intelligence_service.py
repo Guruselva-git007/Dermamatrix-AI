@@ -89,7 +89,7 @@ def patient_context_snapshot(*, area: str, symptoms: list[str], previous_treatme
     }
 
 
-def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_validation: dict, classifier: dict, context: dict, urgent_selected: bool, assessment_risk: dict | None = None) -> dict:
+def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_validation: dict, classifier: dict, context: dict, urgent_selected: bool, assessment_risk: dict | None = None, assessment_state: str | None = None) -> dict:
     """Route the existing recommendation and referral modules without prescribing."""
     validation_status = input_validation.get("status", "UNCERTAIN")
     uncertainty = (classifier.get("uncertainty") or {}).get("status")
@@ -99,10 +99,14 @@ def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_va
         state = "URGENT_EVALUATION_RECOMMENDED"
         title = "Seek timely professional evaluation"
         next_step = "You selected a prompt-care concern. Do not rely on app guidance alone; contact an appropriate clinician or urgent service now if you feel severely unwell."
-    elif validation_status == "LOW_QUALITY" or uncertainty == "UNCERTAIN":
+    elif assessment_state == "UNCERTAIN" or validation_status == "LOW_QUALITY" or uncertainty == "UNCERTAIN":
         state = "UNCERTAIN"
         title = "Retake or discuss this assessment"
         next_step = "The available input cannot support a confident condition assessment. Retake a clear, relevant image or discuss the concern with a qualified clinician."
+    elif assessment_state == "HEALTHY":
+        state = "HEALTHY_APPEARANCE_MAINTENANCE"
+        title = "Healthy appearance maintenance"
+        next_step = "No apparent concerns were identified by the validated normal-appearance signal. Continue gentle routine care and seek advice for symptoms, change, or concern."
     elif concern_urgency in {"PROMPT_MEDICAL_EVALUATION", "MEDICAL_REVIEW_RECOMMENDED"} or risk_severity in {"HIGH", "MODERATE"}:
         state = "PROFESSIONAL_EVALUATION_RECOMMENDED"
         title = "Professional evaluation is recommended"
@@ -112,7 +116,7 @@ def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_va
         title = "General self-care and monitoring"
         next_step = "Use gentle general care, track meaningful changes, and seek professional advice if the concern persists, changes, or worries you."
 
-    product_guidance = "GENERAL_SELF_CARE_ONLY" if state == "VALID_ASSESSMENT" else "DEFER_PRODUCT_DECISIONS"
+    product_guidance = "HEALTHY_MAINTENANCE_ONLY" if state == "HEALTHY_APPEARANCE_MAINTENANCE" else "GENERAL_SELF_CARE_ONLY" if state == "VALID_ASSESSMENT" else "DEFER_PRODUCT_DECISIONS"
     return {
         "status": state,
         "title": title,

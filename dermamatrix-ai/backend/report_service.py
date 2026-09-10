@@ -50,6 +50,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     doctor = intelligence.get("doctor") or {}
 
     result_condition = result.get("condition") or {}
+    result_status = result.get("status") or {}
     result_severity = result.get("severity") or {}
     result_risk = result.get("assessment_risk") or summary.get("assessment_risk") or {}
     result_priority = result.get("care_priority") or {}
@@ -93,7 +94,16 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     elif classification.get("available"):
         classification_value += "<br/><font color='#5C6E80'>Research ranking only. Calibration artifact unavailable, so no condition likelihood is shown.</font>"
     reference_label = presentation_case.get("label") or presentation_case.get("teaching_label")
-    knowledge_finding = _text(reference_label or result_condition.get("name") or finding.get("name"), "No model-supported condition finding")
+    assessment_state = str(result_status.get("state") or "").upper()
+    outcome_label = {
+        "HEALTHY": "No apparent concerns identified in the submitted image",
+        "CONDITION": "Possible model-supported condition",
+        "UNCERTAIN": "Could not assess confidently",
+    }.get(assessment_state, "Assessment state unavailable in this saved record")
+    knowledge_finding = _text(
+        reference_label or result_condition.get("name") or finding.get("name"),
+        "No finding shown because this assessment could not establish a model-supported condition.",
+    )
     knowledge_finding_note = _text(
         presentation_case.get("notice") if reference_label else result_condition.get("notice") or finding.get("label"),
         "The condition-knowledge layer did not add a diagnosis.",
@@ -127,6 +137,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
         [Paragraph("Assessment date", eyebrow), Paragraph(_text(created_at), body)],
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
+        [Paragraph("Assessment outcome", eyebrow), Paragraph(_text(outcome_label), body)],
         [Paragraph("Possible finding", eyebrow), Paragraph(knowledge_finding, body)],
         [Paragraph("Estimated likelihood", eyebrow), Paragraph(_text(likelihood_value), body)],
         [Paragraph("Visual evidence", eyebrow), Paragraph(_text(visual_evidence_value), body)],

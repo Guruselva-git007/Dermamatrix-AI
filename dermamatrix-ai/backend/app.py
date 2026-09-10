@@ -26,7 +26,7 @@ from model_service import MODEL_VERSION, run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata, public_capability_matrix
 from assessment_router import public_workflows, route_image_assessment
-from assessment_contract import build_assessment_result
+from assessment_contract import build_assessment_result, determine_assessment_state
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from longitudinal_service import build_progress_comparison
@@ -527,6 +527,10 @@ def priority_payload(priority: dict, label: str) -> dict:
 
 def attach_condition_intelligence(response: dict) -> dict:
     """Attach the knowledge view and normalized, patient-safe result."""
+    assessment_state = determine_assessment_state(
+        input_type=response.get("input_type", "image"), quality=response.get("quality"),
+        validation=response.get("input_validation"), classifier=response.get("research_classifier"),
+    )["state"]
     response["condition_intelligence"] = build_assessment_intelligence(
         area=response["area"],
         classifier=response.get("research_classifier", {}),
@@ -536,6 +540,7 @@ def attach_condition_intelligence(response: dict) -> dict:
         context=response.get("patient_context", {}),
         cdss=response.get("clinical_decision_support", {}),
         recommendations=response.get("recommendations", {}),
+        assessment_state=assessment_state,
     )
     response["assessment_result"] = build_assessment_result(response)
     return response
@@ -1411,6 +1416,7 @@ def create_assessment():
         "condition_likelihood": {"available": False, "status": "NOT_RUN", "estimated_likelihood": None, "notice": "No classifier ran for this input, so no condition likelihood is available."},
         "calibration": {"available": False, "status": "NOT_RUN", "calibration_version": None},
         "uncertainty": {"status": "UNCERTAIN" if route["status"] == "LOW_QUALITY" else "NOT_APPLICABLE_NO_CLASSIFIER", "certainty": "NOT_AVAILABLE", "ood_status": "OOD_NOT_EVALUATED", "notice": "No classifier ran, so condition uncertainty and OOD cannot be assessed."},
+        "normal_appearance": {"available": False, "status": "NOT_SUPPORTED_BY_CONFIGURED_MODEL", "is_normal": None, "validated": False, "confidence": None, "minimum_confidence": None, "condition_signal": "NOT_EVALUATED", "notice": "No validated normal-appearance model is configured for this image route."},
     }
     # Every valid image gets the same non-diagnostic visual-evidence pass.
     # It is deliberately a contrast candidate region, not anatomy detection or
@@ -1440,7 +1446,8 @@ def create_assessment():
         validation=validation, segmentation=segmentation, candidate_region=candidate_region,
     )
     patient_context = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment)
-    cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk)
+    assessment_state = determine_assessment_state(input_type="image", quality={"status": image_features["status"]}, validation=validation, classifier=research_classifier)["state"]
+    cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk, assessment_state=assessment_state)
     pirs = calculate_pirs(
         area=area,
         priority=priority,
@@ -1458,7 +1465,7 @@ def create_assessment():
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
         "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "assessment_risk": assessment_risk, "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
         "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": severity, "clinical_decision_support": cdss, "candidate_region": candidate_region, "visual_evidence": {"available": bool(candidate_region.get("reliable")), "affected_area_percent": candidate_region.get("affected_area_percent") if candidate_region.get("reliable") else None, "source": candidate_region.get("method") if candidate_region.get("reliable") else None, "notice": candidate_region.get("notice") or candidate_region.get("message")}, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
-        "recommendations": build_recommendations(area, research_classifier, cdss=cdss), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(assessment_risk["score"]), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only",
+        "recommendations": build_recommendations(area, research_classifier, cdss=cdss, assessment_state=assessment_state), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(assessment_risk["score"]), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only",
     }
     if area in {"Hair", "Nails"}:
         modality = "Hair/scalp" if area == "Hair" else "Nail"
@@ -1517,11 +1524,11 @@ def create_assessment():
             cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user_id, area))
             previous_count = int(cursor.fetchone()["count"])
         response["patient_context"] = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment, history=history, previous_assessment_count=previous_count)
-        response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=response["assessment_risk"])
-        response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"])
+        response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=response["assessment_risk"], assessment_state=assessment_state)
+        response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"], assessment_state=assessment_state)
         if presentation_case:
             response["recommendations"] = presentation_case_recommendations(presentation_case, response["recommendations"])
-        response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
+        response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only"
         attach_condition_intelligence(response)
         response["progress_comparison"] = versioned_progress_summary(connection, user_id, area, response)
         response["journey"] = response["progress_comparison"].get("journey")
@@ -1575,7 +1582,7 @@ def create_sweat_assessment():
     ])
     severity = reported_symptom_severity(discomfort=0, change=0, symptoms=sweat_symptoms, urgent_selected=urgent_concern)
     patient_context = patient_context_snapshot(area="Sweat", symptoms=sweat_symptoms, previous_treatment="")
-    sweat_classifier = {"available": False, "uncertainty": {"status": "NOT_AVAILABLE_NO_VALIDATED_TABULAR_MODEL"}}
+    sweat_classifier = {"available": False, "uncertainty": {"status": "NOT_AVAILABLE_NO_VALIDATED_TABULAR_MODEL"}, "normal_appearance": {"available": False, "status": "NOT_APPLICABLE_QUESTIONNAIRE", "is_normal": None, "validated": False, "confidence": None, "minimum_confidence": None, "condition_signal": "NOT_EVALUATED", "notice": "A sweat questionnaire cannot determine normal appearance."}}
     sweat_questionnaire = {
         "pattern": pattern, "frequency": payload.get("frequency"), "duration": payload.get("duration"),
         "daily_impact": bool(payload.get("daily_impact")), "medication_change": bool(payload.get("medication_change")),
@@ -1585,7 +1592,8 @@ def create_sweat_assessment():
         discomfort=0, change=0, symptoms=sweat_symptoms, urgent_selected=urgent_concern,
         quality=None, quality_status=None, validation={"status": "VALID_RELEVANT"}, questionnaire=sweat_questionnaire,
     )
-    cdss = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation={"status": "VALID_RELEVANT"}, classifier=sweat_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk)
+    assessment_state = determine_assessment_state(input_type="questionnaire", validation={"status": "VALID_RELEVANT"}, classifier=sweat_classifier)["state"]
+    cdss = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation={"status": "VALID_RELEVANT"}, classifier=sweat_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk, assessment_state=assessment_state)
     pirs = calculate_pirs(
         area="Sweat",
         priority=priority,
@@ -1627,7 +1635,7 @@ def create_sweat_assessment():
             "attention_map": "not applicable",
             "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")},
         },
-        "recommendations": build_recommendations("Sweat", None, cdss=cdss),
+        "recommendations": build_recommendations("Sweat", None, cdss=cdss, assessment_state=assessment_state),
         "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.",
         "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete",
         "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None,
@@ -1653,9 +1661,9 @@ def create_sweat_assessment():
             cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user["id"], "Sweat"))
             previous_count = int(cursor.fetchone()["count"])
         response["patient_context"] = patient_context_snapshot(area="Sweat", symptoms=sweat_symptoms, previous_treatment="", history=history, previous_assessment_count=previous_count)
-        response["clinical_decision_support"] = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation=response["input_validation"], classifier=sweat_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=assessment_risk)
-        response["recommendations"] = build_recommendations("Sweat", None, cdss=response["clinical_decision_support"])
-        response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] == "GENERAL_SELF_CARE_ONLY" else "general_care_only"
+        response["clinical_decision_support"] = clinical_decision_support(area="Sweat", risk=priority, severity=severity, input_validation=response["input_validation"], classifier=sweat_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=assessment_risk, assessment_state=assessment_state)
+        response["recommendations"] = build_recommendations("Sweat", None, cdss=response["clinical_decision_support"], assessment_state=assessment_state)
+        response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only"
         attach_condition_intelligence(response)
         response["progress_comparison"] = versioned_progress_summary(connection, user["id"], "Sweat", response)
         response["journey"] = response["progress_comparison"].get("journey")

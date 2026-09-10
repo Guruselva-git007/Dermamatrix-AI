@@ -59,6 +59,7 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
             "condition_likelihood": {"available": False, "status": "NOT_RUN", "estimated_likelihood": None, "notice": "No model weights are installed, so no condition likelihood is available."},
             "calibration": {"available": False, "status": "NOT_RUN", "calibration_version": None},
             "uncertainty": prediction_uncertainty(None),
+            "normal_appearance": {"available": False, "status": "NOT_SUPPORTED_BY_CONFIGURED_MODEL", "is_normal": None, "validated": False, "confidence": None, "minimum_confidence": None, "condition_signal": "NOT_EVALUATED", "notice": "The configured lesion model has no validated normal-appearance class."},
         }
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = transforms.Compose([transforms.Resize(280), transforms.CenterCrop(224), transforms.ToTensor()])(image).unsqueeze(0)
@@ -125,6 +126,7 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
         },
         "calibration": calibration,
         "uncertainty": uncertainty,
+        "normal_appearance": {"available": False, "status": "NOT_SUPPORTED_BY_CONFIGURED_MODEL", "is_normal": None, "validated": False, "confidence": None, "minimum_confidence": None, "condition_signal": "NOT_EVALUATED", "notice": "The configured HAM10000 lesion model has no validated normal-appearance class."},
         "model_confidence": round(top_likelihood, 4) if top_likelihood is not None else None,
         "raw_top_score": round(float(raw_probabilities[top_index]), 4),
         "low_confidence": uncertainty["certainty"] == "LOW",

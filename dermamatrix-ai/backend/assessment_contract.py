@@ -11,7 +11,64 @@ explainability artifact when an underlying service did not produce one.
 from __future__ import annotations
 
 
-ASSESSMENT_RESULT_VERSION = "assessment-result-v1.3"
+ASSESSMENT_RESULT_VERSION = "assessment-result-v1.4"
+ASSESSMENT_STATES = frozenset({"HEALTHY", "CONDITION", "UNCERTAIN"})
+
+
+def determine_assessment_state(*, input_type: str, quality: dict | None = None,
+                               validation: dict | None = None, classifier: dict | None = None,
+                               finding: dict | None = None) -> dict:
+    """Return the one user-facing outcome state from real pipeline evidence.
+
+    A missing classifier, a usable photo, a blank finding, or a failed request
+    must never become ``HEALTHY`` by implication.  ``HEALTHY`` is deliberately
+    reserved for a future compatible model that emits an explicit,
+    independently validated normal-appearance signal.  The small contract is
+    also safe for legacy records: callers without that signal resolve to
+    ``UNCERTAIN`` rather than retrospectively claiming a healthy result.
+    """
+    quality = quality or {}
+    validation = validation or {}
+    classifier = classifier or {}
+    finding = finding or {}
+    validation_status = str(validation.get("status") or "").upper()
+    quality_status = str(quality.get("status") or "").upper()
+    uncertainty = classifier.get("uncertainty") or {}
+    uncertainty_status = str(uncertainty.get("status") or "").upper()
+    ood_status = str(uncertainty.get("ood_status") or "").upper()
+
+    if input_type == "questionnaire":
+        return {"state": "UNCERTAIN", "reason": "QUESTIONNAIRE_HAS_NO_VALIDATED_NORMAL_OR_CONDITION_MODEL"}
+    if quality_status == "LOW_QUALITY" or validation_status in {"LOW_QUALITY", "INVALID_INPUT", "UNSUPPORTED"}:
+        return {"state": "UNCERTAIN", "reason": "INPUT_UNSUITABLE"}
+    if ood_status == "OUT_OF_DISTRIBUTION":
+        return {"state": "UNCERTAIN", "reason": "OUT_OF_DISTRIBUTION"}
+    if uncertainty_status in {"LOW_CONFIDENCE", "UNCERTAIN"}:
+        return {"state": "UNCERTAIN", "reason": "MODEL_UNCERTAIN"}
+
+    normal = classifier.get("normal_appearance") or {}
+    normal_confidence = normal.get("confidence")
+    normal_threshold = normal.get("minimum_confidence")
+    explicit_normal = (
+        classifier.get("available")
+        and normal.get("available") is True
+        and normal.get("status") == "VALIDATED_NORMAL_APPEARANCE"
+        and normal.get("validated") is True
+        and normal.get("is_normal") is True
+        and normal.get("condition_signal") == "NONE"
+        and isinstance(normal_confidence, (int, float))
+        and isinstance(normal_threshold, (int, float))
+        and normal_confidence >= normal_threshold
+    )
+    top_prediction = classifier.get("top_prediction") or {}
+    condition_evidence = bool(finding.get("name") or top_prediction.get("condition"))
+    if explicit_normal and condition_evidence:
+        return {"state": "UNCERTAIN", "reason": "CONFLICTING_MODEL_SIGNALS"}
+    if explicit_normal:
+        return {"state": "HEALTHY", "reason": "VALIDATED_NORMAL_APPEARANCE"}
+    if classifier.get("available") and condition_evidence:
+        return {"state": "CONDITION", "reason": "SCOPED_MODEL_CONDITION_OUTPUT"}
+    return {"state": "UNCERTAIN", "reason": "NO_VALIDATED_OUTCOME_SIGNAL"}
 
 
 def _urgency(cdss: dict, urgent_notice: str | None, assessment_risk: dict) -> dict:
@@ -47,12 +104,12 @@ def _urgency(cdss: dict, urgent_notice: str | None, assessment_risk: dict) -> di
     }
 
 
-def _condition(classifier: dict, intelligence: dict) -> dict:
+def _condition(classifier: dict, intelligence: dict, assessment_state: str) -> dict:
     """Expose a condition only when the scoped classifier actually ran."""
     finding = intelligence.get("finding") or {}
     likelihood = classifier.get("condition_likelihood") or {}
     top_prediction = classifier.get("top_prediction") or {}
-    available = bool(classifier.get("available") and finding.get("name"))
+    available = bool(assessment_state == "CONDITION" and classifier.get("available") and finding.get("name"))
     calibrated = bool(available and likelihood.get("available") and likelihood.get("estimated_likelihood") is not None)
     if not available:
         return {
@@ -80,7 +137,7 @@ def _condition(classifier: dict, intelligence: dict) -> dict:
     }
 
 
-def _assessment_status(response: dict, classifier: dict, validation: dict) -> dict:
+def _assessment_status(response: dict, classifier: dict, validation: dict, assessment_state: dict) -> dict:
     """Describe what the completed pathway could actually establish.
 
     This is deliberately separate from a possible model label, condition
@@ -95,43 +152,58 @@ def _assessment_status(response: dict, classifier: dict, validation: dict) -> di
     uncertainty_status = uncertainty.get("status")
     ood_status = uncertainty.get("ood_status")
 
+    state = assessment_state["state"]
     if input_type == "questionnaire":
         return {
+            "state": state,
             "code": "QUESTIONNAIRE_ASSESSMENT",
             "label": "Questionnaire assessment completed",
             "notice": "This transparent questionnaire pathway does not run an image classifier or validated condition model.",
         }
     if quality.get("status") == "LOW_QUALITY" or validation_status in {"LOW_QUALITY", "INVALID_INPUT", "UNSUPPORTED"}:
         return {
+            "state": state,
             "code": "INPUT_UNSUITABLE",
             "label": "Input unsuitable for a condition assessment",
             "notice": validation.get("notice") or "Retake a clear, relevant image before relying on this screening summary.",
         }
     if ood_status == "OUT_OF_DISTRIBUTION":
         return {
+            "state": state,
             "code": "OUT_OF_DISTRIBUTION",
             "label": "Image is outside the configured model scope",
             "notice": uncertainty.get("notice") or "No condition result is shown for an image outside the configured model scope.",
         }
     if classifier.get("available"):
+        if state == "HEALTHY":
+            return {
+                "state": state,
+                "code": "NORMAL_APPEARANCE",
+                "label": "No apparent concerns identified",
+                "notice": "This result comes from a validated normal-appearance model signal. It is not a diagnosis and does not replace care for symptoms or a changing concern.",
+            }
         if uncertainty_status == "LOW_CONFIDENCE":
             return {
+                "state": state,
                 "code": "UNCERTAIN",
                 "label": "Research-model output is uncertain",
                 "notice": uncertainty.get("notice") or "The model output did not meet the configured certainty threshold.",
             }
         return {
+            "state": state,
             "code": "RESEARCH_ONLY",
             "label": "Research-only model output",
             "notice": classifier.get("notice") or "This research result is not a diagnosis or a clinically validated decision.",
         }
     if uncertainty_status in {"UNCERTAIN", "LOW_CONFIDENCE"} and validation_status not in {"VALID", "VALID_RELEVANT"}:
         return {
+            "state": state,
             "code": "UNCERTAIN",
             "label": "Assessment is uncertain",
             "notice": uncertainty.get("notice") or validation.get("notice") or "The available input cannot support a confident condition assessment.",
         }
     return {
+        "state": state,
         "code": "MODEL_UNAVAILABLE",
         "label": "No compatible condition model is available",
         "notice": classifier.get("reason") or validation.get("notice") or "This assessment preserves quality and reported concerns without assigning an unsupported condition.",
@@ -158,8 +230,13 @@ def build_assessment_result(response: dict) -> dict:
     visual_evidence = response.get("visual_evidence") or {}
     presentation_case = response.get("presentation_case") or {}
     questionnaire = response.get("input_type") == "questionnaire"
-    condition = _condition(classifier, intelligence)
-    assessment_status = _assessment_status(response, classifier, validation)
+    assessment_state = determine_assessment_state(
+        input_type=response.get("input_type", "image"), quality=quality,
+        validation=validation, classifier=classifier,
+        finding=intelligence.get("finding") or {},
+    )
+    condition = _condition(classifier, intelligence, assessment_state["state"])
+    assessment_status = _assessment_status(response, classifier, validation, assessment_state)
     attention = classifier.get("attention_map") or classifier.get("explainability") or {}
     recommendations = response.get("recommendations") or {}
 

@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
+const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -517,9 +517,14 @@ function normaliseAssessmentPresentation(data) {
   const carePlan = result.guidance?.care_plan || data.care_plan || {};
   const finding = result.condition || data.condition_intelligence?.finding || {};
   const questionnaire = (result.input?.type || data.input_type) === 'questionnaire';
-  const hasClassifierFinding = result.contract_version
+  const contractState = String(assessmentStatus.state || '').toUpperCase();
+  const assessmentState = ['HEALTHY', 'CONDITION', 'UNCERTAIN'].includes(contractState)
+    ? contractState
+    : (!result.contract_version && classifier.available && prediction && (finding.name || prediction.label) ? 'CONDITION' : 'UNCERTAIN');
+  const hasClassifierFinding = assessmentState === 'CONDITION' && (result.contract_version
     ? Boolean(finding.available && finding.name)
-    : Boolean(classifier.available && prediction && (finding.name || prediction.label));
+    : Boolean(classifier.available && prediction && (finding.name || prediction.label))
+  );
   const likelihoodAvailable = result.contract_version
     ? Number.isFinite(finding.estimated_likelihood)
     : Boolean(likelihood.available && Number.isFinite(prediction?.calibratedProbability));
@@ -549,13 +554,16 @@ function normaliseAssessmentPresentation(data) {
     presentationCase,
     isPresentationCase,
     visualEvidence,
-    primaryLabel: isPresentationCase ? 'Education example' : hasClassifierFinding ? 'Possible condition' : 'Your result',
-    primaryTitle: isPresentationCase ? presentationCase.teaching_label : hasClassifierFinding ? (finding.name || prediction.label) : 'No clear condition label',
+    assessmentState,
+    primaryLabel: isPresentationCase ? 'Education example' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : 'Reassess image',
+    primaryTitle: isPresentationCase ? presentationCase.teaching_label : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : 'We need a clearer look',
     primaryDescription: isPresentationCase ? presentationCase.teaching_summary : hasClassifierFinding
       ? (likelihoodAvailable
         ? 'This research-only screening result is not a diagnosis and needs independent clinical assessment.'
         : 'This is the highest-ranked research label. A calibrated likelihood is not available, and it is not a diagnosis.')
-      : (questionnaire
+      : (assessmentState === 'HEALTHY'
+        ? 'No apparent concerns were identified by the validated normal-appearance signal. This is not a diagnosis; seek care for symptoms, change, or anything that worries you.'
+        : questionnaire
         ? 'This questionnaire did not use condition classification. It provides a symptom and next-step summary.'
         : unavailableDescription),
     confidence: {
@@ -856,6 +864,37 @@ function renderPatientResult(data) {
   const technicalEvidence = $('#analysisPipeline');
   technicalEvidence?.remove();
   root.className = 'patient-result-content';
+  // The normalized contract is the only source for the patient-facing result
+  // state. Legacy records without it take the conservative uncertain branch.
+  if (!presentation.isPresentationCase && ['HEALTHY', 'UNCERTAIN'].includes(presentation.assessmentState)) {
+    const isHealthy = presentation.assessmentState === 'HEALTHY';
+    const stateProducts = isHealthy && products
+      ? `<section class="assessment-state-products"><p class="eyebrow">OPTIONAL EVERYDAY CARE</p><div class="patient-products">${products}</div><p>${escapeHTML(recommendation.product_notice || 'These are optional maintenance categories, not treatment products.')}</p></section>`
+      : '';
+    const action = isHealthy
+      ? `<button type="button" class="button quiet" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Save future check-ins'} <span>→</span></button>`
+      : '<button type="button" class="button primary" data-result-action="reassess">Use another photo <span>→</span></button>';
+    root.innerHTML = `<section class="assessment-state-card ${isHealthy ? 'is-healthy' : 'is-uncertain'}"><div class="assessment-state-copy"><p class="eyebrow">${isHealthy ? 'APPEARANCE CHECK' : 'IMAGE REVIEW'}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p><div class="assessment-state-next"><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(isHealthy ? recommendation.medicine_policy || 'No treatment or medicine is needed based on this assessment.' : 'No product, medicine, or condition-specific treatment is shown until an assessment can establish a reliable result.')}</p></div><div class="progress-actions">${action}<button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></div></div><div class="assessment-state-visual">${visualMarkup}</div></section><section class="patient-technical" id="patientTechnicalSlot"></section>${stateProducts}`;
+    if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
+    root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
+      details.addEventListener('toggle', () => {
+        if (!details.open) return;
+        details.querySelectorAll('img[data-patient-src]').forEach(image => { image.src = image.dataset.patientSrc; image.removeAttribute('data-patient-src'); });
+      });
+    });
+    root.querySelectorAll('[data-result-action]').forEach(button => {
+      button.onclick = () => {
+        if (button.dataset.resultAction === 'doctor') { closeResult(); showPage('support'); return; }
+        if (button.dataset.resultAction === 'progress') {
+          if (!state.profile?.patient_id) { showAuthGate('register'); return toast('Create an account to save assessments and future check-ins.'); }
+          closeResult(); showPage('progress'); return;
+        }
+        closeResult(); showPage('home'); $('#imageInput')?.focus();
+      };
+    });
+    $('#resultModal').classList.add('has-patient-result');
+    return;
+  }
   const treatmentTopics = (presentationCase.treatment_topics || []).map(item => `<li><strong>${escapeHTML(item.name || 'Treatment topic')}</strong>${item.note ? ` — ${escapeHTML(item.note)}` : ''}</li>`).join('');
   const caseNotice = presentation.isPresentationCase ? `<section class="patient-presentation-notice"><p class="eyebrow">PRESENTATION MODE</p><strong>Pre-labelled teaching case</strong><p>${escapeHTML(presentationCase.notice || '')}</p></section>` : '';
   const teachingDetails = presentation.isPresentationCase ? `<section class="patient-why patient-teaching-details"><div><p class="eyebrow">TEACHING CASE DETAILS</p><h3>Pattern, symptoms and contributors</h3><strong>Visible pattern</strong>${patientList(presentationCase.visual_features, 'Reference image details are recorded in the teaching summary.')}<strong>Common symptoms</strong>${patientList(presentationCase.common_symptoms, 'Symptoms vary by the underlying condition.')}<strong>Common contributors / causes</strong>${patientList(presentationCase.common_contributors, 'Causes require clinical context and cannot be determined from this image.')}</div><div class="patient-what-next"><p class="eyebrow">CLINICAL CONTEXT</p><strong>Alternatives to exclude</strong>${patientList(presentationCase.differential_diagnoses, 'A clinician determines the actual diagnosis.')}<strong>Red flags</strong>${patientList(presentationCase.red_flags, 'Seek care if the concern changes, persists, or worries you.')}<p>These are teaching prompts, not patient-specific findings or a substitute for examination.</p></div></section>` : '';
@@ -905,6 +944,7 @@ async function analyze() {
   if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
   if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
   const button = $('#analyzeButton');
+  const requestId = ++state.assessmentRequestId;
   state.assessmentInFlight = true;
   setAssessmentInputBusy(true);
   button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
@@ -928,6 +968,9 @@ async function analyze() {
       $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
       data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
     }
+    // A future request may complete first. Never allow an older response to
+    // overwrite the image/result state the person is currently reviewing.
+    if (requestId !== state.assessmentRequestId) return;
     transitionAssessment(AssessmentState.GENERATING_EXPLANATION, 'PREPARING EXPLANATION');
     transitionAssessment(AssessmentState.FINALIZING, 'FINALIZING RESULT');
     const inputStatus = data.input_validation?.status;
@@ -972,6 +1015,7 @@ async function analyze() {
     showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
     $('#stepCount').textContent = questionnaire ? 'STEP 2 OF 2' : 'STEP 3 OF 3';
   } catch (error) {
+    if (requestId !== state.assessmentRequestId) return;
     finishProcessing(false);
     transitionAssessment(AssessmentState.ERROR, 'ASSESSMENT UNAVAILABLE');
     const message = error?.message || '';
@@ -979,6 +1023,7 @@ async function analyze() {
     const internalFailure = /\b(?:ReferenceError|TypeError|SyntaxError)\b|is not defined|Failed to fetch|NetworkError/i.test(message);
     toast(internalFailure ? 'The assessment could not be completed. Reload the app, confirm it is open at http://127.0.0.1:8000, then try again.' : message || 'We couldn’t complete this assessment. Check your information and try again.');
   } finally {
+    if (requestId !== state.assessmentRequestId) return;
     state.assessmentInFlight = false;
     setAssessmentInputBusy(false);
     button.disabled = sweat ? false : !state.file;
