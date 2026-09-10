@@ -471,6 +471,8 @@ class MlContractTests(unittest.TestCase):
         self.assertFalse(result["assessment_result"]["condition"]["available"])
         self.assertFalse(result["assessment_result"]["disease_risk"]["available"])
         self.assertEqual(result["assessment_result"]["status"]["code"], "QUESTIONNAIRE_ASSESSMENT")
+        self.assertEqual(result["clinical_decision_support"]["status"], "QUESTIONNAIRE_SUMMARY")
+        self.assertNotIn("image", result["clinical_decision_support"]["next_step"].lower())
 
     def test_context_uses_only_area_relevant_symptoms_and_not_history_as_model_features(self):
         symptoms = normalise_symptoms("Hair", ["hair_loss", "itching", "scalp_pain"])

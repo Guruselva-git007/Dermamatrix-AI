@@ -555,8 +555,8 @@ function normaliseAssessmentPresentation(data) {
     isPresentationCase,
     visualEvidence,
     assessmentState,
-    primaryLabel: isPresentationCase ? 'Education example' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : 'Reassess image',
-    primaryTitle: isPresentationCase ? presentationCase.teaching_label : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : 'We need a clearer look',
+    primaryLabel: isPresentationCase ? 'Education example' : questionnaire ? 'Questionnaire summary' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : 'Reassess image',
+    primaryTitle: isPresentationCase ? presentationCase.teaching_label : questionnaire ? (cdss.title || 'Your sweat-pattern summary') : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : 'We need a clearer look',
     primaryDescription: isPresentationCase ? presentationCase.teaching_summary : hasClassifierFinding
       ? (likelihoodAvailable
         ? 'This research-only screening result is not a diagnosis and needs independent clinical assessment.'
@@ -868,13 +868,21 @@ function renderPatientResult(data) {
   // state. Legacy records without it take the conservative uncertain branch.
   if (!presentation.isPresentationCase && ['HEALTHY', 'UNCERTAIN'].includes(presentation.assessmentState)) {
     const isHealthy = presentation.assessmentState === 'HEALTHY';
+    const isQuestionnaire = presentation.questionnaire;
     const stateProducts = isHealthy && products
       ? `<section class="assessment-state-products"><p class="eyebrow">OPTIONAL EVERYDAY CARE</p><div class="patient-products">${products}</div><p>${escapeHTML(recommendation.product_notice || 'These are optional maintenance categories, not treatment products.')}</p></section>`
       : '';
     const action = isHealthy
       ? `<button type="button" class="button quiet" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Save future check-ins'} <span>→</span></button>`
-      : '<button type="button" class="button primary" data-result-action="reassess">Use another photo <span>→</span></button>';
-    root.innerHTML = `<section class="assessment-state-card ${isHealthy ? 'is-healthy' : 'is-uncertain'}"><div class="assessment-state-copy"><p class="eyebrow">${isHealthy ? 'APPEARANCE CHECK' : 'IMAGE REVIEW'}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p><div class="assessment-state-next"><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(isHealthy ? recommendation.medicine_policy || 'No treatment or medicine is needed based on this assessment.' : 'No product, medicine, or condition-specific treatment is shown until an assessment can establish a reliable result.')}</p></div><div class="progress-actions">${action}<button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></div></div><div class="assessment-state-visual">${visualMarkup}</div></section><section class="patient-technical" id="patientTechnicalSlot"></section>${stateProducts}`;
+      : isQuestionnaire
+        ? '<button type="button" class="button primary" data-result-action="edit-questionnaire">Edit your answers <span>→</span></button>'
+        : '<button type="button" class="button primary" data-result-action="reassess">Use another photo <span>→</span></button>';
+    const safetyNote = isHealthy
+      ? recommendation.medicine_policy || 'No treatment or medicine is needed based on this assessment.'
+      : isQuestionnaire
+        ? 'This is a summary of the answers you provided. It cannot identify a sweat-gland condition or select medicine or treatment.'
+        : 'No product, medicine, or condition-specific treatment is shown until an assessment can establish a reliable result.';
+    root.innerHTML = `<section class="assessment-state-card ${isHealthy ? 'is-healthy' : 'is-uncertain'}"><div class="assessment-state-copy"><p class="eyebrow">${isHealthy ? 'APPEARANCE CHECK' : isQuestionnaire ? 'YOUR QUESTIONNAIRE' : 'IMAGE REVIEW'}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p><div class="assessment-state-next"><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(safetyNote)}</p></div><div class="progress-actions">${action}<button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></div></div><div class="assessment-state-visual">${visualMarkup}</div></section><section class="patient-technical" id="patientTechnicalSlot"></section>${stateProducts}`;
     if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
     root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
       details.addEventListener('toggle', () => {
@@ -888,6 +896,17 @@ function renderPatientResult(data) {
         if (button.dataset.resultAction === 'progress') {
           if (!state.profile?.patient_id) { showAuthGate('register'); return toast('Create an account to save assessments and future check-ins.'); }
           closeResult(); showPage('progress'); return;
+        }
+        if (button.dataset.resultAction === 'edit-questionnaire') {
+          closeResult(); showPage('home');
+          transitionAssessment(AssessmentState.INPUT_REQUIRED, 'QUESTIONNAIRE READY TO EDIT');
+          updateAssessmentProgress(3);
+          window.requestAnimationFrame(() => {
+            const firstQuestion = $('#sweatPattern');
+            firstQuestion?.focus({ preventScroll: true });
+            firstQuestion?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'center' });
+          });
+          return;
         }
         closeResult(); showPage('home'); $('#imageInput')?.focus();
       };
@@ -1682,8 +1701,10 @@ function renderProgress() {
     emptyJourney = document.createElement('section');
     emptyJourney.id = 'journeyEmptyState'; emptyJourney.className = 'journey-empty-state';
     emptyJourney.innerHTML = '<span aria-hidden="true">◔</span><div><p class="eyebrow">YOUR JOURNEY</p><h3>Your journey starts here.</h3><p>Complete your first assessment to begin tracking your health story.</p><button class="button primary" data-dashboard-nav="home">Check My Health <span>→</span></button></div>';
-    $('#progressSummary').insertAdjacentElement('beforebegin', emptyJourney);
   }
+  // Keep the guest empty state outside account-only sections.  It must remain
+  // visible even while routines, check-ins, and saved reports are hidden.
+  $('.progress-heading')?.insertAdjacentElement('afterend', emptyJourney);
   const workspaceSections = ['.journey-status-section', '#reportRegister', '.progress-layout', '.checkin-card', '.history-card'];
   workspaceSections.forEach(selector => { const element = $(selector); if (element) element.hidden = !hasProfile; });
   const progressActions = $('.progress-actions');

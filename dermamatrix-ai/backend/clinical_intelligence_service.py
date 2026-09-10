@@ -99,6 +99,14 @@ def clinical_decision_support(*, area: str, risk: dict, severity: dict, input_va
         state = "URGENT_EVALUATION_RECOMMENDED"
         title = "Seek timely professional evaluation"
         next_step = "You selected a prompt-care concern. Do not rely on app guidance alone; contact an appropriate clinician or urgent service now if you feel severely unwell."
+    elif area == "Sweat":
+        # Sweat is a questionnaire-only pathway.  It is intentionally marked
+        # uncertain in the normalized assessment contract because no validated
+        # condition model is configured, but that must not turn into an
+        # impossible request to retake a photo.
+        state = "QUESTIONNAIRE_SUMMARY"
+        title = "Review your sweat-pattern summary"
+        next_step = "Track meaningful changes in the pattern you reported and discuss persistent, changing, or disruptive symptoms with a qualified clinician."
     elif assessment_state == "UNCERTAIN" or validation_status == "LOW_QUALITY" or uncertainty == "UNCERTAIN":
         state = "UNCERTAIN"
         title = "Retake or discuss this assessment"
