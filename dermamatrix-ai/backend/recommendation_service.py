@@ -67,6 +67,18 @@ def search_product_discovery(query: str) -> list[dict]:
     query_lower = normalized.casefold()
     if not query_lower:
         return product_discovery_catalog()
+    # Keep discovery search forgiving without turning a care topic into a
+    # diagnosis. These are spelling and everyday-language equivalents only.
+    natural_terms = {
+        "moisturizer": "moisturiser",
+        "sunscreen": "sun protection",
+        "sun screen": "sun protection",
+        "fragrance free": "fragrance-free",
+        "dry scalp": "scalp flakes",
+        "pimples": "acne",
+    }
+    for spoken_term, catalogue_term in natural_terms.items():
+        query_lower = query_lower.replace(spoken_term, catalogue_term)
     query_tokens = [
         token for token in query_lower.replace("-", " ").split()
         if len(token) > 2 and token not in {"care", "product", "products", "for", "and", "with", "the"}
@@ -77,7 +89,7 @@ def search_product_discovery(query: str) -> list[dict]:
             item.get("name", ""), item.get("purpose", ""), item.get("search_terms", ""),
             " ".join(item.get("tags", [])),
         ]).casefold()
-        if query_lower in searchable or (query_tokens and all(token in searchable for token in query_tokens)):
+        if query_lower in searchable or (query_tokens and any(token in searchable for token in query_tokens)):
             matches.append(materialize_product(item))
     if matches:
         return matches

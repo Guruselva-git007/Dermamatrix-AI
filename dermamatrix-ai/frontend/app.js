@@ -119,10 +119,10 @@ function selectArea(area) {
   });
   const sweat = area === 'Sweat';
   const labels = {
-    Skin: { title: 'Check your skin', status: 'AI-assisted image screening. The research lesion model is limited to attested dermatoscopic single lesions.', upload: 'Add a clear skin image', copy: 'Face, body, affected-area, or dermatoscopic lesion photo.' },
-    Hair: { title: 'Check hair & scalp', status: 'Image-quality screening is available. A hair/scalp classifier is not configured in this deployment.', upload: 'Add a clear hair or scalp image', copy: 'Choose the image type that best matches your concern.' },
-    Nails: { title: 'Check your nails', status: 'Image-quality screening is available. A nail classifier is not configured in this deployment.', upload: 'Add a clear nail image', copy: 'Choose the image type that best matches your concern.' },
-    Sweat: { title: 'Assess a sweat pattern', status: 'Short screening questionnaire · not a diagnosis.', upload: '', copy: '' },
+    Skin: { title: 'Check your skin', status: 'Start with a clear photo. If you have a dermatoscopic lesion image, choose that image type for a more focused research check.', upload: 'Add a clear skin photo', copy: 'Face, body, affected area, or dermatoscopic lesion photo.' },
+    Hair: { title: 'Check hair & scalp', status: 'Start with a clear photo of your hair or scalp. Your result will explain what can be reviewed.', upload: 'Add a clear hair or scalp photo', copy: 'Choose the image type that best matches your concern.' },
+    Nails: { title: 'Check your nails', status: 'Start with a clear nail photo. Your result will explain what can be reviewed.', upload: 'Add a clear nail photo', copy: 'Choose the image type that best matches your concern.' },
+    Sweat: { title: 'Assess a sweat pattern', status: 'Answer a few questions to get a clear summary and next steps.', upload: '', copy: '' },
   }[area];
   const capability = state.modelCapabilities[area];
   $('#screenTitle').textContent = labels.title;
@@ -135,6 +135,7 @@ function selectArea(area) {
   renderAreaSymptoms(area);
   $('#imageWorkflow').hidden = sweat;
   $('#sweatWorkflow').hidden = !sweat;
+  $('.presentation-case-toggle').hidden = sweat;
   $('#uploadStepTitle').textContent = labels.upload;
   $('#uploadStepCopy').textContent = labels.copy;
   renderImageContexts(area);
@@ -529,12 +530,12 @@ function normaliseAssessmentPresentation(data) {
   const visualEvidence = result.visual_evidence || data.visual_evidence || {};
   const statusCode = assessmentStatus.code || (questionnaire ? 'QUESTIONNAIRE_ASSESSMENT' : classifier.available ? 'RESEARCH_ONLY' : 'MODEL_UNAVAILABLE');
   const unavailableDescription = statusCode === 'INPUT_UNSUITABLE'
-    ? 'This image needs improvement before it can support a condition assessment. The app did not assign a condition.'
+    ? 'This photo needs a little improvement before it can support a clearer result.'
     : statusCode === 'OUT_OF_DISTRIBUTION'
-      ? 'This image is outside the configured model scope. The app did not assign a condition.'
+      ? 'This photo does not match the type this check can reliably review.'
       : statusCode === 'UNCERTAIN'
-        ? 'The available research-model output is uncertain and should not be treated as a condition conclusion.'
-        : 'A compatible condition classifier was not available for this assessment. Image quality and the details you reported were still reviewed.';
+        ? 'This check was not clear enough to give a reliable condition label.'
+        : 'We could not give a condition label from this photo. Use the image and the details you shared to decide what to do next.';
 
   return {
     questionnaire,
@@ -548,8 +549,8 @@ function normaliseAssessmentPresentation(data) {
     presentationCase,
     isPresentationCase,
     visualEvidence,
-    primaryLabel: isPresentationCase ? 'Presentation teaching case' : hasClassifierFinding ? 'Possible condition' : 'Assessment result',
-    primaryTitle: isPresentationCase ? presentationCase.teaching_label : hasClassifierFinding ? (finding.name || prediction.label) : 'No condition classified',
+    primaryLabel: isPresentationCase ? 'Education example' : hasClassifierFinding ? 'Possible condition' : 'Your result',
+    primaryTitle: isPresentationCase ? presentationCase.teaching_label : hasClassifierFinding ? (finding.name || prediction.label) : 'No clear condition label',
     primaryDescription: isPresentationCase ? presentationCase.teaching_summary : hasClassifierFinding
       ? (likelihoodAvailable
         ? 'This research-only screening result is not a diagnosis and needs independent clinical assessment.'
@@ -558,9 +559,9 @@ function normaliseAssessmentPresentation(data) {
         ? 'This questionnaire did not use condition classification. It provides a symptom and next-step summary.'
         : unavailableDescription),
     confidence: {
-      heading: isPresentationCase ? 'REFERENCE MATCH' : 'MODEL CONFIDENCE',
-      value: isPresentationCase ? 'Exact file' : likelihoodAvailable ? `${Math.round(likelihoodValue * 100)}%` : 'Not available',
-      note: isPresentationCase ? 'Exact SHA-256 reference match; this is not a model probability.' : likelihoodAvailable ? 'Calibrated research-model likelihood.' : 'A calibrated condition likelihood is not available for this assessment.',
+      heading: isPresentationCase ? 'EXAMPLE MATCH' : 'RESULT CONFIDENCE',
+      value: isPresentationCase ? 'Education example' : likelihoodAvailable ? `${Math.round(likelihoodValue * 100)}%` : 'Not available',
+      note: isPresentationCase ? 'This result is based on a supplied education example.' : likelihoodAvailable ? 'An estimate from the available result.' : 'A percentage is not available for this check.',
     },
     severity: {
       value: severity.level || 'Not assessed',
@@ -573,7 +574,7 @@ function normaliseAssessmentPresentation(data) {
     priority: {
       score: Number.isFinite(priority.score) ? Math.max(0, Math.min(100, priority.score)) : null,
       level: priority.level ? readableStatus(priority.level) : 'Not assessed',
-      note: 'Reported concern priority — not disease risk or condition likelihood.',
+      note: 'Based on the details you shared.',
     },
     assessmentRisk: {
       score: assessmentRisk.available && Number.isFinite(assessmentRisk.score) ? Math.max(0, Math.min(100, assessmentRisk.score)) : null,
@@ -581,14 +582,14 @@ function normaliseAssessmentPresentation(data) {
       level: assessmentRisk.level ? readableStatus(assessmentRisk.level) : 'Not assessed',
       urgency: assessmentRisk.urgency_label || readableStatus(assessmentRisk.urgency, 'Routine monitoring'),
       factors: assessmentRisk.factor_labels || (assessmentRisk.factors || []).map(factor => factor.label).filter(Boolean),
-      note: assessmentRisk.explanation || assessmentRisk.notice || 'Assessment concern indicator is not a disease probability or diagnosis.',
+      note: assessmentRisk.explanation || assessmentRisk.notice || 'A guide to how soon you may want to seek support.',
     },
     assessmentStatus: {
       code: statusCode,
       label: assessmentStatus.label || readableStatus(statusCode),
       notice: assessmentStatus.notice || '',
     },
-    nextAction: isPresentationCase ? `Teaching-case discussion: ${presentationCase.doctor_specialty}.` : cdss.next_step || carePlan.next_step || 'No next action is available for this assessment.',
+    nextAction: isPresentationCase ? `Talk through this example with a ${presentationCase.doctor_specialty}.` : cdss.next_step || carePlan.next_step || 'No next step is available for this check.',
     scope: isPresentationCase
       ? 'An exact supplied teaching file matched after you enabled Presentation case matching. Reference metadata is shown alongside the same assessment concern calculation; neither is a diagnosis or disease probability.'
       : assessmentStatus.notice
@@ -1019,13 +1020,15 @@ function openDirectorySearch(locationValue, { appointment = false } = {}) {
   const location = String(locationValue || '').trim();
   if (!location) return toast('Enter a city or area, or use your device location first.');
   state.nearbySearchLocation = location;
-  const specialty = state.recommendedSpecialty || 'dermatologist';
-  const query = encodeURIComponent(appointment ? `${specialty} appointment options near ${location}` : `${specialty} near ${location}`);
+  const suggestedSpecialty = state.recommendedSpecialty || 'dermatologist';
+  const concern = String($('#directoryConcern')?.value || '').trim();
+  const searchFocus = concern ? `${concern} dermatologist` : suggestedSpecialty;
+  const query = encodeURIComponent(appointment ? `${searchFocus} appointment options near ${location}` : `${searchFocus} near ${location}`);
   const handoff = $('#directoryHandoffState');
   if (handoff) {
     handoff.classList.add('is-active');
-    handoff.querySelector('strong').textContent = appointment ? 'Opening appointment options in Maps' : 'Opening current specialist listings in Maps';
-    handoff.querySelector('p').textContent = `${specialty.replace(/^./, letter => letter.toUpperCase())} listings near ${location} open in a new tab. Confirm credentials, availability, ratings, and booking details directly with the provider.`;
+    handoff.querySelector('strong').textContent = appointment ? 'Opening appointment options' : 'Opening nearby specialists';
+    handoff.querySelector('p').textContent = `Current ${searchFocus} listings near ${location} open in a new tab. Check the provider’s details and booking options before you decide.`;
   }
   window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank', 'noopener,noreferrer');
 }
@@ -1067,15 +1070,22 @@ function updateDoctorSupport(risk = {}, doctor = {}) {
   const highPriority = ['HIGH', 'VERY_HIGH'].includes(risk.level) || ['PROMPT_MEDICAL_EVALUATION', 'URGENT_EVALUATION'].includes(risk.urgency) || ['HIGH', 'URGENT'].includes(risk.severity);
   const title = highPriority || doctor.recommended ? 'Professional review is recommended' : 'Optional professional support';
   const copy = highPriority
-    ? `Your assessment concern indicator suggests professional review. Use your location to open nearby ${specialty.toLowerCase()} listings with current ratings and contact details. Appointment availability is confirmed only by the clinic or booking provider.`
-    : `Suggested discussion specialty: ${specialty}. Search Google Maps for current directory details such as ratings, contact options, and directions; verify registration and the listing directly before booking.`;
+    ? `A professional review could be helpful. Use your location to find a nearby ${specialty.toLowerCase()}.`
+    : `If you would like support, find a nearby ${specialty.toLowerCase()} and choose a contact option that works for you.`;
   const heading = $('#doctorSupportTitle'); const description = $('#doctorSupportCopy');
   if (heading) heading.textContent = title;
   if (description) description.textContent = copy;
   const directoryCopy = $('#directorySpecialtyCopy');
   if (directoryCopy) directoryCopy.textContent = doctor.specialty
-    ? `Recommended discussion specialty: ${specialty}. Search Maps for current contact details, ratings, availability, and booking options; verify the listing and credentials directly.`
-    : 'Search for a dermatologist or another specialist recommended by your latest assessment. Directory information is provided directly by Maps and clinics.';
+    ? `Your latest check suggests that a ${specialty.toLowerCase()} may be the right person to speak to.`
+    : 'Describe what you need help with, then find a dermatologist near you.';
+}
+
+function chooseDirectoryQuery(query) {
+  const concern = $('#directoryConcern');
+  if (!concern) return;
+  concern.value = query;
+  concern.focus();
 }
 
 async function saveProfile(event) {
@@ -1126,6 +1136,13 @@ function productPreviewProfile(product) {
 }
 
 function productPreviewMarkup(product, className = 'catalog-product-preview') {
+  const image = product?.image || {};
+  const source = supportedExternalUrl(typeof image === 'string' ? image : image.src);
+  const alt = String((typeof image === 'object' && image.alt) || product?.image_alt || product?.name || 'Care product');
+  if (source) {
+    const fallback = productPreviewMarkup({ ...product, image: null }, className);
+    return `<div class="${className} ${className}--image"><img class="product-image" src="${escapeHTML(source)}" alt="${escapeHTML(alt)}" loading="lazy" /><span class="product-image-fallback" hidden>${fallback}</span></div>`;
+  }
   const preview = productPreviewProfile(product);
   return `<div class="${className} ${className}--${preview.kind}" role="img" aria-label="Illustrated ${escapeHTML(preview.label.toLowerCase())} category preview"><span class="${className}-pack"><i>${escapeHTML(preview.label)}</i></span><small>Category preview</small></div>`;
 }
@@ -1146,12 +1163,39 @@ function commerceDestinationMarkup(product, className = 'catalog-destination', a
     return url ? `<a class="commerce-marketplace-link" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">Search ${label} <span aria-hidden="true">↗</span></a>` : '';
   }).filter(Boolean).join('');
   const partnerNote = primary.is_affiliate ? '<small class="commerce-affiliate-label">Partner link · may earn commission</small>' : '';
-  return `<div class="${className}">${action}${partnerNote}${marketplaceLinks ? `<div class="commerce-marketplace-links" aria-label="Search this product on marketplaces">${marketplaceLinks}</div><small class="commerce-search-note">External retailer searches</small>` : ''}</div>`;
+  return `<div class="${className}">${action}${partnerNote}${marketplaceLinks ? `<div class="commerce-marketplace-links" aria-label="Search this product on marketplaces">${marketplaceLinks}</div>` : ''}</div>`;
+}
+
+function consumerProductDescription(product) {
+  const purpose = String(product?.purpose || 'Explore options for your routine.');
+  const friendlyDescriptions = {
+    'sun-protection': 'Everyday sun protection for a simple routine.',
+    'scalp-cleanser': 'Gentle cleansing support for a comfortable scalp routine.',
+    'gentle-cleanser': 'Gentle cleansing for a simple everyday routine.',
+  };
+  if (friendlyDescriptions[product?.id]) return friendlyDescriptions[product.id];
+  if (/product category|external .*information|user-led/i.test(purpose)) return 'Explore options in this care category and check what suits you.';
+  return purpose
+    .replace(/^Everyday /, '')
+    .replace(/ product discovery for a routine discussion\.?$/i, ' for a simple routine.')
+    .replace(/ product discovery\.?$/i, '.')
+    .replace(/User-led /gi, '')
+    .replace(/ to discuss with (a |your )?(qualified )?clinician or pharmacist\.?/gi, ' and check that it suits you.');
 }
 
 function commerceCard(product) {
   const category = String(product.domain || 'care').toLowerCase();
-  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><div class="catalog-media">${productPreviewMarkup(product)}<small>${category === 'search' ? 'Exact search' : 'Discovery'}</small></div><div class="catalog-card-body"><span class="catalog-type">${escapeHTML(product.category || 'PRODUCT DISCOVERY')}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(product.purpose || 'User-led product discovery.')}</p></div><div class="catalog-card-footer"><small class="catalog-precaution">${escapeHTML(product.key_property || product.precautions || 'Confirm suitability before use.')}</small>${commerceDestinationMarkup(product, 'catalog-destination', category === 'search' ? 'Search retailers' : 'Compare online')}</div></article>`;
+  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><div class="catalog-media">${productPreviewMarkup(product)}</div><div class="catalog-card-body"><span class="catalog-type">${escapeHTML(product.category || 'CARE PRODUCT')}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(consumerProductDescription(product))}</p><div class="catalog-key-attributes"><span>${escapeHTML(product.key_property || 'Confirm suitability before use.')}</span></div></div><div class="catalog-card-footer">${commerceDestinationMarkup(product, 'catalog-destination', category === 'search' ? 'Search online' : 'Compare online')}</div></article>`;
+}
+
+function installProductImageFallbacks() {
+  $$('.product-image').forEach(image => {
+    image.onerror = () => {
+      image.hidden = true;
+      const fallback = image.parentElement?.querySelector('.product-image-fallback');
+      if (fallback) fallback.hidden = false;
+    };
+  });
 }
 
 function knowledgeList(items, emptyMessage) {
@@ -1260,7 +1304,8 @@ function renderDiscoveryCatalog() {
     ? visible.map(item => commerceCard(item.product)).join('')
     : '<div class="catalog-empty"><span aria-hidden="true">⌕</span><strong>No products found</strong><p>Try a broader search, remove a filter, or browse another category.</p><button class="text-button" type="button" data-clear-product-filter="all">Clear filters</button></div>';
   $('#productResultCount').textContent = `${visible.length} ${visible.length === 1 ? 'result' : 'results'}`;
-  $('#productResultMeta').textContent = state.productCatalogQuery ? `Results for “${state.productCatalogQuery}”` : 'Curated discovery categories';
+  $('#productResultMeta').textContent = state.productCatalogQuery ? `Results for “${state.productCatalogQuery}”` : 'Care categories to explore';
+  installProductImageFallbacks();
   renderProductTagFilters(commerceItems);
   renderActiveProductFilters();
 }
@@ -1339,6 +1384,23 @@ function applyTheme(theme) {
 }
 
 function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') || 'light'); }
+
+function applyConsumerCopy() {
+  $('#workspaceSearch').placeholder = 'Search your care';
+  $('#workspaceSearch').setAttribute('aria-label', 'Search your care');
+  const productEyebrow = $('#products .products-heading .eyebrow');
+  const productTitle = $('#productsTitle');
+  const productCopy = $('#products .products-heading p:not(.eyebrow)');
+  if (productEyebrow) productEyebrow.textContent = 'CARE PRODUCTS';
+  if (productTitle) productTitle.textContent = 'Find products for your routine.';
+  if (productCopy) productCopy.textContent = 'Search by product, ingredient, brand, or everyday care need.';
+  $('#careContext strong').textContent = 'Explore at your own pace';
+  $('#careContext p').textContent = 'Browse product categories and compare options online.';
+  $('.catalog-disclaimer').textContent = 'Shopping links are optional and do not change your health check.';
+  $('#resultTitle').textContent = 'Your health check';
+  $('.modal-disclaimer').textContent = 'AI health check';
+  $('.disclaimer-details summary').textContent = 'Important information';
+}
 
 async function clearLocalProfile() {
   try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { /* local sign-out still continues */ }
@@ -1463,7 +1525,7 @@ function reportClassification(summary) {
   const result = summary?.assessment_result || {};
   if (result.contract_version) {
     const condition = result.condition || {};
-    if (!condition.available || !condition.name) return 'No condition classified';
+    if (!condition.available || !condition.name) return 'Health check summary';
     return Number.isFinite(condition.estimated_likelihood)
       ? `${condition.name} · ${Math.round(condition.estimated_likelihood * 100)}% estimated likelihood`
       : `${condition.name} · research ranking only`;
@@ -1472,28 +1534,33 @@ function reportClassification(summary) {
   const prediction = classifierPredictions(classifier)[0];
   return prediction
     ? Number.isFinite(prediction.calibratedProbability) ? `${prediction.label} · ${Math.round(prediction.calibratedProbability * 100)}% estimated likelihood` : `${prediction.label} · research ranking only`
-    : 'Screening summary only';
+    : 'Health check summary';
 }
 
 function renderReportRegister() {
   let register = $('#reportRegister');
   if (!register) {
     register = document.createElement('section'); register.id = 'reportRegister'; register.className = 'report-register';
-    $('#progressSummary').insertAdjacentElement('afterend', register);
+    $('.history-card')?.insertAdjacentElement('afterend', register);
   }
+  const downloadButton = $('#downloadHistoryButton');
   if (!state.profile?.patient_id) {
-    register.innerHTML = '<div class="report-register-heading"><div><p class="eyebrow">SAVED REPORTS</p><h3>Analysis history</h3><p>Create a local profile to retain report metadata without retaining the uploaded image.</p></div></div><p class="empty-state">No profile is connected yet.</p>';
+    if (downloadButton) downloadButton.hidden = true;
+    register.innerHTML = '<div class="report-register-heading"><div><p class="eyebrow">PAST RESULTS</p><h3>Your previous checks</h3><p>Create an account to keep your results in one place.</p></div></div><p class="empty-state">Your past results will appear here once they are saved.</p>';
     return;
   }
   const analyses = state.analyses || [];
-  const rows = analyses.length ? analyses.map(item => {
+  const cards = analyses.length ? analyses.slice(0, 6).map(item => {
     const summary = item.summary || {};
     const assessmentRisk = summary.assessment_risk || summary.assessment_result?.assessment_risk || summary.risk || {};
-    const priority = assessmentRisk.score === undefined || assessmentRisk.score === null ? '—' : `${assessmentRisk.score}/100`;
-    const xai = summary.classification?.available ? 'Grad-CAM run' : summary.input_type === 'questionnaire' ? 'Input contributions' : 'Scope recorded';
-    return `<div class="report-row"><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time><span>${escapeHTML(item.area)}</span><strong>${escapeHTML(reportClassification(summary))}</strong><span>${escapeHTML(priority)}</span><span>${escapeHTML(xai)}</span><div><button class="text-button" data-view-report="${escapeHTML(item.assessment_id)}">View</button><button class="text-button" data-download-report="${escapeHTML(item.assessment_id)}">PDF</button></div></div>`;
-  }).join('') : '<p class="empty-state">Saved analysis metadata will appear here after an analysis. Image pixels are never retained in this prototype.</p>';
-  register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">SAVED REPORTS</p><h3>Analysis history</h3><p>Open a saved report or download a generated PDF discussion brief. Images and Grad-CAM overlays are not retained.</p></div><span>${analyses.length} saved</span></div><div class="report-table" role="table"><div class="report-row report-head" role="row"><span>Date</span><span>Area</span><span>Result scope</span><span>Risk score</span><span>Evidence</span><span>Action</span></div>${rows}</div>`;
+    const concern = assessmentRisk.score === undefined || assessmentRisk.score === null ? 'Check saved' : `${readableStatus(assessmentRisk.level || 'recorded')} concern`;
+    return `<article class="report-compact-card"><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time><div><span>${escapeHTML(item.area)} check</span><strong>${escapeHTML(reportClassification(summary))}</strong><small>${escapeHTML(concern)}</small></div><div class="report-card-actions"><button class="text-button" data-view-report="${escapeHTML(item.assessment_id)}">View result</button><button class="text-button" data-download-report="${escapeHTML(item.assessment_id)}">PDF</button></div></article>`;
+  }).join('') : '<p class="empty-state">Your saved results will appear here after a check.</p>';
+  register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">PAST RESULTS</p><h3>Your previous checks</h3><p>Open a saved result whenever you want to look back.</p></div><span>${analyses.length} saved</span><div class="report-register-actions"></div></div><div class="report-compact-list">${cards}</div>${analyses.length > 6 ? `<p class="report-list-note">Showing your six most recent results.</p>` : ''}`;
+  if (downloadButton) {
+    downloadButton.hidden = false;
+    register.querySelector('.report-register-actions')?.append(downloadButton);
+  }
   $$('[data-view-report]').forEach(button => { button.onclick = () => showSavedReport(button.dataset.viewReport); });
   $$('[data-download-report]').forEach(button => { button.onclick = () => downloadSavedReport(button.dataset.downloadReport); });
 }
@@ -1572,29 +1639,33 @@ function renderProgress() {
     emptyJourney.innerHTML = '<span aria-hidden="true">◔</span><div><p class="eyebrow">YOUR JOURNEY</p><h3>Your journey starts here.</h3><p>Complete your first assessment to begin tracking your health story.</p><button class="button primary" data-dashboard-nav="home">Check My Health <span>→</span></button></div>';
     $('#progressSummary').insertAdjacentElement('beforebegin', emptyJourney);
   }
-  const workspaceSections = ['#progressSummary', '#reportRegister', '#monitoringNote', '.progress-layout', '.checkin-card', '.history-card'];
+  const workspaceSections = ['.journey-status-section', '#reportRegister', '.progress-layout', '.checkin-card', '.history-card'];
   workspaceSections.forEach(selector => { const element = $(selector); if (element) element.hidden = !hasProfile; });
   const progressActions = $('.progress-actions');
   if (progressActions) progressActions.hidden = !hasProfile;
   emptyJourney.hidden = hasProfile;
   const latest = checkins[0];
-  const latestAnalysisRisk = analyses[0]?.summary?.assessment_risk || analyses[0]?.summary?.assessment_result?.assessment_risk;
-  $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.length}</strong><small>active routines</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(latest.reported_trend) : '—'}</strong><small>latest self-reported trend</small></article><article><span>◌</span><strong>${latestAnalysisRisk?.score === undefined || latestAnalysisRisk?.score === null ? '—' : `${latestAnalysisRisk.score}/100`}</strong><small>latest assessment concern score</small></article>`;
+  $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.length}</strong><small>active routines</small></article><article><span>◷</span><strong>${latest ? escapeHTML(latest.checkin_date) : '—'}</strong><small>latest check-in</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(readableStatus(latest.reported_trend)) : '—'}</strong><small>current trend</small></article>`;
   $('#openProfileFromProgress').textContent = hasProfile ? 'Profile connected' : 'Set up profile';
-  $('#downloadHistoryButton').disabled = !hasProfile;
   $('#monitoringNote').textContent = !hasProfile
-    ? 'Create an account to retain a check-in timeline and download history. This app never passively monitors you between entries.'
+    ? 'Create an account to save routines, check-ins, and past results.'
     : latest
-      ? `Last self-reported check-in: ${latest.checkin_date}. Add another check-in whenever there is a meaningful change; this app does not passively observe you between entries.`
-      : 'Ongoing monitoring is input-driven. Add your first check-in after starting a routine, then log meaningful changes over time.';
-  $('#routineList').innerHTML = !hasProfile ? '<p class="empty-state">Set up a profile to store routines and progress securely in this local app.</p>' : !routines.length ? '<p class="empty-state">No routines yet. Add a clinician-recorded condition and its routine.</p>' : routines.map(routine => `<article class="routine-item"><div><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>Started ${escapeHTML(routine.start_date)} · ${routine.checkin_count || 0} check-in${Number(routine.checkin_count) === 1 ? '' : 's'}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">Delete</button></div></article>`).join('');
+      ? `Last check-in: ${latest.checkin_date}. Add another whenever you notice a meaningful change.`
+      : 'Add your first check-in after you begin a routine.';
+  $('#routineList').innerHTML = !hasProfile ? '<p class="empty-state">Set up a profile to save routines and progress.</p>' : !routines.length ? '<p class="empty-state">No routines yet. Add the first routine you want to follow.</p>' : routines.map(routine => {
+    const routineCheckins = checkins.filter(item => String(item.routine_id) === String(routine.routine_id));
+    const lastCheckin = routineCheckins[0];
+    const trend = lastCheckin ? readableStatus(lastCheckin.reported_trend) : 'Not checked in yet';
+    const lastUpdate = lastCheckin ? `Last check-in: ${lastCheckin.checkin_date}` : `Started ${routine.start_date}`;
+    return `<article class="routine-item"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">Delete</button></div></article>`;
+  }).join('');
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
-  const medicalHistory = hasProfile && (state.profile.past_history || state.profile.current_history) ? `<div class="medical-history-summary"><strong>Profile medical history</strong>${state.profile.past_history ? `<p>Past: ${escapeHTML(state.profile.past_history)}</p>` : ''}${state.profile.current_history ? `<p>Current: ${escapeHTML(state.profile.current_history)}</p>` : ''}</div>` : '';
-  const timeline = !hasProfile ? '<p class="empty-state">Your progress timeline is available after profile setup.</p>' : !checkins.length ? '<p class="empty-state">Save your first check-in to create a timeline.</p>' : checkins.map(item => `<article class="history-item"><div><strong>${escapeHTML(item.reported_trend)} · ${item.priority_score}/100</strong><p>${escapeHTML(item.condition_label)} · ${escapeHTML(item.routine_name)}</p>${item.note ? `<small>${escapeHTML(item.note)}</small>` : ''}</div><time>${escapeHTML(item.checkin_date)}</time></article>`).join('');
-  const analysisHistory = !hasProfile ? '' : !analyses.length ? '<p class="empty-state">Saved image-analysis metadata will appear here after an analysis.</p>' : `<div class="analysis-history-group"><strong>Saved analysis metadata</strong>${analyses.map(item => { const classification = item.summary?.classification?.top_prediction; const label = classification ? Number.isFinite(classification.calibrated_probability) ? `${classification.condition} · ${Math.round(classification.calibrated_probability * 100)}% estimated likelihood` : `${classification.condition} · research ranking only` : 'No scoped classifier output'; const assessmentRisk = item.summary?.assessment_risk || item.summary?.assessment_result?.assessment_risk || {}; const score = Number.isFinite(assessmentRisk.score) ? `Assessment concern score: ${assessmentRisk.score}/100 · ${readableStatus(assessmentRisk.level)}` : 'Assessment concern score not retained'; return `<article class="history-item"><div><strong>${escapeHTML(label)}</strong><p>${escapeHTML(item.area)} · ${escapeHTML(item.summary?.segmentation?.status || 'segmentation not run')}</p><small>${escapeHTML(score)}. ${escapeHTML(item.summary?.image_stored ? 'Image stored with consent' : 'Image pixels were not stored')}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`; }).join('')}</div>`;
-  $('#progressHistory').innerHTML = medicalHistory + timeline + analysisHistory;
+  const medicalHistory = hasProfile && (state.profile.past_history || state.profile.current_history) ? `<details class="journey-history-details"><summary>Your saved health notes</summary><div>${state.profile.past_history ? `<p><strong>Past:</strong> ${escapeHTML(state.profile.past_history)}</p>` : ''}${state.profile.current_history ? `<p><strong>Current:</strong> ${escapeHTML(state.profile.current_history)}</p>` : ''}</div></details>` : '';
+  const timeline = !hasProfile ? '<p class="empty-state">Your updates will be available after profile setup.</p>' : !checkins.length ? '<p class="empty-state">Save your first check-in to begin tracking progress.</p>' : checkins.slice(0, 6).map(item => `<article class="history-item"><div><strong>${escapeHTML(readableStatus(item.reported_trend))}</strong><p>${escapeHTML(item.condition_label)} · ${escapeHTML(item.routine_name)}</p>${item.note ? `<small>${escapeHTML(item.note)}</small>` : ''}</div><time>${escapeHTML(item.checkin_date)}</time></article>`).join('');
+  $('#progressHistory').innerHTML = medicalHistory + timeline;
   $$('[data-edit-routine]').forEach(button => { button.onclick = () => editRoutine(button.dataset.editRoutine); });
   $$('[data-delete-routine]').forEach(button => { button.onclick = () => deleteRoutine(button.dataset.deleteRoutine); });
+  $$('[data-checkin-routine]').forEach(button => { button.onclick = () => startRoutineCheckin(button.dataset.checkinRoutine); });
   renderReportRegister();
   const reportRegister = $('#reportRegister');
   if (reportRegister) reportRegister.hidden = !hasProfile;
@@ -1633,6 +1704,14 @@ function editRoutine(routineId) {
   $('#routineStartDate').value = routine.start_date; $('#routineNotes').value = routine.notes || '';
   $('#routineFormTitle').textContent = 'Edit routine'; $('#cancelRoutineEdit').hidden = false;
   $('#routineForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function startRoutineCheckin(routineId) {
+  const select = $('#checkinRoutine');
+  if (!select) return;
+  select.value = routineId;
+  $('.checkin-card')?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
+  window.setTimeout(() => $('#checkinTrend')?.focus({ preventScroll: true }), 250);
 }
 
 async function saveRoutine(event) {
@@ -1697,6 +1776,7 @@ $$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab
 $('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory;
 $('#useResultLocationButton').onclick = () => useNearbyLocation({ target: 'result' });
 $('#useDirectoryLocationButton').onclick = () => useNearbyLocation({ target: 'directory' });
+$$('[data-directory-query]').forEach(button => { button.onclick = () => chooseDirectoryQuery(button.dataset.directoryQuery || ''); });
 $('#resultAppointmentSearchButton').onclick = () => openAppointmentOptions($('#doctorLocation').value === 'Current device location' ? state.nearbySearchLocation : $('#doctorLocation').value);
 $('#appointmentSearchButton').onclick = () => openAppointmentOptions($('#directoryLocation').value === 'Current device location' ? state.nearbySearchLocation : $('#directoryLocation').value);
 $('#profileButton').onclick = openProfile; $('#topProfileButton').onclick = openProfile; $('#openProfileFromProgress').onclick = openProfile; $('#navProfileButton').onclick = openProfile; $('#navLogoutButton').onclick = clearLocalProfile; $('#profileForm').onsubmit = saveProfile;
@@ -1765,6 +1845,7 @@ async function initialiseApp() {
   restoreProfile();
   restoreSettings();
   restoreTheme();
+  applyConsumerCopy();
   await loadModelCapabilities();
   renderDiscoveryCatalog();
   selectArea(state.area);
@@ -1772,7 +1853,7 @@ async function initialiseApp() {
   $('#checkinDate').value = currentDate();
   $('#clearProfileButton').textContent = 'Sign out';
   $('#profileModal .profile-actions [data-close-profile]').textContent = 'Cancel';
-  $('#resultTitle').textContent = 'Your AI assessment';
+  $('#resultTitle').textContent = 'Your health check';
   $('[data-result-tab="summary"]').textContent = 'Overview';
   $('[data-result-tab="evidence"]').textContent = 'Why this result?';
   $('[data-result-tab="care"]').textContent = 'Care plan';

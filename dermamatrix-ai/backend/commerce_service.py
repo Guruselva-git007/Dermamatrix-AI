@@ -109,6 +109,16 @@ def materialize_product(product: dict) -> dict:
     }
     record["affiliate_url"] = affiliate_url
     record["product_url"] = direct_url
+    # Catalogue entries are often care categories rather than a verified retail
+    # SKU.  A real image is exposed only when a source-controlled, HTTPS image
+    # URL is explicitly configured; otherwise the client uses an honest category
+    # illustration rather than impersonating a brand or product package.
+    image = product.get("image") if isinstance(product.get("image"), dict) else {}
+    image_url = valid_external_url(image.get("src") or product.get("image_url"))
+    record["image"] = {
+        "src": image_url,
+        "alt": str(image.get("alt") or product.get("image_alt") or product.get("name") or "Care product"),
+    } if image_url else None
     record["commerce"] = resolve_product_destination(record)
     # Kept for older clients that only understand a single external link.
     record["url"] = record["commerce"]["primary"]["url"]

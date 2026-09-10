@@ -588,6 +588,13 @@ class CommerceBoundaryTests(unittest.TestCase):
         self.assertTrue(all(product["commerce"]["primary"]["destination_type"] == "GOOGLE_SHOPPING_SEARCH" for product in products))
         self.assertNotIn("ketoconazole-shampoo", {product["id"] for product in catalog_for_area("Hair", risk_score=0)})
 
+    def test_product_search_accepts_everyday_care_language_without_medical_inference(self):
+        moisturiser = search_product_discovery("moisturizer for sensitive skin")
+        scalp = search_product_discovery("dry scalp")
+        self.assertTrue(any(product["id"] == "barrier-moisturiser" for product in moisturiser))
+        self.assertTrue(any(product["id"] == "scalp-cleanser" for product in scalp))
+        self.assertTrue(all(product["commerce"]["primary"]["destination_type"] == "GOOGLE_SHOPPING_SEARCH" for product in moisturiser + scalp))
+
     def test_exact_user_product_search_preserves_the_entered_query(self):
         product = search_product_discovery("Vaseline Intensive Care Lotion")[0]
         self.assertEqual(product["id"], "exact-user-search")
