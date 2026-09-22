@@ -1,0 +1,5 @@
+# Local recovery material: intentionally kept in the canonical workspace but
+# never committed to the shared source repository.
+research-assets/
+legacy-recovery/
+local-artifacts/
