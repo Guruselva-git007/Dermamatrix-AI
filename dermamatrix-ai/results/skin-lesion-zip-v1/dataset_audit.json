@@ -1,0 +1,129 @@
+{
+  "dataset_name": "Skin Lesions Dataset local archive",
+  "dataset_version": "skin-ds-kaggle-local-archive-audit-20260922",
+  "source_archive": "User-provided local archive.zip (not committed)",
+  "source_archive_sha256": "79f9aebbdeb6bad9bc02490e3e9435a0709bbb4efdc6e65e0e58d87829a42156",
+  "source_mutated": false,
+  "processed_cache": "External processed cache (not committed)",
+  "cache_preprocessing": "RGB conversion; resize shortest edge to 256 pixels when larger; JPEG quality 90. Original bytes remain only in the read-only source archive.",
+  "scope": "Seven source-labelled dermatoscopic-style ISIC classes mapped to the existing HAM10000 research adapter.",
+  "excluded_source_classes": {
+    "Chickenpox": 1125,
+    "Cowpox": 990,
+    "HFMD": 2415,
+    "Healthy": 1710,
+    "Measles": 825,
+    "Monkeypox": 4260,
+    "Squamous cell carcinoma": 628
+  },
+  "source_records_by_split_and_class": {
+    "test/akiec": 88,
+    "test/bcc": 333,
+    "test/bkl": 263,
+    "test/df": 25,
+    "test/mel": 453,
+    "test/nv": 1288,
+    "test/vasc": 26,
+    "train/akiec": 693,
+    "train/bcc": 2658,
+    "train/bkl": 2099,
+    "train/df": 191,
+    "train/mel": 3617,
+    "train/nv": 10300,
+    "train/vasc": 202,
+    "val/akiec": 86,
+    "val/bcc": 332,
+    "val/bkl": 262,
+    "val/df": 23,
+    "val/mel": 452,
+    "val/nv": 1287,
+    "val/vasc": 25
+  },
+  "prepared_records_by_split_and_class": {
+    "test/akiec": 88,
+    "test/bcc": 333,
+    "test/bkl": 262,
+    "test/df": 25,
+    "test/mel": 453,
+    "test/nv": 1288,
+    "test/vasc": 26,
+    "train/akiec": 685,
+    "train/bcc": 2652,
+    "train/bkl": 2086,
+    "train/df": 191,
+    "train/mel": 3607,
+    "train/nv": 10287,
+    "train/vasc": 202,
+    "val/akiec": 86,
+    "val/bcc": 331,
+    "val/bkl": 262,
+    "val/df": 23,
+    "val/mel": 452,
+    "val/nv": 1287,
+    "val/vasc": 25
+  },
+  "selected_records": 24651,
+  "exact_duplicate_groups": 48,
+  "exact_duplicate_groups_crossing_source_splits": 14,
+  "exact_duplicate_cross_split_examples": [
+    [
+      "train/Melanoma/ISIC_0064339.jpg",
+      "val/Melanoma/ISIC_0062983.jpg"
+    ],
+    [
+      "train/Melanoma/ISIC_0055643.jpg",
+      "val/Melanoma/ISIC_0065417.jpg"
+    ],
+    [
+      "train/Melanoma/ISIC_0073018.jpg",
+      "val/Melanoma/ISIC_0061710.jpg"
+    ],
+    [
+      "test/Basal cell carcinoma/ISIC_0063677.jpg",
+      "train/Basal cell carcinoma/ISIC_0061437.jpg"
+    ],
+    [
+      "train/Melanocytic nevi/ISIC_0071855.jpg",
+      "val/Melanocytic nevi/ISIC_0059354.jpg"
+    ],
+    [
+      "train/Actinic keratoses/ISIC_0057477.jpg",
+      "val/Actinic keratoses/ISIC_0061307.jpg"
+    ],
+    [
+      "train/Melanocytic nevi/ISIC_0072076.jpg",
+      "val/Melanocytic nevi/ISIC_0060997.jpg"
+    ],
+    [
+      "test/Benign keratosis-like lesions/ISIC_0060606.jpg",
+      "train/Benign keratosis-like lesions/ISIC_0062094.jpg"
+    ],
+    [
+      "test/Basal cell carcinoma/ISIC_0054986.jpg",
+      "val/Basal cell carcinoma/ISIC_0067341.jpg"
+    ],
+    [
+      "train/Melanocytic nevi/ISIC_0012127_downsampled.jpg",
+      "val/Melanocytic nevi/ISIC_0012970_downsampled.jpg"
+    ]
+  ],
+  "conflicting_label_hash_groups_excluded": 2,
+  "exact_hash_split_check": "PASSED",
+  "patient_id_split_check": "NOT_POSSIBLE_SOURCE_HAS_NO_PATIENT_OR_CASE_IDS",
+  "near_duplicate_audit": "NOT_ESTABLISHED; exact duplicate grouping is enforced but this source cannot support a patient-level or near-duplicate guarantee.",
+  "image_formats": {
+    "JPEG": 24703
+  },
+  "image_modes": {
+    "RGB": 24703
+  },
+  "images_below_450px_short_edge": 0,
+  "images_over_16_megapixels": 0,
+  "manifest": "results/skin-lesion-zip-v1/manifest.csv",
+  "limitations": [
+    "The archive README cites component datasets but does not provide a machine-learning deployment licence in this local copy.",
+    "No patient or case IDs are supplied, so this is not a patient-level split or clinical validation.",
+    "Exact duplicates are grouped before training; near-duplicate leakage remains a documented residual risk.",
+    "This experiment is research-only and is not a diagnostic, triage, prognosis, or treatment-selection model."
+  ]
+}

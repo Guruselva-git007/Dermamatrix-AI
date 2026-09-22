@@ -20,6 +20,19 @@ files remain outside Git and are not loaded by Flask. This is a negative
 baseline, not an app capability or a medical performance claim. See
 [the latest run report](scin-experiment-20260909.md).
 
+### Local seven-class archive comparison — retained model unchanged
+
+On 2026-09-22, a user-provided local 14-class archive was audited for a narrow
+seven-class dermoscopic research comparison. The source has no patient/case
+identifiers, no deployable ML licence record in the local copy, and unresolved
+near-duplicate risk. Exact-hash grouping produced a 2,475-image held-out set.
+The active HAM10000 ResNet-34 runtime obtained Macro F1 **0.506399** and
+balanced accuracy **0.560303**; a short ResNet-18 candidate obtained Macro F1
+**0.441332** and balanced accuracy **0.546283**. The candidate was therefore
+`RESEARCH_ONLY_CANDIDATE_NOT_AUTO_PROMOTED`; Flask still uses the existing
+research checkpoint. Neither result is clinical validation or a diagnostic
+performance claim. See [the experiment record](skin-lesion-zip-experiment-20260922.md).
+
 ### Nail feasibility experiment — rejected
 
 The Han (2017) Figshare nail-photo release was prepared outside Git as a

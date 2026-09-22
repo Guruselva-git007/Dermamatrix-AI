@@ -1,0 +1,474 @@
+{
+  "status": "RESEARCH_ONLY_CANDIDATE_NOT_AUTO_PROMOTED",
+  "model": {
+    "model_id": "dermamatrix-ham10000-resnet18-research",
+    "model_version": "dermamatrix-ham10000-resnet18-research-20260922T140021Z",
+    "deployment_status": "RESEARCH_ONLY_CANDIDATE",
+    "architecture": "ImageNet-initialised ResNet-18 fine-tuned with a weighted sampler",
+    "classes": [
+      "akiec",
+      "bcc",
+      "bkl",
+      "df",
+      "mel",
+      "nv",
+      "vasc"
+    ],
+    "input_size": [
+      224,
+      224
+    ],
+    "preprocessing": "RGB; resize 256; centre crop 224 at evaluation; ImageNet normalization.",
+    "dataset_version": "skin-ds-kaggle-local-archive-audit-20260922",
+    "pipeline_version": "dermamatrix-dermoscopy-resnet18-v1",
+    "best_epoch": 2,
+    "checkpoint": "External research artifact (not committed): model.pt",
+    "calibration": "External research artifact (not committed): calibration.json"
+  },
+  "dataset_audit": {
+    "dataset_name": "Skin Lesions Dataset local archive",
+    "dataset_version": "skin-ds-kaggle-local-archive-audit-20260922",
+    "source_archive": "User-provided local archive.zip (not committed)",
+    "source_archive_sha256": "79f9aebbdeb6bad9bc02490e3e9435a0709bbb4efdc6e65e0e58d87829a42156",
+    "source_mutated": false,
+    "processed_cache": "External processed cache (not committed)",
+    "cache_preprocessing": "RGB conversion; resize shortest edge to 256 pixels when larger; JPEG quality 90. Original bytes remain only in the read-only source archive.",
+    "scope": "Seven source-labelled dermatoscopic-style ISIC classes mapped to the existing HAM10000 research adapter.",
+    "excluded_source_classes": {
+      "Chickenpox": 1125,
+      "Cowpox": 990,
+      "HFMD": 2415,
+      "Healthy": 1710,
+      "Measles": 825,
+      "Monkeypox": 4260,
+      "Squamous cell carcinoma": 628
+    },
+    "source_records_by_split_and_class": {
+      "test/akiec": 88,
+      "test/bcc": 333,
+      "test/bkl": 263,
+      "test/df": 25,
+      "test/mel": 453,
+      "test/nv": 1288,
+      "test/vasc": 26,
+      "train/akiec": 693,
+      "train/bcc": 2658,
+      "train/bkl": 2099,
+      "train/df": 191,
+      "train/mel": 3617,
+      "train/nv": 10300,
+      "train/vasc": 202,
+      "val/akiec": 86,
+      "val/bcc": 332,
+      "val/bkl": 262,
+      "val/df": 23,
+      "val/mel": 452,
+      "val/nv": 1287,
+      "val/vasc": 25
+    },
+    "prepared_records_by_split_and_class": {
+      "test/akiec": 88,
+      "test/bcc": 333,
+      "test/bkl": 262,
+      "test/df": 25,
+      "test/mel": 453,
+      "test/nv": 1288,
+      "test/vasc": 26,
+      "train/akiec": 685,
+      "train/bcc": 2652,
+      "train/bkl": 2086,
+      "train/df": 191,
+      "train/mel": 3607,
+      "train/nv": 10287,
+      "train/vasc": 202,
+      "val/akiec": 86,
+      "val/bcc": 331,
+      "val/bkl": 262,
+      "val/df": 23,
+      "val/mel": 452,
+      "val/nv": 1287,
+      "val/vasc": 25
+    },
+    "selected_records": 24651,
+    "exact_duplicate_groups": 48,
+    "exact_duplicate_groups_crossing_source_splits": 14,
+    "exact_duplicate_cross_split_examples": [
+      [
+        "train/Melanoma/ISIC_0064339.jpg",
+        "val/Melanoma/ISIC_0062983.jpg"
+      ],
+      [
+        "train/Melanoma/ISIC_0055643.jpg",
+        "val/Melanoma/ISIC_0065417.jpg"
+      ],
+      [
+        "train/Melanoma/ISIC_0073018.jpg",
+        "val/Melanoma/ISIC_0061710.jpg"
+      ],
+      [
+        "test/Basal cell carcinoma/ISIC_0063677.jpg",
+        "train/Basal cell carcinoma/ISIC_0061437.jpg"
+      ],
+      [
+        "train/Melanocytic nevi/ISIC_0071855.jpg",
+        "val/Melanocytic nevi/ISIC_0059354.jpg"
+      ],
+      [
+        "train/Actinic keratoses/ISIC_0057477.jpg",
+        "val/Actinic keratoses/ISIC_0061307.jpg"
+      ],
+      [
+        "train/Melanocytic nevi/ISIC_0072076.jpg",
+        "val/Melanocytic nevi/ISIC_0060997.jpg"
+      ],
+      [
+        "test/Benign keratosis-like lesions/ISIC_0060606.jpg",
+        "train/Benign keratosis-like lesions/ISIC_0062094.jpg"
+      ],
+      [
+        "test/Basal cell carcinoma/ISIC_0054986.jpg",
+        "val/Basal cell carcinoma/ISIC_0067341.jpg"
+      ],
+      [
+        "train/Melanocytic nevi/ISIC_0012127_downsampled.jpg",
+        "val/Melanocytic nevi/ISIC_0012970_downsampled.jpg"
+      ]
+    ],
+    "conflicting_label_hash_groups_excluded": 2,
+    "exact_hash_split_check": "PASSED",
+    "patient_id_split_check": "NOT_POSSIBLE_SOURCE_HAS_NO_PATIENT_OR_CASE_IDS",
+    "near_duplicate_audit": "NOT_ESTABLISHED; exact duplicate grouping is enforced but this source cannot support a patient-level or near-duplicate guarantee.",
+    "image_formats": {
+      "JPEG": 24703
+    },
+    "image_modes": {
+      "RGB": 24703
+    },
+    "images_below_450px_short_edge": 0,
+    "images_over_16_megapixels": 0,
+    "manifest": "results/skin-lesion-zip-v1/manifest.csv",
+    "limitations": [
+      "The archive README cites component datasets but does not provide a machine-learning deployment licence in this local copy.",
+      "No patient or case IDs are supplied, so this is not a patient-level split or clinical validation.",
+      "Exact duplicates are grouped before training; near-duplicate leakage remains a documented residual risk.",
+      "This experiment is research-only and is not a diagnostic, triage, prognosis, or treatment-selection model."
+    ]
+  },
+  "environment": {
+    "python": "3.14.3",
+    "torch": "2.13.0",
+    "device": "mps",
+    "seed": 20260922
+  },
+  "training": {
+    "epochs_requested": 2,
+    "freeze_epochs": 1,
+    "batch_size": 48,
+    "selected_training_count": 4278,
+    "class_counts": {
+      "akiec": 685,
+      "bcc": 800,
+      "bkl": 800,
+      "df": 191,
+      "mel": 800,
+      "nv": 800,
+      "vasc": 202
+    },
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 1.966734,
+        "validation_loss": 1.737395,
+        "validation_macro_f1": 0.237112,
+        "validation_balanced_accuracy": 0.336318
+      },
+      {
+        "epoch": 2,
+        "train_loss": 1.256906,
+        "validation_loss": 1.121372,
+        "validation_macro_f1": 0.47092,
+        "validation_balanced_accuracy": 0.62552
+      }
+    ]
+  },
+  "calibration": {
+    "validation_sample_count": 2466,
+    "log_loss_before": 1.121372,
+    "log_loss_after": 1.116842,
+    "brier_before": 0.556557,
+    "brier_after": 0.556398,
+    "ece_before": 0.0229,
+    "ece_after": 0.02734,
+    "temperature": 0.9
+  },
+  "validation": {
+    "loss": 1.121372,
+    "metrics": {
+      "sample_count": 2466,
+      "accuracy": 0.568938,
+      "balanced_accuracy": 0.62552,
+      "macro_precision": 0.444049,
+      "macro_recall_sensitivity": 0.62552,
+      "macro_f1": 0.47092,
+      "auroc_ovr_macro": 0.896421,
+      "auprc_macro": 0.571472,
+      "log_loss": 1.116842,
+      "multiclass_brier_score": 0.556398,
+      "expected_calibration_error": 0.02734,
+      "confusion_matrix": [
+        [
+          52,
+          16,
+          13,
+          2,
+          3,
+          0,
+          0
+        ],
+        [
+          56,
+          161,
+          42,
+          21,
+          31,
+          10,
+          10
+        ],
+        [
+          33,
+          17,
+          109,
+          13,
+          66,
+          21,
+          3
+        ],
+        [
+          1,
+          1,
+          3,
+          15,
+          1,
+          1,
+          1
+        ],
+        [
+          32,
+          18,
+          43,
+          9,
+          286,
+          58,
+          6
+        ],
+        [
+          21,
+          23,
+          126,
+          51,
+          291,
+          755,
+          20
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          25
+        ]
+      ],
+      "per_class": {
+        "akiec": {
+          "precision": 0.266667,
+          "recall_sensitivity": 0.604651,
+          "specificity": 0.939916,
+          "f1": 0.370107,
+          "support": 86
+        },
+        "bcc": {
+          "precision": 0.682203,
+          "recall_sensitivity": 0.486405,
+          "specificity": 0.964871,
+          "f1": 0.567901,
+          "support": 331
+        },
+        "bkl": {
+          "precision": 0.324405,
+          "recall_sensitivity": 0.416031,
+          "specificity": 0.897005,
+          "f1": 0.364548,
+          "support": 262
+        },
+        "df": {
+          "precision": 0.135135,
+          "recall_sensitivity": 0.652174,
+          "specificity": 0.960704,
+          "f1": 0.223881,
+          "support": 23
+        },
+        "mel": {
+          "precision": 0.421829,
+          "recall_sensitivity": 0.632743,
+          "specificity": 0.805362,
+          "f1": 0.506195,
+          "support": 452
+        },
+        "nv": {
+          "precision": 0.893491,
+          "recall_sensitivity": 0.586636,
+          "specificity": 0.923664,
+          "f1": 0.708255,
+          "support": 1287
+        },
+        "vasc": {
+          "precision": 0.384615,
+          "recall_sensitivity": 1.0,
+          "specificity": 0.983613,
+          "f1": 0.555556,
+          "support": 25
+        }
+      }
+    }
+  },
+  "held_out_test": {
+    "loss": 1.134935,
+    "metrics": {
+      "sample_count": 2475,
+      "accuracy": 0.56,
+      "balanced_accuracy": 0.546283,
+      "macro_precision": 0.422967,
+      "macro_recall_sensitivity": 0.546283,
+      "macro_f1": 0.441332,
+      "auroc_ovr_macro": 0.883623,
+      "auprc_macro": 0.524818,
+      "log_loss": 1.132675,
+      "multiclass_brier_score": 0.562172,
+      "expected_calibration_error": 0.039306,
+      "confusion_matrix": [
+        [
+          47,
+          21,
+          7,
+          8,
+          3,
+          2,
+          0
+        ],
+        [
+          57,
+          151,
+          37,
+          27,
+          31,
+          16,
+          14
+        ],
+        [
+          34,
+          17,
+          119,
+          8,
+          58,
+          22,
+          4
+        ],
+        [
+          0,
+          7,
+          5,
+          9,
+          2,
+          2,
+          0
+        ],
+        [
+          32,
+          13,
+          51,
+          10,
+          285,
+          58,
+          4
+        ],
+        [
+          15,
+          29,
+          124,
+          45,
+          303,
+          754,
+          18
+        ],
+        [
+          0,
+          0,
+          2,
+          0,
+          3,
+          0,
+          21
+        ]
+      ],
+      "per_class": {
+        "akiec": {
+          "precision": 0.254054,
+          "recall_sensitivity": 0.534091,
+          "specificity": 0.942187,
+          "f1": 0.344322,
+          "support": 88
+        },
+        "bcc": {
+          "precision": 0.634454,
+          "recall_sensitivity": 0.453453,
+          "specificity": 0.959384,
+          "f1": 0.528897,
+          "support": 333
+        },
+        "bkl": {
+          "precision": 0.344928,
+          "recall_sensitivity": 0.454198,
+          "specificity": 0.897876,
+          "f1": 0.392092,
+          "support": 262
+        },
+        "df": {
+          "precision": 0.084112,
+          "recall_sensitivity": 0.36,
+          "specificity": 0.96,
+          "f1": 0.136364,
+          "support": 25
+        },
+        "mel": {
+          "precision": 0.416058,
+          "recall_sensitivity": 0.629139,
+          "specificity": 0.802176,
+          "f1": 0.500879,
+          "support": 453
+        },
+        "nv": {
+          "precision": 0.882904,
+          "recall_sensitivity": 0.585404,
+          "specificity": 0.915754,
+          "f1": 0.704015,
+          "support": 1288
+        },
+        "vasc": {
+          "precision": 0.344262,
+          "recall_sensitivity": 0.807692,
+          "specificity": 0.983667,
+          "f1": 0.482759,
+          "support": 26
+        }
+      }
+    },
+    "inference_seconds": 9.833,
+    "mean_seconds_per_image": 0.003973
+  },
+  "promotion_gate": {
+    "decision": "NOT_AUTO_PROMOTED",
+    "reason": "The source lacks patient/case identifiers, a deployment licence record, a near-duplicate guarantee, external validation, prospective validation, and clinical validation. A good internal held-out result is not enough to replace the existing scoped adapter."
+  }
+}
