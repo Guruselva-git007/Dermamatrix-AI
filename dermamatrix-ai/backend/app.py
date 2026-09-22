@@ -82,13 +82,17 @@ def now() -> str:
 
 
 def database() -> pymysql.Connection:
-    """Open a MySQL connection from environment-based local configuration."""
+    """Open a MySQL connection from local or managed-service configuration."""
     options = {
-        "host": os.getenv("MYSQL_HOST", "127.0.0.1"),
-        "port": int(os.getenv("MYSQL_PORT", "3306")),
-        "user": os.getenv("MYSQL_USER", "root"),
-        "password": os.getenv("MYSQL_PASSWORD", ""),
-        "database": os.getenv("MYSQL_DATABASE", "dermamatrix_ai"),
+        # The underscore names are the documented local contract.  Railway's
+        # managed MySQL service exposes the equivalent compact names, so
+        # accepting both keeps deployment configuration small and never
+        # overrides explicit local settings.
+        "host": os.getenv("MYSQL_HOST") or os.getenv("MYSQLHOST") or "127.0.0.1",
+        "port": int(os.getenv("MYSQL_PORT") or os.getenv("MYSQLPORT") or "3306"),
+        "user": os.getenv("MYSQL_USER") or os.getenv("MYSQLUSER") or "root",
+        "password": os.getenv("MYSQL_PASSWORD") or os.getenv("MYSQLPASSWORD") or "",
+        "database": os.getenv("MYSQL_DATABASE") or os.getenv("MYSQLDATABASE") or "dermamatrix_ai",
         "charset": "utf8mb4",
         "autocommit": False,
         "connect_timeout": 5,
@@ -1747,7 +1751,7 @@ initialise_database()
 
 if __name__ == "__main__":
     try:
-        server_port = int(os.getenv("DERMAMATRIX_PORT", "8000"))
+        server_port = int(os.getenv("DERMAMATRIX_PORT") or os.getenv("PORT") or "8000")
     except ValueError:
         server_port = 8000
     app.run(host="127.0.0.1", port=server_port, debug=False)

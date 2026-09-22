@@ -1,0 +1,9 @@
+.venv/
+.ml-venv/
+__pycache__/
+backend/__pycache__/
+backend/.env
+backend/.local-mysql/
+backend/models/
+*.py[cod]
+.DS_Store

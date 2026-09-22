@@ -1,5 +1,6 @@
 # Local recovery material: intentionally kept in the canonical workspace but
 # never committed to the shared source repository.
+.DS_Store
 research-assets/
 legacy-recovery/
 local-artifacts/

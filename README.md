@@ -28,3 +28,10 @@ for a teammate to clone, test, or run the tracked application.
 
 For the complete project guide and capability boundaries, see
 [`dermamatrix-ai/README.md`](dermamatrix-ai/README.md).
+
+## Public teammate deployment
+
+Railway is the selected deployment target: it hosts the Flask app and its
+managed MySQL database together, while GitHub remains the shared source-code
+repository. The deployment configuration and one-time account setup are in
+[`dermamatrix-ai/docs/railway-deployment.md`](dermamatrix-ai/docs/railway-deployment.md).
