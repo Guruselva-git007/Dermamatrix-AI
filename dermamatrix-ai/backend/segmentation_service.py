@@ -102,7 +102,9 @@ def _probability_mask(logits: torch.Tensor, target_size: tuple[int, int]) -> np.
 def _overlay(image: Image.Image, mask: np.ndarray) -> Image.Image:
     rgba = np.zeros((*mask.shape, 4), dtype=np.uint8)
     rgba[mask] = (79, 163, 247, 122)
-    return Image.alpha_composite(image.convert("RGBA"), Image.fromarray(rgba, mode="RGBA"))
+    # Pillow infers RGBA from the uint8 four-channel array. Supplying ``mode``
+    # is deprecated and will stop working in a future Pillow release.
+    return Image.alpha_composite(image.convert("RGBA"), Image.fromarray(rgba))
 
 
 def segment_dermoscopic_lesion(image_bytes: bytes) -> dict:
@@ -159,7 +161,8 @@ def segment_dermoscopic_lesion(image_bytes: bytes) -> dict:
         "affected_area_percent": round(coverage, 1),
         "segmentation_confidence": round(confidence, 4),
         "overlay": _data_url(_overlay(image, mask), image_format="WEBP"),
-        "mask": _data_url(Image.fromarray((mask * 255).astype("uint8"), mode="L")),
+        # A two-dimensional uint8 array is inferred as an L-mode mask.
+        "mask": _data_url(Image.fromarray((mask * 255).astype("uint8"))),
         "notice": "Segmentation confidence is the model's mean foreground output, not medical certainty.",
         "message": "Trained model segmentation completed.",
     }
@@ -183,7 +186,8 @@ def extract_visual_candidate_region(image_bytes: bytes) -> dict:
         "affected_area_percent": round(coverage, 1) if plausible else None,
         "contrast_signal": round(contrast, 1),
         "overlay": _data_url(_overlay(image, mask), image_format="WEBP"),
-        "mask": _data_url(Image.fromarray((mask * 255).astype("uint8"), mode="L")),
+        # A two-dimensional uint8 array is inferred as an L-mode mask.
+        "mask": _data_url(Image.fromarray((mask * 255).astype("uint8"))),
         "notice": CANDIDATE_NOTICE,
         "message": "Visual candidate region extracted." if plausible else "Visual candidate region is unreliable; retake a centred, evenly lit dermatoscopic image.",
     }
