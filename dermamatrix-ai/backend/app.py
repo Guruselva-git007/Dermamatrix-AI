@@ -706,6 +706,12 @@ def model_registry():
 @app.get("/api/auth/session")
 def auth_session():
     """Backward-compatible session probe for clients that expect HTTP 200."""
+    # A signed-out browser is a normal guest state.  Avoid opening a database
+    # connection for it so the local screening flow remains available before
+    # MySQL is configured or running.
+    if not session.get("user_id"):
+        session.clear()
+        return jsonify({"authenticated": False})
     connection = database()
     try:
         user = current_user(connection)
@@ -1740,4 +1746,8 @@ app.config.update(
 initialise_database()
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8000, debug=False)
+    try:
+        server_port = int(os.getenv("DERMAMATRIX_PORT", "8000"))
+    except ValueError:
+        server_port = 8000
+    app.run(host="127.0.0.1", port=server_port, debug=False)

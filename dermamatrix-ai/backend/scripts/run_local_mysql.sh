@@ -8,11 +8,11 @@ backend_dir="$(cd "$script_dir/.." && pwd)"
 mysql_bin="${MYSQLD_BIN:-/usr/local/mysql/bin/mysqld}"
 mysql_client="${MYSQL_BIN:-/opt/homebrew/bin/mysql}"
 data_dir="$backend_dir/.local-mysql/data"
-socket_path="/tmp/dermamatrix-ai-mysql.sock"
+# Keep the socket inside this checkout.  A global /tmp socket causes separate
+# copies of the college project to unlink or reuse one another's connection.
+socket_path="$backend_dir/.local-mysql/mysql.sock"
 pid_path="$backend_dir/.local-mysql/mysql.pid"
 log_path="$backend_dir/.local-mysql/mysql.log"
-port="${DERMAMATRIX_MYSQL_PORT:-3307}"
-
 if [[ ! -f "$backend_dir/.env" ]]; then
   echo "Create $backend_dir/.env with MYSQL_PASSWORD before starting local MySQL." >&2
   exit 1
@@ -23,6 +23,11 @@ source "$backend_dir/.env"
 set +a
 app_password="${MYSQL_PASSWORD:?MYSQL_PASSWORD is required in backend/.env}"
 sql_password="${app_password//\'/\\\'}"
+# Prefer an explicit one-shot override, then the local .env setting.  This
+# lets a recovered checkout coexist with an older project copy still using
+# the historical 3307 default.
+port="${DERMAMATRIX_MYSQL_PORT:-${MYSQL_PORT:-3307}}"
+mysqlx_port="${DERMAMATRIX_MYSQLX_PORT:-$((port + 29754))}"
 
 if [[ ! -x "$mysql_bin" || ! -x "$mysql_client" ]]; then
   echo "MySQL binaries were not found. Install MySQL Community Server first." >&2
@@ -38,7 +43,7 @@ if [[ -f "$pid_path" ]] && kill -0 "$(cat "$pid_path")" 2>/dev/null; then
   echo "DermaMatrix local MySQL is already running on port $port."
 else
   rm -f "$socket_path" "$pid_path"
-  "$mysql_bin" --no-defaults --datadir="$data_dir" --socket="$socket_path" --pid-file="$pid_path" --port="$port" --mysqlx-port=33061 --bind-address=127.0.0.1 --log-error="$log_path" --skip-name-resolve --daemonize
+  "$mysql_bin" --no-defaults --datadir="$data_dir" --socket="$socket_path" --pid-file="$pid_path" --port="$port" --mysqlx-port="$mysqlx_port" --bind-address=127.0.0.1 --log-error="$log_path" --skip-name-resolve --daemonize
 fi
 
 # The app's MYSQL_* settings are loaded above, but MySQL's CLI also treats some

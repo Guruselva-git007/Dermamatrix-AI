@@ -27,5 +27,6 @@ if ! "$python_bin" -c "import flask, pymysql" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Starting DermaMatrix at http://127.0.0.1:8000"
+app_port="${DERMAMATRIX_PORT:-8000}"
+echo "Starting DermaMatrix at http://127.0.0.1:$app_port"
 exec "$python_bin" "$backend_dir/app.py"
