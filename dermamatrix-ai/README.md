@@ -83,7 +83,7 @@ Open the `dermamatrix-ai` folder itself in VS Code. The repository includes a la
 2. Select the project interpreter (`.venv/bin/python`, or the existing `.ml-venv/bin/python` if that is the environment you use) when VS Code asks.
 3. Press **F5** and select **DermaMatrix: Run locally (MySQL)**. The launch profile starts the isolated MySQL service first and then opens the API in VS Code's integrated terminal.
 
-For a terminal-only start, use `bash backend/scripts/run_app.sh`. It selects `.venv` (or the existing `.ml-venv` fallback), verifies Flask/MySQL dependencies, starts the isolated database, and serves the app at `http://127.0.0.1:8000`. In VS Code, **Terminal → Run Task → DermaMatrix: Verify local stack** confirms that Flask and MySQL are connected.
+For a terminal-only start, use `bash backend/scripts/run_app.sh`. It selects `.venv` (or the existing `.ml-venv` fallback), verifies the Flask/Gunicorn/MySQL dependencies, starts the isolated database, and serves the app through Gunicorn at `http://127.0.0.1:8000`. The server is deliberately bound only to your Mac, and its default single worker avoids duplicating the optional ML model in memory; set `DERMAMATRIX_WEB_CONCURRENCY` only when you have enough memory for additional workers. In VS Code, **Terminal → Run Task → DermaMatrix: Verify local stack** confirms that Flask and MySQL are connected.
 
 ## Local account access
 

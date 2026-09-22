@@ -13,7 +13,7 @@ MYSQL_SOCKET=/tmp/mysql.sock MYSQL_USER=root .venv/bin/python backend/app.py
 
 Open `http://127.0.0.1:8000`.
 
-For the project-standard local flow, use `bash backend/scripts/run_app.sh` from the repository root. It starts the isolated MySQL service, uses the project virtual environment, and then runs this Flask service. VS Code also provides **DermaMatrix: Run locally (MySQL)** through F5 after a project Python interpreter and `backend/.env` are set up. The **DermaMatrix: Verify local stack** task checks the final Flask/MySQL connection without changing data.
+For the project-standard local flow, use `bash backend/scripts/run_app.sh` from the repository root. It starts the isolated MySQL service, uses the project virtual environment, and serves this Flask application through Gunicorn on `127.0.0.1` only. One Gunicorn worker is used by default so an optional ML model is not duplicated in laptop memory; `DERMAMATRIX_WEB_CONCURRENCY` may be set to a positive worker count when appropriate. VS Code also provides **DermaMatrix: Run locally (MySQL)** through F5 after a project Python interpreter and `backend/.env` are set up. The **DermaMatrix: Verify local stack** task checks the final Flask/MySQL connection without changing data.
 
 If MySQL credentials are unavailable on demo day, the screening, CNN research classification, Grad-CAM attention map, care guidance, clinic search, and affiliate-ready catalogue remain available; only profile/assessment persistence is disabled. To re-enable it, start with `MYSQL_USER`, `MYSQL_PASSWORD`, and (when required) `MYSQL_SOCKET` set for your local MySQL account.
 
