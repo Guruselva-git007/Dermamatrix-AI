@@ -1480,8 +1480,9 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, character =>
 function currentDate() { return new Date().toISOString().slice(0, 10); }
 
 function updateDashboardIdentity() {
-  const name = state.profile?.full_name?.trim().split(/\s+/)[0] || 'there';
+  const name = state.profile?.full_name?.trim().split(/\s+/)[0] || '';
   $('#dashboardUser').textContent = name;
+  $('#dashboardUserGreeting').hidden = !name;
 }
 
 function assessmentConcernScore(analysis) {
