@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogMeta: null, productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
+const state = { area: 'Skin', imageUrl: null, file: null, imageReadiness: null, imageReadinessToken: 0, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -39,6 +39,12 @@ const areaSymptoms = Object.freeze({
   Nails: [['nail_change', 'Colour or texture change'], ['thickening', 'Thickening'], ['nail_pain', 'Pain'], ['nail_separation', 'Nail separation / lifting'], ['trauma', 'Recent trauma'], ['previous_infection', 'Previous infection reported']],
   Sweat: [],
 });
+const imageCaptureTips = Object.freeze({
+  Skin: ['Even, indirect light', 'Keep the affected area centred', 'Avoid beauty filters', 'Use dermoscopy only for a dermatoscope photo'],
+  Hair: ['Part the hair to show the scalp', 'Use even light, not flash glare', 'Include the thinning or affected area', 'Avoid beauty filters'],
+  Nails: ['Show one nail close-up', 'Use even light, not flash glare', 'Include nearby skin if relevant', 'Avoid nail polish or filters when possible'],
+  Dermoscopy: ['Use an in-focus dermatoscope photo', 'Show one lesion only', 'Keep the lesion centred', 'Do not use a selfie or ordinary phone photo'],
+});
 
 function renderAreaSymptoms(area) {
   const container = $('#symptomChips');
@@ -54,6 +60,14 @@ function renderImageContexts(area) {
   const contexts = areaInputProfiles[area] || [];
   select.innerHTML = contexts.map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
   select.closest('label').hidden = !contexts.length;
+}
+
+function renderImageCaptureTips() {
+  const container = $('#uploadTips');
+  if (!container) return;
+  const dermoscopy = state.area === 'Skin' && $('#imageContext')?.value === 'dermoscopic_lesion';
+  const tips = imageCaptureTips[dermoscopy ? 'Dermoscopy' : state.area] || imageCaptureTips.Skin;
+  container.innerHTML = tips.map(tip => `<li>${tip}</li>`).join('');
 }
 
 function transitionAssessment(nextState, detail = '') {
@@ -140,6 +154,7 @@ function selectArea(area) {
   $('#uploadStepTitle').textContent = labels.upload;
   $('#uploadStepCopy').textContent = labels.copy;
   renderImageContexts(area);
+  renderImageCaptureTips();
   $('#consentCopy').textContent = sweat
     ? 'I consent to this screening questionnaire and understand it is not a diagnosis.'
     : 'I have consent to upload this image for AI-assisted screening, not diagnosis.';
@@ -159,6 +174,74 @@ function selectArea(area) {
   transitionAssessment(AssessmentState.INPUT_REQUIRED, sweat ? 'QUESTIONNAIRE REQUIRED' : 'IMAGE REQUIRED');
 }
 
+function previewReadinessMessage(readiness) {
+  if (readiness.status === 'CHECKING') return { label: 'ON-DEVICE PHOTO CHECK', title: 'Checking lighting and image detail', message: 'This quick preview check stays on your device. The server makes the final image-quality decision.' };
+  if (readiness.status === 'READY') return { label: 'PHOTO READY', title: 'Photo looks ready to review', message: `${readiness.width} × ${readiness.height} px · quick local preview only` };
+  if (readiness.status === 'RETAKE_SUGGESTED') return { label: 'RETAKE SUGGESTED', title: 'A clearer photo may give a better review', message: readiness.issues.join(' ') };
+  return { label: 'PHOTO PREVIEW', title: 'Photo ready for server review', message: 'The server will perform the final format and quality checks.' };
+}
+
+function renderImageReadiness(readiness) {
+  const presentation = previewReadinessMessage(readiness);
+  const preview = $('#uploadPreview');
+  const label = $('#uploadPreviewLabel');
+  const title = $('#uploadPreviewTitle');
+  const detail = $('#uploadPreviewReadiness');
+  if (!preview || !label || !title || !detail) return;
+  label.textContent = presentation.label;
+  title.textContent = presentation.title;
+  detail.textContent = presentation.message;
+  preview.dataset.readiness = readiness.status.toLowerCase();
+}
+
+function loadPreviewImage(imageUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('The browser could not read this image preview.'));
+    image.src = imageUrl;
+  });
+}
+
+async function inspectLocalImageReadiness(imageUrl) {
+  try {
+    const image = await loadPreviewImage(imageUrl);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return { status: 'NOT_CHECKED' };
+    const scale = Math.min(1, 160 / Math.max(width, height));
+    const sampleWidth = Math.max(1, Math.round(width * scale));
+    const sampleHeight = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = sampleWidth; canvas.height = sampleHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return { status: 'NOT_CHECKED', width, height };
+    context.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+    const pixels = context.getImageData(0, 0, sampleWidth, sampleHeight).data;
+    let luminanceTotal = 0;
+    let detailTotal = 0;
+    let detailCount = 0;
+    const luminance = new Float32Array(sampleWidth * sampleHeight);
+    for (let index = 0, pixel = 0; index < pixels.length; index += 4, pixel += 1) {
+      const value = (0.2126 * pixels[index]) + (0.7152 * pixels[index + 1]) + (0.0722 * pixels[index + 2]);
+      luminance[pixel] = value;
+      luminanceTotal += value;
+      if (pixel % sampleWidth) { detailTotal += Math.abs(value - luminance[pixel - 1]); detailCount += 1; }
+      if (pixel >= sampleWidth) { detailTotal += Math.abs(value - luminance[pixel - sampleWidth]); detailCount += 1; }
+    }
+    const brightness = luminanceTotal / luminance.length;
+    const detail = detailCount ? detailTotal / detailCount : 0;
+    const issues = [];
+    if (Math.min(width, height) < 450) issues.push('Use a higher-resolution photo if possible.');
+    if (brightness < 55) issues.push('The preview looks dark; use even, indirect light.');
+    else if (brightness > 220) issues.push('The preview looks very bright; reduce flash glare.');
+    if (detail < 7) issues.push('The preview has little visible detail; steady the camera and refocus.');
+    return { status: issues.length ? 'RETAKE_SUGGESTED' : 'READY', width, height, issues };
+  } catch {
+    return { status: 'NOT_CHECKED' };
+  }
+}
+
 function setImage(file) {
   if (state.assessmentInFlight) return toast('The current image is being assessed. You can replace it when this review is complete.');
   if (state.area === 'Sweat') return toast('Sweat patterns use the questionnaire instead of an image.');
@@ -167,19 +250,27 @@ function setImage(file) {
   if (file.size > 10 * 1024 * 1024) return toast('Choose an image smaller than 10 MB.');
   transitionAssessment(AssessmentState.UPLOADING, 'PREPARING IMAGE PREVIEW');
   if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
-  state.file = file; state.imageUrl = URL.createObjectURL(file);
+  const readinessToken = ++state.imageReadinessToken;
+  state.file = file; state.imageUrl = URL.createObjectURL(file); state.imageReadiness = { status: 'CHECKING' };
+  const selectedImageUrl = state.imageUrl;
   const zone = $('#dropZone'); zone.style.backgroundImage = `url("${state.imageUrl}")`; zone.classList.add('has-image');
   $('#uploadPreviewImage').src = state.imageUrl;
   $('#uploadPreviewName').textContent = file.name;
   $('#uploadPreview').hidden = false;
+  renderImageReadiness(state.imageReadiness);
   $('#analyzeButton').disabled = false; $('#stepCount').textContent = 'STEP 2 OF 3';
   updateAssessmentProgress(2);
   transitionAssessment(AssessmentState.INPUT_REQUIRED, 'IMAGE READY FOR REVIEW');
+  void inspectLocalImageReadiness(selectedImageUrl).then(readiness => {
+    if (readinessToken !== state.imageReadinessToken || state.imageUrl !== selectedImageUrl) return;
+    state.imageReadiness = readiness;
+    renderImageReadiness(readiness);
+  });
 }
 
 function resetImage() {
   if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
-  state.imageUrl = null; state.file = null;
+  state.imageUrl = null; state.file = null; state.imageReadiness = null; state.imageReadinessToken += 1;
   const zone = $('#dropZone');
   if (zone) { zone.style.backgroundImage = ''; zone.classList.remove('has-image'); }
   const preview = $('#uploadPreview');
@@ -378,7 +469,7 @@ function installImagePreview() {
   if ($('#uploadPreview')) return;
   const preview = document.createElement('section');
   preview.id = 'uploadPreview'; preview.className = 'upload-preview'; preview.hidden = true;
-  preview.innerHTML = '<img id="uploadPreviewImage" alt="Selected image preview" /><div><span class="eyebrow">IMAGE READY</span><strong>Check the photo before continuing</strong><small id="uploadPreviewName"></small></div><button type="button" class="text-button" id="replaceImageButton">Replace</button>';
+  preview.innerHTML = '<img id="uploadPreviewImage" alt="Selected image preview" /><div><span class="eyebrow" id="uploadPreviewLabel">IMAGE READY</span><strong id="uploadPreviewTitle">Check the photo before continuing</strong><small id="uploadPreviewName"></small><small class="upload-preview-readiness" id="uploadPreviewReadiness" aria-live="polite"></small></div><button type="button" class="text-button" id="replaceImageButton">Replace</button>';
   $('#dropZone').insertAdjacentElement('afterend', preview);
   $('#replaceImageButton').onclick = () => $('#imageInput').click();
 }
@@ -947,6 +1038,12 @@ function renderPatientResult(data) {
             firstQuestion?.focus({ preventScroll: true });
             firstQuestion?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'center' });
           });
+          return;
+        }
+        if (button.dataset.resultAction === 'reassess') {
+          closeResult(); resetImage(); selectArea(state.area); showPage('home');
+          $('#imageInput')?.focus();
+          toast('Use the photo coach to check a new image before you submit it.');
           return;
         }
         closeResult(); showPage('home'); $('#imageInput')?.focus();
@@ -1880,6 +1977,7 @@ function updateImageContext() {
   $('#dermoscopyAttestation').hidden = !dermoscopy;
   $('#dermoscopyConsent').required = dermoscopy;
   if (!dermoscopy) $('#dermoscopyConsent').checked = false;
+  renderImageCaptureTips();
 }
 
 $$('.area-choice button').forEach(button => { button.onclick = () => selectArea(button.dataset.area); });

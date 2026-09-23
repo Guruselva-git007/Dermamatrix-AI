@@ -80,6 +80,11 @@ body {
 .drop-zone em { margin-top: 10px; padding: 7px 11px; border-radius: 7px; background: #e2f2ff; color: #2779c9; font: 700 9px "IBM Plex Sans", sans-serif; font-style: normal; }
 .drop-zone:hover em { background: #d2ebff; }
 .upload-preview[hidden] { display: none !important; }
+.upload-preview[data-readiness="retake_suggested"] { border-color: #e4b36d; background: #fff9ee; }
+.upload-preview[data-readiness="ready"] { border-color: #9ad6b2; background: #f2fcf5; }
+.upload-preview .upload-preview-readiness { overflow: visible; white-space: normal; line-height: 1.4; }
+.upload-preview[data-readiness="retake_suggested"] .upload-preview-readiness { color: #9b5a12; }
+.upload-preview[data-readiness="ready"] .upload-preview-readiness { color: #28744b; }
 .upload-tips { display: flex; flex-wrap: wrap; gap: 7px; margin: 9px 0 0; padding: 0; list-style: none; }
 .upload-tips li { padding: 5px 8px; border: 1px solid #d9e8f5; border-radius: 99px; color: #66819d; background: #f8fbfe; font-size: 8px; }
 .upload-tips li::before { content: "✓"; margin-right: 4px; color: #2782cf; font-weight: 800; }
@@ -150,6 +155,10 @@ body[data-theme="dark"] .assessment-steps li span { border-color: #315a80; color
 body[data-theme="dark"] .assessment-steps li.active { color: #b8e1ff; background: #103c65; }
 body[data-theme="dark"] .upload-tips li { border-color: #2b5172; background: #0c2945; color: #adc5dc; }
 body[data-theme="dark"] .drop-zone em { background: #113d64; color: #a5d7ff; }
+body[data-theme="dark"] .upload-preview[data-readiness="retake_suggested"] { border-color: #87632b; background: #3b2d16; }
+body[data-theme="dark"] .upload-preview[data-readiness="ready"] { border-color: #337653; background: #123424; }
+body[data-theme="dark"] .upload-preview[data-readiness="retake_suggested"] .upload-preview-readiness { color: #f0bf72; }
+body[data-theme="dark"] .upload-preview[data-readiness="ready"] .upload-preview-readiness { color: #8ad8aa; }
 body[data-theme="dark"] .care-context-card { border-color: #285678; background: #0c2c4b; }
 body[data-theme="dark"] .care-context-card > span { background: #123f68; color: #9ad4ff; }
 body[data-theme="dark"] .care-context-card strong { color: #e7f2ff; }

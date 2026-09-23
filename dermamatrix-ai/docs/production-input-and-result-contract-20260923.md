@@ -26,6 +26,17 @@ can complete an invalid-image attempt rather than treating an HTTP error as a
 model result.  The browser maps these states to an explicit final UI state;
 it does not leave the assessment in a spinner.
 
+## Client photo coach
+
+The upload workflow gives area-specific capture tips for Skin, Hair/scalp,
+Nails, and the dermatoscopic route.  Once a person selects a file, a bounded
+160-pixel on-device preview estimates only dimensions, brightness, and visible
+detail.  It can suggest a retake before the upload, reducing avoidable server
+requests, but it does not block submission, classify anatomy, infer health, or
+replace the server's format and quality gates.  A result that is uncertain
+offers a clean reassessment action that removes the previous local preview
+before accepting another image.
+
 ## Current modality behavior
 
 | Area | Accepted upload behavior | Classifier behavior | Honest terminal behavior today |
