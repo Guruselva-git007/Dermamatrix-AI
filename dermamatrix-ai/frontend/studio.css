@@ -67,7 +67,7 @@ body {
 .workspace-search:focus-within { border-color: var(--dm-blue); box-shadow: 0 0 0 3px rgba(8, 63, 126, .12); }
 .nav-scrim { display: none; }
 
-/* The sign-in card stays compact in daylight; night mode keeps the illustration. */
+/* Sign-in keeps its two-column layout with an illustrated introduction. */
 .auth-gate {
   align-items: flex-start;
   background: radial-gradient(circle at 12% 11%, rgba(185, 223, 253, .7), transparent 30rem),
@@ -221,16 +221,23 @@ body {
 .dashboard-recent { padding: 22px 24px; border: 1px solid var(--dm-line); border-radius: 20px; background: rgba(255, 255, 255, .85); }
 .dashboard-activity { margin-top: 14px; }
 
-/* Daylight uses the pale sky and white treatment from the original app. */
-body:not([data-theme="dark"]) .auth-gate { align-items: center; }
-body:not([data-theme="dark"]) .auth-layout {
-  width: min(100%, 520px) !important;
-  max-width: 520px !important;
-  min-height: 0 !important;
-  grid-template-columns: minmax(0, 1fr) !important;
+/* Daylight changes the colours while preserving the layout. */
+body:not([data-theme="dark"]) .auth-story {
+  border: 1px solid #c6e4f9;
+  background: radial-gradient(circle at 85% 83%, rgba(166, 216, 249, .68), transparent 16rem),
+    linear-gradient(145deg, #e0f2ff, #f3faff 76%);
+  box-shadow: 0 24px 52px rgba(55, 128, 186, .11);
+  color: #173b5d;
 }
-body:not([data-theme="dark"]) .auth-story { display: none; }
-body:not([data-theme="dark"]) .auth-layout > .auth-card { grid-column: 1 !important; }
+body:not([data-theme="dark"]) .auth-story-kicker { color: #2878b3; }
+body:not([data-theme="dark"]) .auth-story h2 em { color: #3b83bd; }
+body:not([data-theme="dark"]) .auth-story > p:not(.auth-story-kicker) { color: #4b6986; }
+body:not([data-theme="dark"]) .auth-story-points span { color: #416b8d; }
+body:not([data-theme="dark"]) .story-ring-one,
+body:not([data-theme="dark"]) .story-ring-two { border-color: rgba(73, 151, 210, .4); }
+body:not([data-theme="dark"]) .story-core { background: radial-gradient(circle at 36% 29%, #effaff, #92c7eb 62%, #5b98c8); box-shadow: 0 15px 35px rgba(55, 120, 171, .17); }
+body:not([data-theme="dark"]) .story-spark-one { background: #6aaee0; }
+body:not([data-theme="dark"]) .story-spark-two { background: #9dcced; }
 body:not([data-theme="dark"]) .brand-mark,
 body:not([data-theme="dark"]) .auth-brand > span { background: #2b89cb; color: #ffffff; }
 body:not([data-theme="dark"]) .dashboard-heading {
