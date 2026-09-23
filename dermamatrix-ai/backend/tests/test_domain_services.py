@@ -216,6 +216,7 @@ class MlContractTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 413)
         self.assertEqual(response.get_json()["error"], "The image is larger than 10 MB.")
+        self.assertEqual(response.get_json()["assessment_result"]["result_state"], "unsupported_image")
 
     def test_image_content_must_match_the_selected_extension(self):
         from app import app
@@ -230,6 +231,7 @@ class MlContractTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
         self.assertIn("extension does not match", response.get_json()["error"])
+        self.assertEqual(response.get_json()["assessment_result"]["result_state"], "unsupported_image")
 
     def test_excessive_pixel_upload_is_rejected_before_pixel_processing(self):
         from app import app
@@ -246,6 +248,27 @@ class MlContractTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
         self.assertIn("16 megapixels", response.get_json()["error"])
+        self.assertEqual(response.get_json()["assessment_result"]["result_state"], "unsupported_image")
+
+    def test_wrong_declared_image_context_finishes_with_category_mismatch(self):
+        from app import app
+
+        image = Image.new("RGB", (640, 640), color=(120, 140, 160))
+        payload = BytesIO()
+        image.save(payload, format="PNG")
+        response = app.test_client().post(
+            "/api/assessments",
+            data={
+                "image": (BytesIO(payload.getvalue()), "nail-wrong-context.png"),
+                "area": "Nails", "image_context": "face_skin", "image_consent": "true",
+                "duration": "0", "discomfort": "0", "change": "0",
+            },
+            content_type="multipart/form-data",
+        )
+        result = response.get_json()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(result["assessment_result"]["result_state"], "category_mismatch")
+        self.assertEqual(result["assessment_result"]["status"]["code"], "CATEGORY_MISMATCH")
 
     def test_api_responses_have_private_browser_safety_headers(self):
         from app import app

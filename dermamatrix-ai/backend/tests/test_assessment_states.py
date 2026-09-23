@@ -7,7 +7,13 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw
 
-from assessment_contract import ASSESSMENT_RESULT_VERSION, build_assessment_result, determine_assessment_state
+from assessment_contract import (
+    ASSESSMENT_RESULT_VERSION,
+    TERMINAL_RESULT_STATES,
+    build_assessment_result,
+    determine_assessment_state,
+    determine_terminal_result_state,
+)
 from recommendation_service import build_recommendations
 
 
@@ -47,10 +53,12 @@ class AssessmentStateTests(unittest.TestCase):
         self.assertEqual(healthy["contract_version"], ASSESSMENT_RESULT_VERSION)
         self.assertEqual(healthy["status"]["state"], "HEALTHY")
         self.assertEqual(healthy["status"]["code"], "NORMAL_APPEARANCE")
+        self.assertEqual(healthy["result_state"], "healthy")
         self.assertFalse(healthy["condition"]["available"])
 
         unsupported = build_assessment_result(_response(classifier={"available": False, "reason": "No model configured."}))
         self.assertEqual(unsupported["status"]["state"], "UNCERTAIN")
+        self.assertEqual(unsupported["result_state"], "uncertain")
         self.assertNotEqual(unsupported["status"]["state"], "HEALTHY")
 
     def test_condition_and_conflicting_normal_signals_are_distinct(self):
@@ -62,12 +70,48 @@ class AssessmentStateTests(unittest.TestCase):
         }
         condition = build_assessment_result(_response(classifier=classifier, finding={"name": "Test condition"}))
         self.assertEqual(condition["status"]["state"], "CONDITION")
+        self.assertEqual(condition["result_state"], "condition_detected")
         self.assertTrue(condition["condition"]["available"])
 
         conflicting = {**classifier, "normal_appearance": _validated_normal_classifier()["normal_appearance"]}
         conflict = build_assessment_result(_response(classifier=conflicting, finding={"name": "Test condition"}))
         self.assertEqual(conflict["status"]["state"], "UNCERTAIN")
+        self.assertEqual(conflict["result_state"], "uncertain")
         self.assertFalse(conflict["condition"]["available"])
+
+    def test_terminal_result_state_is_closed_and_evidence_based(self):
+        cases = (
+            ({"status": "LOW_QUALITY"}, {"status": "LOW_QUALITY"}, {}, {"state": "UNCERTAIN"}, "poor_quality"),
+            ({"status": "GOOD"}, {"status": "VALID", "relevance_status": "CATEGORY_MISMATCH"}, {}, {"state": "UNCERTAIN"}, "category_mismatch"),
+            ({"status": "GOOD"}, {"status": "VALID"}, {"uncertainty": {"ood_status": "OUT_OF_DISTRIBUTION"}}, {"state": "UNCERTAIN"}, "unsupported_image"),
+            ({"status": "GOOD"}, {"status": "VALID"}, {}, {"state": "CONDITION"}, "condition_detected"),
+            ({"status": "GOOD"}, {"status": "VALID"}, {}, {"state": "HEALTHY"}, "healthy"),
+            ({"status": "GOOD"}, {"status": "VALID_RELEVANT", "relevance_status": "USER_DECLARED_CONTEXT_NOT_AUTOMATICALLY_VERIFIED"}, {}, {"state": "UNCERTAIN"}, "uncertain"),
+        )
+        observed = set()
+        for quality, validation, classifier, assessment_state, expected in cases:
+            terminal = determine_terminal_result_state(
+                input_type="image", quality=quality, validation=validation,
+                classifier=classifier, assessment_state=assessment_state,
+            )
+            self.assertEqual(terminal["state"], expected)
+            self.assertIn(terminal["state"], TERMINAL_RESULT_STATES)
+            observed.add(terminal["state"])
+        self.assertEqual(observed, TERMINAL_RESULT_STATES)
+
+    def test_rejected_image_contract_has_an_input_terminal_state(self):
+        from assessment_contract import build_rejected_image_result
+
+        category = build_rejected_image_result(
+            area="Nails", result_state="category_mismatch", notice="Choose a nail image type.",
+        )
+        unsupported = build_rejected_image_result(
+            area="Hair", result_state="unsupported_image", notice="Use a supported image file.",
+        )
+        self.assertEqual(category["result_state"], "category_mismatch")
+        self.assertEqual(category["status"]["code"], "CATEGORY_MISMATCH")
+        self.assertEqual(unsupported["result_state"], "unsupported_image")
+        self.assertEqual(unsupported["status"]["code"], "INPUT_UNSUITABLE")
 
     def test_invalid_low_quality_and_questionnaire_never_become_healthy(self):
         for kwargs in (
@@ -113,6 +157,7 @@ class AssessmentStateTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(result["assessment_result"]["status"]["state"], "UNCERTAIN")
             self.assertEqual(result["assessment_result"]["status"]["code"], "MODEL_UNAVAILABLE")
+            self.assertEqual(result["assessment_result"]["result_state"], "uncertain")
             self.assertEqual(result["model_metadata"]["model_id"], model_id)
             self.assertEqual(result["input_validation"]["classification_status"], "NO_COMPATIBLE_CLASSIFIER_CONFIGURED")
             self.assertEqual(result["recommendations"]["products"], [])

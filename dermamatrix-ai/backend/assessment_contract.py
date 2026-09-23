@@ -11,8 +11,19 @@ explainability artifact when an underlying service did not produce one.
 from __future__ import annotations
 
 
-ASSESSMENT_RESULT_VERSION = "assessment-result-v1.4"
+ASSESSMENT_RESULT_VERSION = "assessment-result-v1.5"
 ASSESSMENT_STATES = frozenset({"HEALTHY", "CONDITION", "UNCERTAIN"})
+# This is intentionally a small, closed vocabulary.  It is the terminal
+# outcome for an image attempt, not a diagnosis, image-category model score,
+# or substitute for the detailed status object below.
+TERMINAL_RESULT_STATES = frozenset({
+    "condition_detected",
+    "healthy",
+    "uncertain",
+    "category_mismatch",
+    "unsupported_image",
+    "poor_quality",
+})
 
 
 def determine_assessment_state(*, input_type: str, quality: dict | None = None,
@@ -69,6 +80,75 @@ def determine_assessment_state(*, input_type: str, quality: dict | None = None,
     if classifier.get("available") and condition_evidence:
         return {"state": "CONDITION", "reason": "SCOPED_MODEL_CONDITION_OUTPUT"}
     return {"state": "UNCERTAIN", "reason": "NO_VALIDATED_OUTCOME_SIGNAL"}
+
+
+def determine_terminal_result_state(*, input_type: str, quality: dict | None = None,
+                                    validation: dict | None = None, classifier: dict | None = None,
+                                    assessment_state: dict | None = None) -> dict:
+    """Map actual pipeline evidence to one stable image-attempt outcome.
+
+    ``category_mismatch`` and ``unsupported_image`` are deliberately emitted
+    only when a configured validator or an actual model-scope check supplied
+    that evidence.  A user-selected image context is *not* treated as visual
+    category verification.  In its absence, a usable image without a
+    compatible classifier remains ``uncertain`` rather than being falsely
+    rejected or labelled.
+    """
+    quality = quality or {}
+    validation = validation or {}
+    classifier = classifier or {}
+    assessment_state = assessment_state or {}
+    quality_status = str(quality.get("status") or "").upper()
+    validation_status = str(validation.get("status") or "").upper()
+    relevance_status = str(validation.get("relevance_status") or "").upper()
+    ood_status = str((classifier.get("uncertainty") or {}).get("ood_status") or "").upper()
+
+    if quality_status == "LOW_QUALITY" or validation_status == "LOW_QUALITY":
+        return {"state": "poor_quality", "reason": "INPUT_QUALITY_GATE"}
+    if relevance_status in {"CATEGORY_MISMATCH", "WRONG_CATEGORY", "ANATOMY_MISMATCH"}:
+        return {"state": "category_mismatch", "reason": "VALIDATED_CATEGORY_MISMATCH"}
+    if (
+        validation_status in {"INVALID_INPUT", "UNSUPPORTED"}
+        or relevance_status in {"UNSUPPORTED", "UNSUPPORTED_IMAGE", "NON_MEDICAL_IMAGE"}
+        or ood_status == "OUT_OF_DISTRIBUTION"
+    ):
+        return {"state": "unsupported_image", "reason": "UNSUPPORTED_OR_OUT_OF_SCOPE_INPUT"}
+    if assessment_state.get("state") == "CONDITION":
+        return {"state": "condition_detected", "reason": "SCOPED_MODEL_CONDITION_OUTPUT"}
+    if assessment_state.get("state") == "HEALTHY":
+        return {"state": "healthy", "reason": "VALIDATED_NORMAL_APPEARANCE"}
+    return {"state": "uncertain", "reason": assessment_state.get("reason") or "NO_VALIDATED_OUTCOME_SIGNAL"}
+
+
+def build_rejected_image_result(*, area: str | None, result_state: str, notice: str) -> dict:
+    """Build the same versioned contract for a rejected image upload.
+
+    Upload decoding and route validation can stop before an ordinary
+    assessment response exists.  Returning this bounded contract on those
+    paths lets an API client finish the attempt with one semantic state rather
+    than leaving a spinner or interpreting a raw HTTP error as a condition.
+    """
+    if result_state not in {"category_mismatch", "unsupported_image", "poor_quality"}:
+        raise ValueError("Rejected image results must use a supported input terminal state.")
+    validation = {
+        "status": "LOW_QUALITY" if result_state == "poor_quality" else "UNSUPPORTED" if result_state == "unsupported_image" else "VALID",
+        "relevance_status": "CATEGORY_MISMATCH" if result_state == "category_mismatch" else "UNSUPPORTED_IMAGE" if result_state == "unsupported_image" else "NOT_ASSESSED_LOW_QUALITY",
+        "notice": notice,
+    }
+    return build_assessment_result({
+        "area": area or "Skin",
+        "input_type": "image",
+        "quality": {
+            "status": "LOW_QUALITY" if result_state == "poor_quality" else "NOT_ASSESSED",
+            "label": "Image needs improvement" if result_state == "poor_quality" else "Image was not accepted for assessment",
+            "issues": [],
+        },
+        "input_validation": validation,
+        "research_classifier": {"available": False, "reason": notice, "uncertainty": {"status": "UNCERTAIN", "ood_status": "OOD_NOT_EVALUATED"}},
+        "condition_intelligence": {"finding": {}},
+        "risk": {}, "assessment_risk": {}, "severity": {}, "clinical_decision_support": {},
+        "segmentation": {}, "candidate_region": {}, "recommendations": {}, "care_plan": {},
+    })
 
 
 def _urgency(cdss: dict, urgent_notice: str | None, assessment_risk: dict) -> dict:
@@ -148,6 +228,7 @@ def _assessment_status(response: dict, classifier: dict, validation: dict, asses
     input_type = response.get("input_type", "image")
     quality = response.get("quality") or {}
     validation_status = validation.get("status")
+    relevance_status = str(validation.get("relevance_status") or "").upper()
     uncertainty = classifier.get("uncertainty") or {}
     uncertainty_status = uncertainty.get("status")
     ood_status = uncertainty.get("ood_status")
@@ -159,6 +240,13 @@ def _assessment_status(response: dict, classifier: dict, validation: dict, asses
             "code": "QUESTIONNAIRE_ASSESSMENT",
             "label": "Questionnaire assessment completed",
             "notice": "This transparent questionnaire pathway does not run an image classifier or validated condition model.",
+        }
+    if relevance_status in {"CATEGORY_MISMATCH", "WRONG_CATEGORY", "ANATOMY_MISMATCH"}:
+        return {
+            "state": state,
+            "code": "CATEGORY_MISMATCH",
+            "label": "Image does not match the selected category",
+            "notice": validation.get("notice") or "Choose the matching skin, hair, or nail image type and retry.",
         }
     if quality.get("status") == "LOW_QUALITY" or validation_status in {"LOW_QUALITY", "INVALID_INPUT", "UNSUPPORTED"}:
         return {
@@ -237,12 +325,18 @@ def build_assessment_result(response: dict) -> dict:
     )
     condition = _condition(classifier, intelligence, assessment_state["state"])
     assessment_status = _assessment_status(response, classifier, validation, assessment_state)
+    terminal_result = determine_terminal_result_state(
+        input_type=response.get("input_type", "image"), quality=quality,
+        validation=validation, classifier=classifier, assessment_state=assessment_state,
+    )
     attention = classifier.get("attention_map") or classifier.get("explainability") or {}
     recommendations = response.get("recommendations") or {}
 
     return {
         "contract_version": ASSESSMENT_RESULT_VERSION,
         "area": response.get("area"),
+        "result_state": terminal_result["state"],
+        "result_state_reason": terminal_result["reason"],
         "status": assessment_status,
         "input": {
             "type": response.get("input_type", "image"),

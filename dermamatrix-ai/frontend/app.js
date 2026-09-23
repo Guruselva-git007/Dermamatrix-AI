@@ -88,6 +88,7 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
     if (!response.ok) {
       const error = Error(payload.error || `Request failed (${response.status}).`);
       error.status = response.status;
+      error.payload = payload;
       throw error;
     }
     return payload;
@@ -544,11 +545,14 @@ function normaliseAssessmentPresentation(data) {
   const isPresentationCase = Boolean(presentationCase?.matched);
   const visualEvidence = result.visual_evidence || data.visual_evidence || {};
   const statusCode = assessmentStatus.code || (questionnaire ? 'QUESTIONNAIRE_ASSESSMENT' : classifier.available ? 'RESEARCH_ONLY' : 'MODEL_UNAVAILABLE');
-  const unavailableDescription = statusCode === 'INPUT_UNSUITABLE'
+  const resultState = String(result.result_state || '').toLowerCase();
+  const unavailableDescription = resultState === 'poor_quality' || statusCode === 'INPUT_UNSUITABLE'
     ? 'This photo needs a little improvement before it can support a clearer result.'
-    : statusCode === 'OUT_OF_DISTRIBUTION'
+    : resultState === 'category_mismatch'
+      ? 'This photo does not match the selected skin, hair, or nail image type. Choose the matching area and try again.'
+      : resultState === 'unsupported_image' || statusCode === 'OUT_OF_DISTRIBUTION'
       ? 'This photo does not match the type this check can reliably review.'
-      : statusCode === 'UNCERTAIN'
+      : resultState === 'uncertain' || statusCode === 'UNCERTAIN'
         ? 'This check was not clear enough to give a reliable condition label.'
         : 'We could not give a condition label from this photo. Use the image and the details you shared to decide what to do next.';
 
@@ -565,6 +569,7 @@ function normaliseAssessmentPresentation(data) {
     isPresentationCase,
     visualEvidence,
     assessmentState,
+    resultState,
     primaryLabel: isPresentationCase ? 'Education example' : questionnaire ? 'Questionnaire summary' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : 'Reassess image',
     primaryTitle: isPresentationCase ? presentationCase.teaching_label : questionnaire ? (cdss.title || 'Your sweat-pattern summary') : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : 'We need a clearer look',
     primaryDescription: isPresentationCase ? presentationCase.teaching_summary : hasClassifierFinding
@@ -1026,16 +1031,17 @@ async function analyze() {
     transitionAssessment(AssessmentState.FINALIZING, 'FINALIZING RESULT');
     const inputStatus = data.input_validation?.status;
     const outcomeCode = data.assessment_result?.status?.code;
+    const terminalResultState = String(data.assessment_result?.result_state || '').toLowerCase();
     const oodStatus = data.research_classifier?.uncertainty?.ood_status;
-    const finalState = outcomeCode === 'INPUT_UNSUITABLE' || inputStatus === 'LOW_QUALITY' || ['INVALID', 'UNSUPPORTED'].includes(inputStatus)
+    const finalState = terminalResultState === 'poor_quality' || outcomeCode === 'INPUT_UNSUITABLE' || inputStatus === 'LOW_QUALITY' || ['INVALID', 'UNSUPPORTED'].includes(inputStatus)
       ? AssessmentState.INVALID_IMAGE
-      : outcomeCode === 'OUT_OF_DISTRIBUTION' || oodStatus === 'OUT_OF_DISTRIBUTION'
+      : ['category_mismatch', 'unsupported_image'].includes(terminalResultState) || outcomeCode === 'OUT_OF_DISTRIBUTION' || oodStatus === 'OUT_OF_DISTRIBUTION'
         ? AssessmentState.OOD_IMAGE
-        : outcomeCode === 'UNCERTAIN' || data.research_classifier?.uncertainty?.status === 'LOW_CONFIDENCE'
+        : terminalResultState === 'uncertain' || outcomeCode === 'UNCERTAIN' || data.research_classifier?.uncertainty?.status === 'LOW_CONFIDENCE'
           ? AssessmentState.LOW_CONFIDENCE
           : AssessmentState.RESULT_READY;
     finishProcessing(true);
-    transitionAssessment(finalState, finalState === AssessmentState.INVALID_IMAGE ? 'IMAGE NEEDS IMPROVEMENT' : finalState === AssessmentState.LOW_CONFIDENCE ? 'LOW-CONFIDENCE RESULT' : 'RESULT READY');
+    transitionAssessment(finalState, finalState === AssessmentState.INVALID_IMAGE ? 'IMAGE NEEDS IMPROVEMENT' : finalState === AssessmentState.OOD_IMAGE ? 'IMAGE OUTSIDE SUPPORTED SCOPE' : finalState === AssessmentState.LOW_CONFIDENCE ? 'RESULT UNCERTAIN' : 'RESULT READY');
     state.assessmentId = data.assessment_id;
     const responseRisk = data.risk || {};
     const score = Number.isFinite(responseRisk.score) ? responseRisk.score : null;
@@ -1069,7 +1075,20 @@ async function analyze() {
   } catch (error) {
     if (requestId !== state.assessmentRequestId) return;
     finishProcessing(false);
-    transitionAssessment(AssessmentState.ERROR, 'ASSESSMENT UNAVAILABLE');
+    const rejectedResultState = String(error?.payload?.assessment_result?.result_state || '').toLowerCase();
+    const rejectionState = rejectedResultState === 'poor_quality'
+      ? AssessmentState.INVALID_IMAGE
+      : ['category_mismatch', 'unsupported_image'].includes(rejectedResultState)
+        ? AssessmentState.OOD_IMAGE
+        : AssessmentState.ERROR;
+    transitionAssessment(
+      rejectionState,
+      rejectionState === AssessmentState.INVALID_IMAGE
+        ? 'IMAGE NEEDS IMPROVEMENT'
+        : rejectionState === AssessmentState.OOD_IMAGE
+          ? 'IMAGE OUTSIDE SUPPORTED SCOPE'
+          : 'ASSESSMENT UNAVAILABLE',
+    );
     const message = error?.message || '';
     console.error('DermaMatrix assessment request or result rendering failed.', error);
     const internalFailure = /\b(?:ReferenceError|TypeError|SyntaxError)\b|is not defined|Failed to fetch|NetworkError/i.test(message);

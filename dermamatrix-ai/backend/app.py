@@ -26,7 +26,7 @@ from model_service import MODEL_VERSION, run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
 from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata, public_capability_matrix
 from assessment_router import public_workflows, route_image_assessment
-from assessment_contract import build_assessment_result, determine_assessment_state
+from assessment_contract import build_assessment_result, build_rejected_image_result, determine_assessment_state
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from longitudinal_service import build_progress_comparison
@@ -323,6 +323,24 @@ def allowed_file(filename: str) -> bool:
 
 class ImageValidationError(ValueError):
     """A display-safe validation error for an uploaded image."""
+
+
+def rejected_image_upload(*, message: str, http_status: int, area: str | None = None,
+                           result_state: str = "unsupported_image"):
+    """Return a display-safe terminal contract when an image cannot proceed.
+
+    This covers file and declared-route rejection before any screening or
+    persistence work occurs.  It does not imply that a visual anatomy model
+    inspected a rejected image.
+    """
+    result = build_rejected_image_result(
+        area=area, result_state=result_state, notice=message,
+    )
+    return jsonify({
+        "error": message,
+        "input_validation": result["input"]["validation"],
+        "assessment_result": result,
+    }), http_status
 
 
 def _opened_image(image_bytes: bytes, filename: str | None = None) -> tuple[Image.Image, str, int, int]:
@@ -1369,21 +1387,27 @@ def knowledge_condition(topic_id: str):
 
 @app.post("/api/assessments")
 def create_assessment():
+    area = request.form.get("area", "Skin").strip()[:30] or "Skin"
     image_file = request.files.get("image")
     if not image_file or not image_file.filename:
         return jsonify({"error": "An image is required."}), 400
     if not allowed_file(image_file.filename):
-        return jsonify({"error": "Use a PNG, JPG, JPEG, WEBP, or AVIF image."}), 415
+        return rejected_image_upload(
+            message="Use a PNG, JPG, JPEG, WEBP, or AVIF image.", http_status=415, area=area,
+        )
     image_bytes = image_file.read()
     if not image_bytes:
-        return jsonify({"error": "The uploaded image was empty."}), 400
+        return rejected_image_upload(
+            message="The uploaded image was empty.", http_status=400, area=area,
+        )
     try:
         quality, image_features = image_quality(image_bytes, image_file.filename)
     except ImageValidationError as error:
-        return jsonify({"error": str(error)}), 422
+        return rejected_image_upload(message=str(error), http_status=422, area=area)
     except Exception:
-        return jsonify({"error": "The selected file could not be read as an image."}), 422
-    area = request.form.get("area", "Skin").strip()[:30] or "Skin"
+        return rejected_image_upload(
+            message="The selected file could not be read as an image.", http_status=422, area=area,
+        )
     presentation_case = presentation_case_for_image(
         image_bytes,
         area,
@@ -1401,7 +1425,11 @@ def create_assessment():
     dermoscopy_attested = request.form.get("dermoscopy_attestation") == "true"
     route = route_image_assessment(area=area, image_context=image_context, dermoscopy_attested=dermoscopy_attested, image_features=image_features)
     if not route["accepted"]:
-        return jsonify({"error": route["error"], "input_validation": {"status": route["status"]}}), 400
+        mismatch = area in {"Skin", "Hair", "Nails"}
+        return rejected_image_upload(
+            message=route["error"], http_status=400, area=area,
+            result_state="category_mismatch" if mismatch else "unsupported_image",
+        )
     model_output = run_screening_model(duration, discomfort, change, quality, image_features, urgent_concern)
     can_run_research_model, research_reason = route["run_research_classifier"], route["notice"]
     assessment_metadata = model_metadata(SKIN_MODEL_ID if area == "Skin" else "hair-model-adapter" if area == "Hair" else "nail-model-adapter")
@@ -1707,7 +1735,13 @@ def create_sweat_assessment():
 
 @app.errorhandler(413)
 def too_large(_error):
-    return jsonify({"error": "The image is larger than 10 MB."}), 413
+    # Flask/Werkzeug raises 413 before multipart form fields are available, so
+    # do not access request.form here (doing so would turn a safe rejection
+    # into a server error).
+    return rejected_image_upload(
+        message="The image is larger than 10 MB.", http_status=413,
+        area="Skin",
+    )
 
 
 @app.errorhandler(pymysql.MySQLError)
