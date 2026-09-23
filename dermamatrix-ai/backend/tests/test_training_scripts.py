@@ -34,6 +34,17 @@ class TrainingScriptTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("leakage-aware three-class dermoscopy research experiment", completed.stdout)
 
+    def test_research_asset_inventory_starts_without_reading_or_modifying_data(self):
+        """Asset intake must stay separate from experiment preparation and training."""
+        completed = subprocess.run(
+            [sys.executable, str(SCRIPTS_DIR / "audit_research_asset_roots.py"), "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("read-only inventory", completed.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
