@@ -29,6 +29,19 @@ for a teammate to clone, test, or run the tracked application.
 For the complete project guide and capability boundaries, see
 [`dermamatrix-ai/README.md`](dermamatrix-ai/README.md).
 
+## Permanent project records
+
+The canonical migration record and durable project memory are kept in the
+tracked root [`docs/`](docs/) directory:
+
+- [`DERMAMATRIX_PROJECT_CONTEXT.md`](docs/DERMAMATRIX_PROJECT_CONTEXT.md) — verified architecture, capabilities, constraints, and open work.
+- [`DERMAMATRIX_MIGRATION_AUDIT.md`](docs/DERMAMATRIX_MIGRATION_AUDIT.md) — Git, legacy-workspace, artifact, and chat reconciliation evidence.
+- [`DERMAMATRIX_FILE_INVENTORY.md`](docs/DERMAMATRIX_FILE_INVENTORY.md) — tracked and deliberately local-only asset inventory.
+- [`chat-archive/INDEX.md`](docs/chat-archive/INDEX.md) — legacy Codex task archive status, including required manual transcript exports.
+
+These records document local-only material without committing research data,
+model weights, database files, or secret configuration values.
+
 ## Public teammate deployment
 
 Railway is the selected deployment target: it hosts the Flask app and its
