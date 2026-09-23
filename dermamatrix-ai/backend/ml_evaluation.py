@@ -24,6 +24,10 @@ from sklearn.metrics import (
 
 
 def softmax(logits: np.ndarray) -> np.ndarray:
+    # MPS model outputs commonly arrive as float32.  Use float64 here so the
+    # probabilities satisfy sklearn's sum-to-one validation without warnings
+    # or silent metric coercion.
+    logits = np.asarray(logits, dtype=np.float64)
     shifted = logits - logits.max(axis=1, keepdims=True)
     values = np.exp(shifted)
     return values / values.sum(axis=1, keepdims=True)
