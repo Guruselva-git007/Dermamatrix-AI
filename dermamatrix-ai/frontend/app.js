@@ -1622,7 +1622,7 @@ function applyTheme(theme) {
   $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Day</b>' : '<span aria-hidden="true">☾</span><b>Night</b>';
   const settingsButton = $('#settingsThemeButton');
   if (settingsButton) settingsButton.textContent = dark ? 'Use day theme' : 'Use night theme';
-  document.querySelector('meta[name="theme-color"]').content = dark ? '#0e2021' : '#f5f8f3';
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#08182e' : '#f4f9ff';
 }
 
 function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') || 'light'); }
