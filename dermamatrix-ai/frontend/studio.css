@@ -67,7 +67,7 @@ body {
 .workspace-search:focus-within { border-color: var(--dm-blue); box-shadow: 0 0 0 3px rgba(8, 63, 126, .12); }
 .nav-scrim { display: none; }
 
-/* Entry page: editorial copy paired with a CSS-only visual study. */
+/* The sign-in card stays compact in daylight; night mode keeps the illustration. */
 .auth-gate {
   align-items: flex-start;
   background: radial-gradient(circle at 12% 11%, rgba(185, 223, 253, .7), transparent 30rem),
@@ -220,6 +220,39 @@ body {
 .dashboard-action b { color: var(--dm-blue); }
 .dashboard-recent { padding: 22px 24px; border: 1px solid var(--dm-line); border-radius: 20px; background: rgba(255, 255, 255, .85); }
 .dashboard-activity { margin-top: 14px; }
+
+/* Daylight uses the pale sky and white treatment from the original app. */
+body:not([data-theme="dark"]) .auth-gate { align-items: center; }
+body:not([data-theme="dark"]) .auth-layout {
+  width: min(100%, 520px) !important;
+  max-width: 520px !important;
+  min-height: 0 !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+body:not([data-theme="dark"]) .auth-story { display: none; }
+body:not([data-theme="dark"]) .auth-layout > .auth-card { grid-column: 1 !important; }
+body:not([data-theme="dark"]) .brand-mark,
+body:not([data-theme="dark"]) .auth-brand > span { background: #2b89cb; color: #ffffff; }
+body:not([data-theme="dark"]) .dashboard-heading {
+  border: 1px solid #c9e3f7;
+  background: radial-gradient(circle at 87% 18%, rgba(181, 224, 253, .7), transparent 21rem),
+    linear-gradient(118deg, #e3f3ff, #f7fbff 76%);
+  box-shadow: 0 18px 40px rgba(65, 139, 197, .09);
+  color: var(--dm-ink);
+}
+body:not([data-theme="dark"]) .dashboard-heading::before {
+  border-color: rgba(95, 168, 221, .31);
+  box-shadow: 0 0 0 42px rgba(152, 207, 247, .1), inset 0 0 0 64px rgba(167, 218, 252, .08);
+}
+body:not([data-theme="dark"]) .dashboard-heading::after { color: #6db6e8; text-shadow: none; }
+body:not([data-theme="dark"]) .dashboard-heading .eyebrow { color: #286fa8; }
+body:not([data-theme="dark"]) .dashboard-heading h1 { color: #153b61; }
+body:not([data-theme="dark"]) .dashboard-heading h1 span { color: #367db6; }
+body:not([data-theme="dark"]) .dashboard-heading p:not(.eyebrow) { color: #4b6986; }
+body:not([data-theme="dark"]) .dashboard-heading-actions .button.primary { background: #2d84c5; color: #ffffff; box-shadow: 0 9px 20px rgba(38, 126, 193, .15); }
+body:not([data-theme="dark"]) .dashboard-heading-actions .button.primary:hover { background: #176ba9; color: #ffffff; }
+body:not([data-theme="dark"]) .dashboard-heading-actions .button.quiet { border-color: #b6d6ee; background: rgba(255, 255, 255, .75); color: #245e91; }
+body:not([data-theme="dark"]) .dashboard-heading-actions .button.quiet:hover { background: #ffffff; }
 
 /* Guided check: stronger grouping, larger targets, and visible boundaries. */
 .intro { border-bottom: 0; }
