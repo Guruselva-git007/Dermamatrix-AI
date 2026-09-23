@@ -26,6 +26,24 @@ class RuntimeEfficiencyTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_public_assets_revalidate_without_caching_private_responses(self):
+        from app import app
+
+        client = app.test_client()
+        stylesheet = client.get("/studio.css")
+        self.assertEqual(stylesheet.status_code, 200)
+        self.assertEqual(stylesheet.headers["Cache-Control"], "private, no-cache")
+        self.assertTrue(stylesheet.headers.get("ETag"))
+        revalidated = client.get("/studio.css", headers={"If-None-Match": stylesheet.headers["ETag"]})
+        self.assertEqual(revalidated.status_code, 304)
+        stylesheet.close()
+        revalidated.close()
+
+        for path in ("/", "/api/model-registry"):
+            response = client.get(path)
+            self.assertIn("no-store", response.headers["Cache-Control"])
+            response.close()
+
 
 if __name__ == "__main__":
     unittest.main()

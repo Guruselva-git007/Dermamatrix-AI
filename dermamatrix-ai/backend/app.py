@@ -1771,10 +1771,13 @@ def protect_local_responses(response):
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(self), geolocation=(self), microphone=()")
     response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
-    if request.path.startswith("/api/") or request.path in {"/", "/index.html"} or request.path.endswith((".css", ".js")):
-        # API responses may contain account, health-history, or assessment
-        # metadata, so neither browser nor intermediary caching is appropriate.
+    if request.path.startswith("/api/") or request.path in {"/", "/index.html"}:
+        # Account and assessment data must never enter a browser or proxy cache.
         response.headers["Cache-Control"] = "no-store, max-age=0"
+    elif request.path.endswith((".css", ".js")):
+        # Public app assets have ETags. Revalidate them after each navigation
+        # instead of downloading the entire stylesheet and script again.
+        response.headers["Cache-Control"] = "private, no-cache"
     return response
 
 

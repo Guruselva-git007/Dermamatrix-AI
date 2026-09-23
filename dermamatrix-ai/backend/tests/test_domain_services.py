@@ -197,13 +197,14 @@ class MlContractTests(unittest.TestCase):
             self.assertIsNone(user_for_patient(connection, "DMX-OTHER"))
         connection.cursor.assert_not_called()
 
-    def test_local_css_is_not_cached_after_a_live_update(self):
+    def test_local_css_revalidates_after_a_live_update(self):
         from app import app
 
         response = app.test_client().get("/experience.css")
         try:
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.headers.get("Cache-Control"), "no-store, max-age=0")
+            self.assertEqual(response.headers.get("Cache-Control"), "private, no-cache")
+            self.assertTrue(response.headers.get("ETag"))
         finally:
             response.close()
 

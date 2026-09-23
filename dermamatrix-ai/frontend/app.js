@@ -19,7 +19,7 @@ const assessmentTransitions = Object.freeze({
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, imageReadiness: null, imageReadinessToken: 0, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
+const state = { area: 'Skin', imageUrl: null, file: null, imageReadiness: null, imageReadinessToken: 0, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, productError: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
 const ASSESSMENT_STAGE_COUNT = 4;
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -1535,6 +1535,13 @@ function renderDiscoveryCatalog() {
     $('#productResultMeta').textContent = 'Refreshing discovery categories';
     return;
   }
+  if (state.productError) {
+    $('#productCatalog').innerHTML = '<div class="catalog-empty catalog-error" role="alert"><span aria-hidden="true">↻</span><strong>We couldn’t load the catalogue</strong><p>Check your connection and try again. Your health check is still available.</p><button class="button primary" type="button" data-retry-products>Try again <span>→</span></button></div>';
+    $('#productResultCount').textContent = 'Catalogue unavailable';
+    $('#productResultMeta').textContent = 'Please try again';
+    $('#productCatalog [data-retry-products]').onclick = () => loadCommerceCatalog({ force: true });
+    return;
+  }
   const query = $('#productSearch').value.trim().toLowerCase();
   const commerceItems = state.productCatalog.map(product => ({
     category: String(product.domain || '').toLowerCase(), product,
@@ -1567,6 +1574,7 @@ async function loadCommerceCatalog({ force = false, query = null } = {}) {
     : '/api/products?area=All&mode=discovery&risk_score=0';
   const requestKey = ++state.productCatalogRequestKey;
   state.productLoading = true;
+  state.productError = false;
   renderDiscoveryCatalog();
   state.productCatalogLoadPromise = requestJSON(endpoint, {}, 10000)
     .then(payload => {
@@ -1575,6 +1583,7 @@ async function loadCommerceCatalog({ force = false, query = null } = {}) {
       state.productCatalogMeta = payload;
       state.productCatalogQuery = requestedQuery;
       state.productCatalogLoaded = true;
+      state.productError = false;
       renderDiscoveryCatalog();
       return state.productCatalog;
     })
@@ -1583,7 +1592,8 @@ async function loadCommerceCatalog({ force = false, query = null } = {}) {
       state.productCatalog = [];
       state.productCatalogMeta = null;
       state.productCatalogQuery = requestedQuery;
-      state.productCatalogLoaded = true;
+      state.productCatalogLoaded = false;
+      state.productError = true;
       renderDiscoveryCatalog();
       return [];
     })
@@ -1609,6 +1619,11 @@ function setProductFilter(filter = 'all') {
 async function searchProducts(event) {
   event?.preventDefault();
   const query = $('#productSearch').value.trim();
+  if (query && (query.length < 2 || query.length > 120)) {
+    toast('Enter between 2 and 120 characters to search products.');
+    $('#productSearch').focus();
+    return;
+  }
   setProductFilter('all');
   await loadCommerceCatalog({ force: true, query });
 }
@@ -1665,6 +1680,8 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, character =>
 function currentDate() { return new Date().toISOString().slice(0, 10); }
 
 function updateDashboardIdentity() {
+  const hour = new Date().getHours();
+  $('#dashboardGreeting').textContent = hour < 5 ? 'Welcome back' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const name = state.profile?.full_name?.trim().split(/\s+/)[0] || '';
   $('#dashboardUser').textContent = name;
   $('#dashboardUserGreeting').hidden = !name;
@@ -2118,9 +2135,14 @@ async function initialiseApp() {
   applyConsumerCopy();
   // Capability lookup and session restoration are independent API requests.
   const authentication = restoreAuthentication();
-  await loadModelCapabilities();
   renderDiscoveryCatalog();
   selectArea(state.area);
+  // Capability details enrich the check screen without delaying sign-in or
+  // the guest workspace if this optional endpoint responds slowly.
+  void loadModelCapabilities().then(() => {
+    const message = state.modelCapabilities[state.area]?.user_message;
+    if (message) $('#moduleStatus').textContent = message;
+  });
   resetRoutineForm();
   $('#checkinDate').value = currentDate();
   $('#clearProfileButton').textContent = 'Sign out';

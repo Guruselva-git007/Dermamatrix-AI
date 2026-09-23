@@ -6,7 +6,7 @@
 */
 :root {
   --dm-font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --dm-display: "Space Grotesk", var(--dm-font);
+  --dm-display: "DM Sans", var(--dm-font);
   --dm-mono: "IBM Plex Mono", monospace;
   --dm-bg: #eef6ff;
   --dm-bg-soft: #f7fbff;
