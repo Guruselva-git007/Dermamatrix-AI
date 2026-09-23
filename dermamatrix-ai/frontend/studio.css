@@ -453,6 +453,9 @@ body[data-theme="dark"] .directory-search-form input::placeholder { color: #a4b5
   .settings-row > div { grid-column: 2; grid-row: 1; min-width: 0; }
   .settings-row > :last-child, .settings-row .switch { grid-column: 2; grid-row: 2; justify-self: start; margin-top: 8px; }
 }
+@media (max-width: 360px) {
+  .dashboard-heading-actions { grid-template-columns: 1fr; }
+}
 @media (prefers-reduced-motion: reduce) {
   .nav-scrim { transition: none; }
 }

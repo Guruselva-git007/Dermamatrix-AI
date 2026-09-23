@@ -550,12 +550,18 @@ function startAreaAssessment(area) {
 }
 
 function setNavigationOpen(open) {
+  const sidebar = $('.sidebar');
+  const menuButton = $('.menu-button');
+  const scrim = $('#navScrim');
+  const wasOpen = document.body.classList.contains('nav-open');
   const expanded = Boolean(open && window.innerWidth <= 880);
-  $('.sidebar').classList.toggle('open', expanded);
+  sidebar.classList.toggle('open', expanded);
   document.body.classList.toggle('nav-open', expanded);
-  $('#navScrim').hidden = !expanded;
-  $('.menu-button').setAttribute('aria-expanded', String(expanded));
-  $('.menu-button').setAttribute('aria-label', expanded ? 'Close navigation' : 'Open navigation');
+  scrim.hidden = !expanded;
+  menuButton.setAttribute('aria-expanded', String(expanded));
+  menuButton.setAttribute('aria-label', expanded ? 'Close navigation' : 'Open navigation');
+  if (expanded && !wasOpen) sidebar.querySelector('.nav-links .active')?.focus();
+  if (!expanded && wasOpen && (sidebar.contains(document.activeElement) || document.activeElement === scrim)) menuButton.focus();
 }
 
 function showCarePlan(plan) {
@@ -2056,7 +2062,16 @@ $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; })
 $('.menu-button').onclick = () => setNavigationOpen(!document.body.classList.contains('nav-open'));
 $('#navScrim').onclick = () => setNavigationOpen(false);
 window.addEventListener('resize', () => { if (window.innerWidth > 880) setNavigationOpen(false); });
-document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeResult(); closeProfile(); if (document.body.classList.contains('nav-open')) { setNavigationOpen(false); $('.menu-button').focus(); } } });
+document.addEventListener('keydown', event => {
+  if (document.body.classList.contains('nav-open') && event.key === 'Tab') {
+    const focusable = [...$('.sidebar').querySelectorAll('a[href], button:not([disabled])')];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+  if (event.key === 'Escape') { closeResult(); closeProfile(); if (document.body.classList.contains('nav-open')) setNavigationOpen(false); }
+});
 $$('.product-tabs button').forEach(button => { button.onclick = () => { setProductFilter(button.dataset.filter); renderDiscoveryCatalog(); }; });
 $('#productSearch').oninput = renderDiscoveryCatalog;
 $('#productSearchForm').onsubmit = searchProducts;
