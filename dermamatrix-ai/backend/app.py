@@ -641,16 +641,25 @@ def versioned_progress_summary(connection: pymysql.Connection, user_id: int | No
     if not user_id:
         return build_progress_comparison(user_id=None, area=area, current=current, historical=[])
     with connection.cursor() as cursor:
-        cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at ASC, id ASC", (user_id, area))
-        records = cursor.fetchall()
+        cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user_id, area))
+        historical_count = int(cursor.fetchone()["count"])
+        if not historical_count:
+            return build_progress_comparison(user_id=user_id, area=area, current=current, historical=[])
+        cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at ASC, id ASC LIMIT 1", (user_id, area))
+        baseline = cursor.fetchone()
+        if historical_count == 1:
+            previous = baseline
+        else:
+            cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at DESC, id DESC LIMIT 1", (user_id, area))
+            previous = cursor.fetchone()
     historical = []
-    for record in records:
+    for record in (baseline, previous):
         try:
             summary = json.loads(record["result_json"])
         except (TypeError, ValueError, json.JSONDecodeError):
             summary = {}
         historical.append({"assessment_id": record["assessment_id"], "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]), "summary": summary})
-    return build_progress_comparison(user_id=user_id, area=area, current=current, historical=historical)
+    return build_progress_comparison(user_id=user_id, area=area, current=current, historical=historical, historical_count=historical_count)
 
 
 def clinician_first_care_plan(risk_score: int) -> dict:

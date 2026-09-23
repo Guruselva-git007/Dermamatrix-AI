@@ -15,9 +15,6 @@ import io
 import os
 from functools import lru_cache
 
-import numpy as np
-import torch
-import torch.nn.functional as functional
 from PIL import Image, ImageFilter
 
 
@@ -26,6 +23,8 @@ CANDIDATE_NOTICE = "Visual candidate-region extraction only; it is not lesion se
 
 
 def _otsu_threshold(values: np.ndarray) -> int:
+    import numpy as np
+
     histogram = np.bincount(values.ravel(), minlength=256).astype(float)
     total = values.size
     weighted_total = np.dot(np.arange(256), histogram)
@@ -71,6 +70,8 @@ def _load_segmentation_model():
     model_path = os.getenv("SEGMENTATION_MODEL_PATH", "").strip()
     if not model_path or not os.path.isfile(model_path):
         return None, None
+    import torch
+
     try:
         model = torch.jit.load(model_path, map_location="cpu")
         model.eval()
@@ -80,6 +81,9 @@ def _load_segmentation_model():
 
 
 def _normalised_tensor(image: Image.Image) -> torch.Tensor:
+    import numpy as np
+    import torch
+
     resized = image.resize((256, 256), Image.Resampling.BILINEAR)
     values = np.asarray(resized, dtype=np.float32).transpose(2, 0, 1) / 255.0
     return torch.from_numpy((values - 0.5) / 0.5).unsqueeze(0)
@@ -87,6 +91,9 @@ def _normalised_tensor(image: Image.Image) -> torch.Tensor:
 
 def _probability_mask(logits: torch.Tensor, target_size: tuple[int, int]) -> np.ndarray:
     """Accept one-logit binary or two-channel logits from the configured model."""
+    import torch
+    import torch.nn.functional as functional
+
     if logits.ndim != 4 or logits.shape[0] != 1:
         raise ValueError("Segmentation model must return [1, C, H, W] logits.")
     if logits.shape[1] == 1:
@@ -100,6 +107,8 @@ def _probability_mask(logits: torch.Tensor, target_size: tuple[int, int]) -> np.
 
 
 def _overlay(image: Image.Image, mask: np.ndarray) -> Image.Image:
+    import numpy as np
+
     rgba = np.zeros((*mask.shape, 4), dtype=np.uint8)
     rgba[mask] = (79, 163, 247, 122)
     # Pillow infers RGBA from the uint8 four-channel array. Supplying ``mode``
@@ -134,6 +143,8 @@ def segment_dermoscopic_lesion(image_bytes: bytes) -> dict:
             "notice": NOTICE,
             "message": "No trained lesion-segmentation weights are configured for this deployment.",
         }
+    import torch
+
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     try:
         with torch.inference_mode():
@@ -170,6 +181,8 @@ def segment_dermoscopic_lesion(image_bytes: bytes) -> dict:
 
 def extract_visual_candidate_region(image_bytes: bytes) -> dict:
     """Extract a contrast-based visual candidate region, not model segmentation."""
+    import numpy as np
+
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     image.thumbnail((600, 600))
     gray = np.asarray(image.convert("L").filter(ImageFilter.MedianFilter(size=3)), dtype=np.uint8)

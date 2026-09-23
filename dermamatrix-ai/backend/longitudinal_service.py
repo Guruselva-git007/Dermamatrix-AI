@@ -34,7 +34,7 @@ def _assessment_indicator(snapshot: dict) -> dict:
     return snapshot.get("assessment_risk") or result.get("assessment_risk") or snapshot.get("risk") or {}
 
 
-def build_progress_comparison(*, user_id: int | None, area: str, current: dict, historical: list[dict]) -> dict:
+def build_progress_comparison(*, user_id: int | None, area: str, current: dict, historical: list[dict], historical_count: int | None = None) -> dict:
     """Return one ongoing-query baseline/follow-up record from account-scoped data."""
     if not user_id:
         return {"status": "NOT_SAVED", "summary": "Guest results are not stored. Create an account before starting an ongoing query.", "journey": None}
@@ -70,6 +70,6 @@ def build_progress_comparison(*, user_id: int | None, area: str, current: dict, 
     return {
         "status": "FOLLOW_UP_COMPARABLE" if compatibility == "COMPATIBLE" else "FOLLOW_UP_LIMITED",
         "summary": f"Follow-up saved. {risk_note} {likelihood_note}",
-        "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": baseline.get("created_at"), "baseline_assessment_id": baseline.get("assessment_id"), "follow_up_count": len(historical), "comparison_compatibility": compatibility},
+        "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": baseline.get("created_at"), "baseline_assessment_id": baseline.get("assessment_id"), "follow_up_count": historical_count if historical_count is not None else len(historical), "comparison_compatibility": compatibility},
         "comparison": {"risk_change": risk_change, "risk_kind": "assessment_concern_indicator", "likelihood_change": likelihood_change, "risk_engine_compatible": risk_compatible, "risk_methodology_version": current_version, "model_lineage_compatible": likelihood_compatible, "previous_assessment": previous.get("created_at"), "images": "Source images are not retained for before/after comparison."},
     }

@@ -13,10 +13,7 @@ import os
 import base64
 from functools import lru_cache
 
-import torch
-import torch.nn.functional as functional
 from PIL import Image
-from torchvision import models, transforms
 
 from calibration_service import calibrated_probabilities, load_temperature_calibration, prediction_uncertainty
 from model_metadata import SKIN_DATASET_VERSION, SKIN_MODEL_ID, SKIN_MODEL_VERSION, PIPELINE_VERSION
@@ -36,6 +33,11 @@ LOW_CONFIDENCE_THRESHOLD = 0.50
 def load_model():
     if not os.path.exists(WEIGHTS_PATH):
         return None
+    # Torch and torchvision are only needed for the scoped research route.
+    # Importing them with Flask made every web worker pay the inference cost.
+    import torch
+    from torchvision import models
+
     model = models.resnet34(weights=None)
     model.fc = torch.nn.Linear(model.fc.in_features, len(CLASSES))
     state = torch.load(WEIGHTS_PATH, map_location="cpu", weights_only=True)
@@ -61,6 +63,10 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
             "uncertainty": prediction_uncertainty(None),
             "normal_appearance": {"available": False, "status": "NOT_SUPPORTED_BY_CONFIGURED_MODEL", "is_normal": None, "validated": False, "confidence": None, "minimum_confidence": None, "condition_signal": "NOT_EVALUATED", "notice": "The configured lesion model has no validated normal-appearance class."},
         }
+    import torch
+    import torch.nn.functional as functional
+    from torchvision import transforms
+
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = transforms.Compose([transforms.Resize(280), transforms.CenterCrop(224), transforms.ToTensor()])(image).unsqueeze(0)
     activations = []

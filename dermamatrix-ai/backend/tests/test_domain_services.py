@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 import unittest
 from io import BytesIO
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from PIL import Image, ImageDraw
 
@@ -537,6 +538,28 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(comparison["comparison"]["risk_change"], -24)
         self.assertFalse(comparison["comparison"]["model_lineage_compatible"])
         self.assertIsNone(comparison["comparison"]["likelihood_change"])
+
+    def test_progress_comparison_reads_only_baseline_and_latest_saved_results(self):
+        from app import versioned_progress_summary
+
+        cursor = MagicMock()
+        cursor.fetchone.side_effect = [
+            {"count": 500},
+            {"assessment_id": "first", "created_at": "2026-01-01", "result_json": "{}"},
+            {"assessment_id": "previous", "created_at": "2026-09-01", "result_json": json.dumps({"assessment_risk": {"score": 34, "methodology_version": "v1"}})},
+        ]
+        connection = MagicMock()
+        connection.cursor.return_value.__enter__.return_value = cursor
+        result = versioned_progress_summary(
+            connection, 7, "Skin",
+            {"assessment_id": "current", "created_at": "2026-09-24", "assessment_risk": {"score": 41, "methodology_version": "v1"}},
+        )
+
+        self.assertEqual(result["journey"]["baseline_assessment_id"], "first")
+        self.assertEqual(result["journey"]["follow_up_count"], 500)
+        self.assertEqual(result["comparison"]["risk_change"], 7)
+        self.assertEqual(cursor.execute.call_count, 3)
+        cursor.fetchall.assert_not_called()
 
     def test_assessment_summary_retains_model_and_calibration_lineage(self):
         from app import stored_analysis_summary

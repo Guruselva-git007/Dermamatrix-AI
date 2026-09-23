@@ -2087,6 +2087,8 @@ async function initialiseApp() {
   restoreSettings();
   restoreTheme();
   applyConsumerCopy();
+  // Capability lookup and session restoration are independent API requests.
+  const authentication = restoreAuthentication();
   await loadModelCapabilities();
   renderDiscoveryCatalog();
   selectArea(state.area);
@@ -2101,9 +2103,8 @@ async function initialiseApp() {
   $('[data-result-tab="progress"]').textContent = 'Track progress';
   $('[data-result-tab="support"]').textContent = 'Find a doctor';
   $('#viewCareButton').textContent = 'View care guidance';
-  const authenticated = await restoreAuthentication();
+  const authenticated = await authentication;
   if (authenticated) await hydrateProfile();
-  await loadProgress();
   showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false });
   if (!authenticated) showAuthGate('login');
 }

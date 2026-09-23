@@ -137,7 +137,7 @@ The Products page and eligible general-care result cards use a backend-owned cat
 Run the focused service tests with:
 
 ```bash
-.venv/bin/python -m unittest discover -s backend/tests -v
+PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests -v
 ```
 
 The existing `.ml-venv` can be used in place of `.venv` in this workspace. In VS Code, run **DermaMatrix: Verify local stack** after F5 to confirm both Flask and MySQL are connected.
