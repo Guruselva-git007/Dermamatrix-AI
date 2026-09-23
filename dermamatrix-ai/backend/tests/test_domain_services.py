@@ -89,6 +89,16 @@ class DatasetGovernanceTests(unittest.TestCase):
         self.assertEqual(gate["status"], "BLOCKED_UNKNOWN_DATASET")
         self.assertFalse(training_eligibility("excluded")["allowed"])
 
+    def test_local_hair_and_nail_assets_with_known_data_gaps_are_explicitly_blocked(self):
+        hair_gate = training_eligibility("local_hair_bald_notbald_archive16")
+        nail_gate = training_eligibility("local_broad_nail_folders")
+
+        self.assertFalse(hair_gate["allowed"])
+        self.assertEqual(hair_gate["status"], "BLOCKED_CONFLICTING_LABELS_AND_PROVENANCE")
+        self.assertIn("both bald and notbald labels", hair_gate["notice"])
+        self.assertFalse(nail_gate["allowed"])
+        self.assertEqual(nail_gate["status"], "BLOCKED_SINGLE_BROAD_LABEL_AND_PROVENANCE")
+
 
 class MlContractTests(unittest.TestCase):
     def test_normalized_result_keeps_condition_probability_severity_and_risk_separate(self):

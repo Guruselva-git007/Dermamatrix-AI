@@ -56,6 +56,38 @@ ONYCHOMYCOSIS_FIGSHARE_V2 = {
 }
 
 
+# These are local user-provided asset descriptions rather than governed data
+# declarations. They remain in the registry so a future manifest-preparation
+# command receives a specific refusal instead of mistaking a directory name
+# for evidence of a valid image-learning task.
+LOCAL_ASSET_BLOCKS = {
+    "local_hair_bald_notbald_archive16": {
+        "dataset_name": "Local bald/notbald image folders (archive 16)",
+        "training_eligibility": "BLOCKED_CONFLICTING_LABELS_AND_PROVENANCE",
+        "training_blocker": "The local folders contain seven exact image hashes assigned to both bald and notbald labels, no source licence/provenance record, no patient/case identifiers, and no independent evaluation cohort. They must not train or enable a hair-loss classifier.",
+        "task": "Unverified binary visual label; not a clinical hair-loss dataset",
+    },
+    "local_hair_broad_archive6": {
+        "dataset_name": "Local broad hair-disease folder (archive 6)",
+        "training_eligibility": "BLOCKED_SINGLE_BROAD_LABEL_AND_PROVENANCE",
+        "training_blocker": "The supplied 239 train and 60 test images have one broad mixed hair-disease label, not condition-level labels, and no provenance or patient grouping. A single-label folder cannot train a hair-condition classifier.",
+        "task": "Broad mixed hair image collection; not a condition-classification cohort",
+    },
+    "local_hair_csv_and_five_subject_masks": {
+        "dataset_name": "Local hair-loss CSV and five-subject segmentation sample",
+        "training_eligibility": "BLOCKED_NOT_SUFFICIENT_IMAGE_COHORT",
+        "training_blocker": "The 2,000-row hair-loss CSV has no linked images, and the segmentation sample covers only five subjects. Neither can support an image-upload hair model or a valid held-out evaluation.",
+        "task": "Tabular reference and minimal segmentation sample; not an image-classification cohort",
+    },
+    "local_broad_nail_folders": {
+        "dataset_name": "Local broad nail/fungus folders",
+        "training_eligibility": "BLOCKED_SINGLE_BROAD_LABEL_AND_PROVENANCE",
+        "training_blocker": "The folders use broad/duplicated labels without a governed provenance record, patient grouping, or locked independent evaluation. They cannot override the existing Figshare nail experiment, which failed its locked external test.",
+        "task": "Unverified broad nail image folders; not a deployable nail-condition cohort",
+    },
+}
+
+
 # This is deliberately a source-governance record, not an ingestion manifest.
 # The public atlas is an important educational resource, but its public website
 # does not publish a machine-learning training licence or an image API.  The
@@ -114,6 +146,7 @@ EXCLUDED_DATASETS = {
 DATASET_REGISTRY = {
     "scin_v1": SCIN_V1,
     "onychomycosis_figshare_v2": ONYCHOMYCOSIS_FIGSHARE_V2,
+    **LOCAL_ASSET_BLOCKS,
     "unm_inclusive_dermatology_atlas": UNM_INCLUSIVE_DERMATOLOGY_ATLAS,
     "excluded": EXCLUDED_DATASETS,
 }
@@ -209,11 +242,11 @@ def training_eligibility(dataset_key: str) -> dict:
             "notice": "The dataset is not declared in the governed registry. Add provenance, licence, permissions, and intended-use review before preparing a manifest.",
         }
     status = dataset.get("training_eligibility")
-    if status == "BLOCKED_AWAITING_WRITTEN_ML_AUTHORIZATION":
+    if isinstance(status, str) and status.startswith("BLOCKED_"):
         return {
             "allowed": False,
             "status": status,
-            "notice": "Written source authorization for ML training/evaluation and derivative model use is required before any UNM atlas ingestion or manifest preparation.",
+            "notice": dataset.get("training_blocker") or "Written source authorization for ML training/evaluation and derivative model use is required before manifest preparation.",
             "source": dataset.get("source"),
             "terms_url": dataset.get("terms_url"),
         }

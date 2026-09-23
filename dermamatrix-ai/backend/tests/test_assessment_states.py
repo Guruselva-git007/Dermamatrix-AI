@@ -88,7 +88,7 @@ class AssessmentStateTests(unittest.TestCase):
         self.assertTrue(healthy["products"])
         self.assertIn("No treatment or medicine", healthy["medicine_policy"])
 
-    def test_clear_unsupported_hair_image_is_uncertain_and_has_no_assessment_products(self):
+    def test_clear_hair_and_nail_images_return_a_real_non_diagnostic_result(self):
         from app import app
 
         image = Image.new("RGB", (640, 640), color=(222, 232, 246))
@@ -99,14 +99,21 @@ class AssessmentStateTests(unittest.TestCase):
         payload = BytesIO()
         image.save(payload, format="PNG")
 
-        response = app.test_client().post("/api/assessments", data={
-            "image": (BytesIO(payload.getvalue()), "clear-hair-context.png"),
-            "area": "Hair", "image_context": "scalp", "image_consent": "true",
-            "duration": "0", "discomfort": "0", "change": "0",
-        }, content_type="multipart/form-data")
-        result = response.get_json()
+        for area, image_context, model_id in (
+            ("Hair", "scalp", "hair-model-adapter"),
+            ("Nails", "nail_close_up", "nail-model-adapter"),
+        ):
+            response = app.test_client().post("/api/assessments", data={
+                "image": (BytesIO(payload.getvalue()), f"clear-{area.lower()}-context.png"),
+                "area": area, "image_context": image_context, "image_consent": "true",
+                "duration": "0", "discomfort": "0", "change": "0",
+            }, content_type="multipart/form-data")
+            result = response.get_json()
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(result["assessment_result"]["status"]["state"], "UNCERTAIN")
-        self.assertEqual(result["recommendations"]["products"], [])
-        self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(result["assessment_result"]["status"]["state"], "UNCERTAIN")
+            self.assertEqual(result["assessment_result"]["status"]["code"], "MODEL_UNAVAILABLE")
+            self.assertEqual(result["model_metadata"]["model_id"], model_id)
+            self.assertEqual(result["input_validation"]["classification_status"], "NO_COMPATIBLE_CLASSIFIER_CONFIGURED")
+            self.assertEqual(result["recommendations"]["products"], [])
+            self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
