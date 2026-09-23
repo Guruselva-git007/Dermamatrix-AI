@@ -20,6 +20,7 @@ const assessmentTransitions = Object.freeze({
   ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
 const state = { area: 'Skin', imageUrl: null, file: null, imageReadiness: null, imageReadinessToken: 0, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
+const ASSESSMENT_STAGE_COUNT = 4;
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -81,13 +82,15 @@ function transitionAssessment(nextState, detail = '') {
 }
 
 function updateAssessmentProgress(step) {
-  const activeStep = Math.max(1, Math.min(4, Number(step) || 1));
+  const activeStep = Math.max(1, Math.min(ASSESSMENT_STAGE_COUNT, Number(step) || 1));
   $$('.assessment-steps li').forEach((item, index) => {
     const itemStep = index + 1;
     item.classList.toggle('active', itemStep === activeStep);
     item.classList.toggle('complete', itemStep < activeStep);
     item.setAttribute('aria-current', itemStep === activeStep ? 'step' : 'false');
   });
+  const stepCount = $('#stepCount');
+  if (stepCount) stepCount.textContent = `STEP ${activeStep} OF ${ASSESSMENT_STAGE_COUNT}`;
 }
 
 async function requestJSON(url, options = {}, timeoutMs = 15000) {
@@ -166,10 +169,8 @@ function selectArea(area) {
   if (sweat) {
     $('#dermoscopyAttestation').hidden = true;
     $('#dermoscopyConsent').checked = false;
-    $('#stepCount').textContent = 'STEP 1 OF 2';
   } else {
     updateImageContext();
-    $('#stepCount').textContent = state.file ? 'STEP 2 OF 3' : 'STEP 1 OF 3';
   }
   transitionAssessment(AssessmentState.INPUT_REQUIRED, sweat ? 'QUESTIONNAIRE REQUIRED' : 'IMAGE REQUIRED');
 }
@@ -258,7 +259,7 @@ function setImage(file) {
   $('#uploadPreviewName').textContent = file.name;
   $('#uploadPreview').hidden = false;
   renderImageReadiness(state.imageReadiness);
-  $('#analyzeButton').disabled = false; $('#stepCount').textContent = 'STEP 2 OF 3';
+  $('#analyzeButton').disabled = false;
   updateAssessmentProgress(2);
   transitionAssessment(AssessmentState.INPUT_REQUIRED, 'IMAGE READY FOR REVIEW');
   void inspectLocalImageReadiness(selectedImageUrl).then(readiness => {
@@ -637,6 +638,11 @@ function normaliseAssessmentPresentation(data) {
   const visualEvidence = result.visual_evidence || data.visual_evidence || {};
   const statusCode = assessmentStatus.code || (questionnaire ? 'QUESTIONNAIRE_ASSESSMENT' : classifier.available ? 'RESEARCH_ONLY' : 'MODEL_UNAVAILABLE');
   const resultState = String(result.result_state || '').toLowerCase();
+  // A valid image can still reach an uncertain result when its declared area has
+  // no configured classifier, or when a research-only model cannot issue a
+  // diagnosis. Keep that distinct from a genuinely unusable image.
+  const modelLimitedReview = !questionnaire && !hasClassifierFinding && ['MODEL_UNAVAILABLE', 'RESEARCH_ONLY'].includes(statusCode);
+  const researchOnlyReview = modelLimitedReview && statusCode === 'RESEARCH_ONLY';
   const unavailableDescription = resultState === 'poor_quality' || statusCode === 'INPUT_UNSUITABLE'
     ? 'This photo needs a little improvement before it can support a clearer result.'
     : resultState === 'category_mismatch'
@@ -661,8 +667,9 @@ function normaliseAssessmentPresentation(data) {
     visualEvidence,
     assessmentState,
     resultState,
-    primaryLabel: isPresentationCase ? 'Education example' : questionnaire ? 'Questionnaire summary' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : 'Reassess image',
-    primaryTitle: isPresentationCase ? presentationCase.teaching_label : questionnaire ? (cdss.title || 'Your sweat-pattern summary') : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : 'We need a clearer look',
+    modelLimitedReview,
+    primaryLabel: isPresentationCase ? 'Education example' : questionnaire ? 'Questionnaire summary' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : modelLimitedReview ? 'Photo and context reviewed' : 'Reassess image',
+    primaryTitle: isPresentationCase ? presentationCase.teaching_label : questionnaire ? (cdss.title || 'Your sweat-pattern summary') : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : researchOnlyReview ? 'Your research screening review is ready' : modelLimitedReview ? 'Your screening summary is ready' : 'We need a clearer look',
     primaryDescription: isPresentationCase ? presentationCase.teaching_summary : hasClassifierFinding
       ? (likelihoodAvailable
         ? 'This research-only screening result is not a diagnosis and needs independent clinical assessment.'
@@ -671,7 +678,11 @@ function normaliseAssessmentPresentation(data) {
         ? 'No apparent concerns were identified by the validated normal-appearance signal. This is not a diagnosis; seek care for symptoms, change, or anything that worries you.'
         : questionnaire
         ? 'This questionnaire did not use condition classification. It provides a symptom and next-step summary.'
-        : unavailableDescription),
+        : researchOnlyReview
+          ? 'A research-only model reviewed this image, but its output is not calibrated or diagnostic. Use the next-step guidance and seek clinical care for symptoms, change, or anything that worries you.'
+          : modelLimitedReview
+            ? 'Your image and selected area were reviewed, but this deployment has no condition classifier for that area. It cannot identify a condition from the photo; use the next-step guidance and seek clinical care for symptoms, change, or anything that worries you.'
+            : unavailableDescription),
     confidence: {
       available: Boolean(likelihoodAvailable),
       heading: isPresentationCase ? 'EXAMPLE MATCH' : 'RESULT CONFIDENCE',
@@ -710,7 +721,13 @@ function normaliseAssessmentPresentation(data) {
       label: assessmentStatus.label || readableStatus(statusCode),
       notice: assessmentStatus.notice || '',
     },
-    nextAction: isPresentationCase ? `Talk through this example with a ${presentationCase.doctor_specialty}.` : cdss.next_step || carePlan.next_step || 'No next step is available for this check.',
+    nextAction: isPresentationCase
+      ? `Talk through this example with a ${presentationCase.doctor_specialty}.`
+      : researchOnlyReview
+        ? 'Use this research-only summary to support, not replace, a clinician assessment if the area is new, changing, symptomatic, or worrying.'
+        : modelLimitedReview
+          ? 'Keep track of meaningful changes and discuss persistent, changing, painful, or worrying symptoms with a qualified clinician.'
+          : cdss.next_step || carePlan.next_step || 'No next step is available for this check.',
     scope: isPresentationCase
       ? 'An exact supplied teaching file matched after you enabled Presentation case matching. Reference metadata is shown alongside the same assessment concern calculation; neither is a diagnosis or disease probability.'
       : assessmentStatus.notice
@@ -1008,6 +1025,8 @@ function renderPatientResult(data) {
       ? `<button type="button" class="button quiet" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Save future check-ins'} <span>→</span></button>`
       : isQuestionnaire
         ? '<button type="button" class="button primary" data-result-action="edit-questionnaire">Edit your answers <span>→</span></button>'
+        : presentation.modelLimitedReview
+          ? '<button type="button" class="button primary" data-result-action="reassess">Start another check <span>→</span></button>'
         : '<button type="button" class="button primary" data-result-action="reassess">Use another photo <span>→</span></button>';
     const safetyNote = isHealthy
       ? recommendation.medicine_policy || 'No treatment or medicine is needed based on this assessment.'
@@ -1168,7 +1187,6 @@ async function analyze() {
     const comparison = data.progress_comparison?.summary || 'Analysis metadata is saved for a registered profile. Uploaded images are not stored.';
     $('#progressText').textContent = note ? `Tracking note: “${note}” ${comparison}` : comparison;
     showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
-    $('#stepCount').textContent = questionnaire ? 'STEP 2 OF 2' : 'STEP 3 OF 3';
   } catch (error) {
     if (requestId !== state.assessmentRequestId) return;
     finishProcessing(false);

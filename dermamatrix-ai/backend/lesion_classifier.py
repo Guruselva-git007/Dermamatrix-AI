@@ -28,7 +28,7 @@ LABELS = {
     "akiec": "Actinic keratoses / intraepithelial carcinoma", "bcc": "Basal cell carcinoma", "bkl": "Benign keratosis-like lesion",
     "df": "Dermatofibroma", "mel": "Melanoma", "nv": "Melanocytic nevus", "vasc": "Vascular lesion",
 }
-RESEARCH_NOTICE = "Research-only model output. It is not a diagnosis, medical advice, or a replacement for RMP assessment."
+RESEARCH_NOTICE = "Research-only model output. It is not a diagnosis, medical advice, or a replacement for assessment by a registered medical practitioner (RMP)."
 LOW_CONFIDENCE_THRESHOLD = 0.50
 
 
