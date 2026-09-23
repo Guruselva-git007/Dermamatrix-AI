@@ -2056,8 +2056,11 @@ window.addEventListener('beforeunload', () => { if (state.imageUrl) URL.revokeOb
 
 async function initialiseApp() {
   if (window.location.protocol === 'file:') {
-    showAuthGate('login');
-    setAuthMessage('Open DermaMatrix through the local app server at http://127.0.0.1:8000. Opening this file directly cannot connect to your local account or assessment service.');
+    // A local file has an opaque browser origin and cannot safely use the
+    // authenticated API.  The macOS launcher keeps this loopback-only server
+    // available, so recover from an accidental Finder double-click instead of
+    // trapping the person on a non-functional sign-in screen.
+    window.location.replace('http://127.0.0.1:8000/');
     return;
   }
   installImagePreview();

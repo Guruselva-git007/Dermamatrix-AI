@@ -37,6 +37,17 @@ replace the server's format and quality gates.  A result that is uncertain
 offers a clean reassessment action that removes the previous local preview
 before accepting another image.
 
+## Reliable local launch
+
+The application requires its local Flask API for authentication, uploads, and
+assessment safety gates.  Opening `frontend/index.html` as a `file://` page
+therefore redirects to the loopback app URL rather than displaying a broken
+sign-in screen.  On macOS, double-click `Start DermaMatrix.command` once.  It
+installs a current-user launch agent that starts the app at login, binds only
+to `127.0.0.1:8000`, writes logs under `~/Library/Logs/DermaMatrix`, and opens
+the app in the default browser.  The tracked installer is
+`scripts/install_macos_local_service.sh`.
+
 ## Current modality behavior
 
 | Area | Accepted upload behavior | Classifier behavior | Honest terminal behavior today |
