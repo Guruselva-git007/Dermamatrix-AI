@@ -292,6 +292,7 @@ function setAssessmentInputBusy(busy) {
 }
 
 function openProfile() {
+  setNavigationOpen(false);
   if (!state.profile?.patient_id) { showAuthGate('register'); return; }
   const form = $('#profileForm');
   form.elements.full_name.value = state.profile.full_name || '';
@@ -529,6 +530,7 @@ function finishProcessing(succeeded = false) {
 }
 
 function showPage(page, { syncHistory = true } = {}) {
+  setNavigationOpen(false);
   const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings'];
   const target = allowed.includes(page) ? page : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
@@ -545,6 +547,15 @@ function startAreaAssessment(area) {
   selectArea(area);
   showPage('home');
   window.setTimeout(() => $('#screenTitle')?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' }), 120);
+}
+
+function setNavigationOpen(open) {
+  const expanded = Boolean(open && window.innerWidth <= 880);
+  $('.sidebar').classList.toggle('open', expanded);
+  document.body.classList.toggle('nav-open', expanded);
+  $('#navScrim').hidden = !expanded;
+  $('.menu-button').setAttribute('aria-expanded', String(expanded));
+  $('.menu-button').setAttribute('aria-label', expanded ? 'Close navigation' : 'Open navigation');
 }
 
 function showCarePlan(plan) {
@@ -1611,7 +1622,7 @@ function applyTheme(theme) {
   $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Day</b>' : '<span aria-hidden="true">☾</span><b>Night</b>';
   const settingsButton = $('#settingsThemeButton');
   if (settingsButton) settingsButton.textContent = dark ? 'Use day theme' : 'Use night theme';
-  document.querySelector('meta[name="theme-color"]').content = dark ? '#071a33' : '#f6f8fb';
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#0e2021' : '#f5f8f3';
 }
 
 function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') || 'light'); }
@@ -1634,6 +1645,7 @@ function applyConsumerCopy() {
 }
 
 async function clearLocalProfile() {
+  setNavigationOpen(false);
   try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { /* local sign-out still continues */ }
   localStorage.removeItem('dermamatrix_profile'); state.profile = null; state.isGuest = false;
   $('#profileName').textContent = 'Guest workspace'; $('#profileMeta').textContent = 'Sign in to save';
@@ -2041,8 +2053,10 @@ $$('.auth-form input').forEach(input => {
 $('#forgotPasswordButton').onclick = () => setAuthMessage('Password reset is not available yet. Please contact the person who manages your DermaMatrix account for help.');
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
-$('.menu-button').onclick = () => $('.sidebar').classList.toggle('open');
-document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeResult(); closeProfile(); } });
+$('.menu-button').onclick = () => setNavigationOpen(!document.body.classList.contains('nav-open'));
+$('#navScrim').onclick = () => setNavigationOpen(false);
+window.addEventListener('resize', () => { if (window.innerWidth > 880) setNavigationOpen(false); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeResult(); closeProfile(); if (document.body.classList.contains('nav-open')) { setNavigationOpen(false); $('.menu-button').focus(); } } });
 $$('.product-tabs button').forEach(button => { button.onclick = () => { setProductFilter(button.dataset.filter); renderDiscoveryCatalog(); }; });
 $('#productSearch').oninput = renderDiscoveryCatalog;
 $('#productSearchForm').onsubmit = searchProducts;
