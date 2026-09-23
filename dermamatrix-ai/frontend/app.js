@@ -321,6 +321,7 @@ function applyAccount(account, preferences = null) {
 async function enterAccount(authentication, message) {
   applyAccount(authentication.user || authentication.account, authentication.preferences); hideAuthGate();
   await hydrateProfile(); await loadProgress({ force: true });
+  showPage('dashboard');
   if (message) toast(message);
 }
 
@@ -504,6 +505,14 @@ function patientImageQuality(value, fallback = 'Not assessed') {
   return value || fallback;
 }
 
+function distinctStatusSummary(label, notice) {
+  const heading = String(label || '').trim().replace(/[.\s]+$/, '');
+  const detail = String(notice || '').trim();
+  if (!heading) return detail;
+  if (!detail) return heading;
+  return detail.toLowerCase().startsWith(heading.toLowerCase()) ? detail : `${heading}. ${detail}`;
+}
+
 function normaliseAssessmentPresentation(data) {
   const result = data.assessment_result || {};
   const assessmentStatus = result.status || {};
@@ -530,6 +539,7 @@ function normaliseAssessmentPresentation(data) {
     : Boolean(likelihood.available && Number.isFinite(prediction?.calibratedProbability));
   const likelihoodValue = result.contract_version ? finding.estimated_likelihood : prediction?.calibratedProbability;
   const assessmentRisk = result.assessment_risk || data.assessment_risk || { available: false, score: null, level: 'NOT_ASSESSED', notice: 'Assessment concern indicator was not calculated.' };
+  const pirs = data.pirs || {};
   const presentationCase = data.presentation_case || result.presentation_case || null;
   const isPresentationCase = Boolean(presentationCase?.matched);
   const visualEvidence = result.visual_evidence || data.visual_evidence || {};
@@ -567,6 +577,7 @@ function normaliseAssessmentPresentation(data) {
         ? 'This questionnaire did not use condition classification. It provides a symptom and next-step summary.'
         : unavailableDescription),
     confidence: {
+      available: Boolean(likelihoodAvailable),
       heading: isPresentationCase ? 'EXAMPLE MATCH' : 'RESULT CONFIDENCE',
       value: isPresentationCase ? 'Education example' : likelihoodAvailable ? `${Math.round(likelihoodValue * 100)}%` : 'Not available',
       note: isPresentationCase ? 'This result is based on a supplied education example.' : likelihoodAvailable ? 'An estimate from the available result.' : 'A percentage is not available for this check.',
@@ -592,6 +603,12 @@ function normaliseAssessmentPresentation(data) {
       factors: assessmentRisk.factor_labels || (assessmentRisk.factors || []).map(factor => factor.label).filter(Boolean),
       note: assessmentRisk.explanation || assessmentRisk.notice || 'A guide to how soon you may want to seek support.',
     },
+    pirs: {
+      score: Number.isFinite(pirs.score) ? Math.max(0, Math.min(100, pirs.score)) : null,
+      value: Number.isFinite(pirs.score) ? `${pirs.score}/100` : 'Not assessed',
+      band: pirs.band ? readableStatus(pirs.band) : 'Not assessed',
+      note: pirs.label || 'Reported-concern priority for tracking; not a clinical prediction.',
+    },
     assessmentStatus: {
       code: statusCode,
       label: assessmentStatus.label || readableStatus(statusCode),
@@ -601,7 +618,7 @@ function normaliseAssessmentPresentation(data) {
     scope: isPresentationCase
       ? 'An exact supplied teaching file matched after you enabled Presentation case matching. Reference metadata is shown alongside the same assessment concern calculation; neither is a diagnosis or disease probability.'
       : assessmentStatus.notice
-        ? `${assessmentStatus.label || readableStatus(statusCode)}. ${assessmentStatus.notice}`
+        ? distinctStatusSummary(assessmentStatus.label || readableStatus(statusCode), assessmentStatus.notice)
       : questionnaire
       ? 'This assessment used your questionnaire responses. It did not use image classification.'
       : classifier.available
@@ -774,7 +791,7 @@ function renderAnalysisDashboard(data) {
     : classifier.available
       ? 'A configured research-model path produced this result.'
       : 'No condition classifier ran for this assessment.';
-  $('#analysisPipeline').innerHTML = `<details class="technical-details"><summary>AI Evidence &amp; Technical Details</summary><div class="technical-details-content"><div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(patientImageQuality(quality.label || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed')))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${isPresentationCase ? 'Exact supplied presentation file' : presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${isPresentationCase ? 'Pre-labelled teaching case' : classifier.available ? 'Research output available' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div>${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
+  $('#analysisPipeline').innerHTML = `<details class="technical-details"><summary>AI Evidence &amp; Technical Details</summary><div class="technical-details-content"><div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(patientImageQuality(quality.value || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed')))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${isPresentationCase ? 'Exact supplied presentation file' : presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${isPresentationCase ? 'Pre-labelled teaching case' : classifier.available ? 'Research output available' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div>${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
   const technicalDetails = $('#analysisPipeline .technical-details');
   technicalDetails?.addEventListener('toggle', () => {
     if (!technicalDetails.open) return;
@@ -803,6 +820,24 @@ function patientList(items, emptyMessage) {
   return values.length
     ? `<ul class="patient-result-list">${values.map(value => `<li>${escapeHTML(String(value))}</li>`).join('')}</ul>`
     : `<p class="patient-empty-copy">${escapeHTML(emptyMessage)}</p>`;
+}
+
+function patientMetricRow(presentation) {
+  const cards = [];
+  if (presentation.pirs.score !== null) {
+    cards.push(`<div><small>PIRS</small><strong>${escapeHTML(presentation.pirs.value)}</strong><p>${escapeHTML(presentation.pirs.note)}</p></div>`);
+  }
+  if (presentation.assessmentRisk.score !== null) {
+    cards.push(`<div><small>RISK</small><strong>${escapeHTML(presentation.assessmentRisk.level)}</strong><p>${escapeHTML(`${presentation.assessmentRisk.value} assessment concern · ${presentation.assessmentRisk.urgency}`)}</p></div>`);
+  }
+  const severity = readableStatus(presentation.severity.value, 'Not assessed');
+  if (severity !== 'Not assessed') {
+    cards.push(`<div><small>SEVERITY</small><strong>${escapeHTML(severity)}</strong><p>${escapeHTML(presentation.severity.note)}</p></div>`);
+  }
+  if (presentation.confidence.available) {
+    cards.push(`<div><small>CONFIDENCE</small><strong>${escapeHTML(presentation.confidence.value)}</strong><p>${escapeHTML(presentation.confidence.note)}</p></div>`);
+  }
+  return cards.length ? `<section class="patient-quick-summary patient-metric-row" aria-label="Assessment metrics">${cards.join('')}</section>` : '';
 }
 
 function supportedExternalUrl(value) {
@@ -864,6 +899,7 @@ function renderPatientResult(data) {
   const technicalEvidence = $('#analysisPipeline');
   technicalEvidence?.remove();
   root.className = 'patient-result-content';
+  const metricRow = patientMetricRow(presentation);
   // The normalized contract is the only source for the patient-facing result
   // state. Legacy records without it take the conservative uncertain branch.
   if (!presentation.isPresentationCase && ['HEALTHY', 'UNCERTAIN'].includes(presentation.assessmentState)) {
@@ -882,7 +918,7 @@ function renderPatientResult(data) {
       : isQuestionnaire
         ? 'This is a summary of the answers you provided. It cannot identify a sweat-gland condition or select medicine or treatment.'
         : 'No product, medicine, or condition-specific treatment is shown until an assessment can establish a reliable result.';
-    root.innerHTML = `<section class="assessment-state-card ${isHealthy ? 'is-healthy' : 'is-uncertain'}"><div class="assessment-state-copy"><p class="eyebrow">${isHealthy ? 'APPEARANCE CHECK' : isQuestionnaire ? 'YOUR QUESTIONNAIRE' : 'IMAGE REVIEW'}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p><div class="assessment-state-next"><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(safetyNote)}</p></div><div class="progress-actions">${action}<button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></div></div><div class="assessment-state-visual">${visualMarkup}</div></section><section class="patient-technical" id="patientTechnicalSlot"></section>${stateProducts}`;
+    root.innerHTML = `<section class="assessment-state-card ${isHealthy ? 'is-healthy' : 'is-uncertain'}"><div class="assessment-state-copy"><p class="eyebrow">${isHealthy ? 'APPEARANCE CHECK' : isQuestionnaire ? 'YOUR QUESTIONNAIRE' : 'IMAGE REVIEW'}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p><div class="assessment-state-next"><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(safetyNote)}</p></div><div class="progress-actions">${action}<button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></div></div><div class="assessment-state-visual">${visualMarkup}</div></section>${metricRow}<section class="patient-technical" id="patientTechnicalSlot"></section>${stateProducts}`;
     if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
     root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
       details.addEventListener('toggle', () => {
@@ -917,14 +953,10 @@ function renderPatientResult(data) {
   const treatmentTopics = (presentationCase.treatment_topics || []).map(item => `<li><strong>${escapeHTML(item.name || 'Treatment topic')}</strong>${item.note ? ` — ${escapeHTML(item.note)}` : ''}</li>`).join('');
   const caseNotice = presentation.isPresentationCase ? `<section class="patient-presentation-notice"><p class="eyebrow">PRESENTATION MODE</p><strong>Pre-labelled teaching case</strong><p>${escapeHTML(presentationCase.notice || '')}</p></section>` : '';
   const teachingDetails = presentation.isPresentationCase ? `<section class="patient-why patient-teaching-details"><div><p class="eyebrow">TEACHING CASE DETAILS</p><h3>Pattern, symptoms and contributors</h3><strong>Visible pattern</strong>${patientList(presentationCase.visual_features, 'Reference image details are recorded in the teaching summary.')}<strong>Common symptoms</strong>${patientList(presentationCase.common_symptoms, 'Symptoms vary by the underlying condition.')}<strong>Common contributors / causes</strong>${patientList(presentationCase.common_contributors, 'Causes require clinical context and cannot be determined from this image.')}</div><div class="patient-what-next"><p class="eyebrow">CLINICAL CONTEXT</p><strong>Alternatives to exclude</strong>${patientList(presentationCase.differential_diagnoses, 'A clinician determines the actual diagnosis.')}<strong>Red flags</strong>${patientList(presentationCase.red_flags, 'Seek care if the concern changes, persists, or worries you.')}<p>These are teaching prompts, not patient-specific findings or a substitute for examination.</p></div></section>` : '';
-  const visualEvidence = presentation.visualEvidence || {};
-  const visualMetric = visualEvidence.available && Number.isFinite(visualEvidence.affected_area_percent)
-    ? { heading: 'VISUAL EXTENT', value: `${Math.round(visualEvidence.affected_area_percent)}%`, note: 'Contrast-based candidate region; not medical severity or segmentation.' }
-    : { heading: 'SYMPTOM SEVERITY', value: readableStatus(presentation.severity.value), note: presentation.severity.note };
   const riskSummary = presentation.assessmentRisk.score === null
     ? 'Risk score was not assessed for this input.'
     : `Assessment concern score: ${presentation.assessmentRisk.level} · ${presentation.assessmentRisk.score}/100. ${presentation.assessmentRisk.urgency}. This is not a disease probability or diagnosis.`;
-  root.innerHTML = `<section class="patient-result-hero"><div><p class="eyebrow">${escapeHTML(presentation.primaryLabel.toUpperCase())}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></div><div class="patient-quick-summary"><div><small>${escapeHTML(presentation.confidence.heading)}</small><strong>${escapeHTML(presentation.confidence.value)}</strong><p>${escapeHTML(presentation.confidence.note)}</p></div><div><small>${escapeHTML(visualMetric.heading)}</small><strong>${escapeHTML(visualMetric.value)}</strong><p>${escapeHTML(visualMetric.note)}</p></div><div><small>RISK SCORE</small><strong>${escapeHTML(presentation.assessmentRisk.value)}</strong><p>${escapeHTML(presentation.assessmentRisk.note)}</p></div></div></section>${caseNotice}${teachingDetails}${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><p class="eyebrow">IMPORTANT</p><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}<section class="patient-result-main"><div class="patient-visual-card"><p class="eyebrow">IMAGE / AI VISUALIZATION</p>${visualMarkup}</div><section class="patient-meaning"><p class="eyebrow">WHAT THIS MEANS</p><h3>${presentation.isPresentationCase ? escapeHTML(presentation.primaryTitle) : conditionFinding.name ? escapeHTML(conditionFinding.name) : 'A condition was not classified'}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></section></section><section class="patient-why"><div><p class="eyebrow">WHY THIS RESULT?</p><h3>Information considered</h3>${patientList(observations, 'The available assessment did not produce additional observations.')}</div><div class="patient-what-next"><p class="eyebrow">WHAT TO DO NEXT</p><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(riskSummary)}</p></div></section><section class="patient-guidance-grid"><article><p class="eyebrow">CARE PLAN</p><h3>${escapeHTML(carePlan.heading || 'General care guidance')}</h3><p>${escapeHTML(carePlan.next_step || 'No personalized care plan is currently available.')}</p><small>${escapeHTML(carePlan.routine_guardrail || recommendation.medicine_policy || '')}</small>${treatmentTopics ? `<div class="patient-medication-note"><strong>Treatment topics to discuss</strong><ul class="patient-result-list">${treatmentTopics}</ul><small>${escapeHTML(presentationCase.medication_notice || '')}</small></div>` : ''}</article><article><p class="eyebrow">YOUR ROUTINE</p><div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routineMorning, 'No morning routine is available.')}</div><div><strong>Evening</strong>${patientList(routineEvening, 'No evening routine is available.')}</div></div>${routineWeekly.length ? `<div class="patient-weekly"><strong>Follow-up</strong>${patientList(routineWeekly, '')}</div>` : ''}</article><article><p class="eyebrow">LIFESTYLE &amp; DIET</p><div class="patient-routine-columns"><div><strong>Supportive habits</strong>${patientList(recommendation.diet, 'Maintain a balanced diet. No specific dietary intervention was identified from this assessment.')}</div><div><strong>Supplements</strong>${patientList(recommendation.supplements, 'No supplement guidance is available.')}</div></div></article><article><p class="eyebrow">PRODUCT CATEGORIES TO DISCUSS</p><div class="patient-products">${products || '<p class="patient-empty-copy">General product categories can be explored from the Products page.</p>'}</div>${products ? `<p class="patient-affiliate-note">${escapeHTML(recommendation.affiliate_disclosure || 'Partner links are optional and never influence medical suitability or assessment results.')}</p>` : ''}</article></section><section class="patient-support-grid"><article><p class="eyebrow">${doctor.recommended ? 'PROFESSIONAL SUPPORT' : 'NEED PROFESSIONAL SUPPORT?'}</p><h3>${doctor.recommended ? 'Professional evaluation is recommended' : `Find a ${escapeHTML(String(presentationCase.doctor_specialty || doctor.specialty || 'dermatologist').toLowerCase())}`}</h3><p>${escapeHTML(presentation.isPresentationCase ? `For this teaching scenario, discuss the differential with a ${presentationCase.doctor_specialty}.` : doctor.recommended ? 'Your assessment suggests a clinician discussion would be useful.' : 'Search current nearby listings, then confirm credentials and availability directly.')}</p><button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></article><article><p class="eyebrow">TRACK PROGRESS</p><h3>${state.profile?.patient_id ? 'Continue your care journey' : 'Save your progress'}</h3><p>${escapeHTML(progress.summary || (state.profile?.patient_id ? 'Record a future check-in when there is a meaningful change.' : 'Create an account to save assessment metadata, routines, and future check-ins.'))}</p><button type="button" class="button primary" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Create account to track'} <span>→</span></button></article></section><section class="patient-technical" id="patientTechnicalSlot"></section>`;
+  root.innerHTML = `<section class="patient-result-hero"><div><p class="eyebrow">${escapeHTML(presentation.primaryLabel.toUpperCase())}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></div>${metricRow}</section>${caseNotice}${teachingDetails}${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><p class="eyebrow">IMPORTANT</p><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}<section class="patient-result-main"><div class="patient-visual-card"><p class="eyebrow">IMAGE / AI VISUALIZATION</p>${visualMarkup}</div><section class="patient-meaning"><p class="eyebrow">WHAT THIS MEANS</p><h3>${presentation.isPresentationCase ? escapeHTML(presentation.primaryTitle) : conditionFinding.name ? escapeHTML(conditionFinding.name) : 'A condition was not classified'}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></section></section><section class="patient-why"><div><p class="eyebrow">WHY THIS RESULT?</p><h3>Information considered</h3>${patientList(observations, 'The available assessment did not produce additional observations.')}</div><div class="patient-what-next"><p class="eyebrow">WHAT TO DO NEXT</p><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(riskSummary)}</p></div></section><section class="patient-guidance-grid"><article><p class="eyebrow">CARE PLAN</p><h3>${escapeHTML(carePlan.heading || 'General care guidance')}</h3><p>${escapeHTML(carePlan.next_step || 'No personalized care plan is currently available.')}</p><small>${escapeHTML(carePlan.routine_guardrail || recommendation.medicine_policy || '')}</small>${treatmentTopics ? `<div class="patient-medication-note"><strong>Treatment topics to discuss</strong><ul class="patient-result-list">${treatmentTopics}</ul><small>${escapeHTML(presentationCase.medication_notice || '')}</small></div>` : ''}</article><article><p class="eyebrow">YOUR ROUTINE</p><div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routineMorning, 'No morning routine is available.')}</div><div><strong>Evening</strong>${patientList(routineEvening, 'No evening routine is available.')}</div></div>${routineWeekly.length ? `<div class="patient-weekly"><strong>Follow-up</strong>${patientList(routineWeekly, '')}</div>` : ''}</article><article><p class="eyebrow">LIFESTYLE &amp; DIET</p><div class="patient-routine-columns"><div><strong>Supportive habits</strong>${patientList(recommendation.diet, 'Maintain a balanced diet. No specific dietary intervention was identified from this assessment.')}</div><div><strong>Supplements</strong>${patientList(recommendation.supplements, 'No supplement guidance is available.')}</div></div></article><article><p class="eyebrow">PRODUCT CATEGORIES TO DISCUSS</p><div class="patient-products">${products || '<p class="patient-empty-copy">General product categories can be explored from the Products page.</p>'}</div>${products ? `<p class="patient-affiliate-note">${escapeHTML(recommendation.affiliate_disclosure || 'Partner links are optional and never influence medical suitability or assessment results.')}</p>` : ''}</article></section><section class="patient-support-grid"><article><p class="eyebrow">${doctor.recommended ? 'PROFESSIONAL SUPPORT' : 'NEED PROFESSIONAL SUPPORT?'}</p><h3>${doctor.recommended ? 'Professional evaluation is recommended' : `Find a ${escapeHTML(String(presentationCase.doctor_specialty || doctor.specialty || 'dermatologist').toLowerCase())}`}</h3><p>${escapeHTML(presentation.isPresentationCase ? `For this teaching scenario, discuss the differential with a ${presentationCase.doctor_specialty}.` : doctor.recommended ? 'Your assessment suggests a clinician discussion would be useful.' : 'Search current nearby listings, then confirm credentials and availability directly.')}</p><button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></article><article><p class="eyebrow">TRACK PROGRESS</p><h3>${state.profile?.patient_id ? 'Continue your care journey' : 'Save your progress'}</h3><p>${escapeHTML(progress.summary || (state.profile?.patient_id ? 'Record a future check-in when there is a meaningful change.' : 'Create an account to save assessment metadata, routines, and future check-ins.'))}</p><button type="button" class="button primary" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Create account to track'} <span>→</span></button></article></section><section class="patient-technical" id="patientTechnicalSlot"></section>`;
   if (!hasAffiliateDestination) root.querySelector('.patient-affiliate-note')?.remove();
   const carePlanCard = root.querySelector('.patient-guidance-grid > article:first-child');
   if (carePlanCard && medicationInformation.notice) {
@@ -1022,6 +1054,7 @@ async function analyze() {
     $('#clinicalStatus').textContent = data.persistence === 'mysql' ? 'Saved to your local account · no image retained' : 'Guest result · not stored';
     $('#saveProgressButton').innerHTML = data.persistence === 'mysql' ? 'Refresh saved reports <span>→</span>' : 'Create account to save <span>→</span>';
     setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan); updateDoctorSupport(data.assessment_risk || data.assessment_result?.assessment_risk || data.risk, data.condition_intelligence?.doctor); renderPatientResult(data);
+    if (data.persistence === 'mysql' && state.profile?.patient_id) await loadProgress({ force: true });
     if (questionnaire) {
       $('#attentionLabel').textContent = 'Questionnaire summary';
       $('.result-footnote').textContent = 'Questionnaire inputs use a transparent contribution summary. Grad-CAM and image-region visualisation do not apply to tabular input.';
@@ -1483,6 +1516,8 @@ function updateDashboardIdentity() {
   const name = state.profile?.full_name?.trim().split(/\s+/)[0] || '';
   $('#dashboardUser').textContent = name;
   $('#dashboardUserGreeting').hidden = !name;
+  const profileButton = $('#topProfileButton');
+  if (profileButton) profileButton.textContent = state.profile?.patient_id ? 'Profile' : 'Create profile';
 }
 
 function assessmentConcernScore(analysis) {
@@ -1807,14 +1842,15 @@ async function deleteRoutine(routineId) {
 async function saveCheckin(event) {
   event.preventDefault();
   if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving check-ins.'); }
-  const submitButton = event.currentTarget.querySelector('[type="submit"]');
+  const form = event.currentTarget;
+  const submitButton = form.querySelector('[type="submit"]');
   if (submitButton.disabled) return;
   const file = $('#checkinImage').files[0];
   const payload = { routine_id: $('#checkinRoutine').value, checkin_date: $('#checkinDate').value, reported_trend: $('#checkinTrend').value, discomfort: $('#checkinDiscomfort').value, change: $('#checkinChange').value, note: $('#checkinNote').value };
   submitButton.disabled = true;
   try {
     const data = await requestJSON('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    event.currentTarget.reset(); $('#checkinDate').value = currentDate(); await loadProgress({ force: true });
+    form.reset(); $('#checkinDate').value = currentDate(); await loadProgress({ force: true });
     toast(file ? `${data.progress_label}. The comparison image was not stored.` : `${data.progress_label}. Check-in saved.`);
   } catch (error) { toast(error.message || 'Could not save this check-in.'); }
   finally { submitButton.disabled = false; }

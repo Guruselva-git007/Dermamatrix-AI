@@ -506,6 +506,7 @@ main { background: transparent; }
 .patient-result-hero > div:first-child h3 { margin: 8px 0 10px; color: var(--dm-ink); font-size: clamp(30px, 4vw, 40px); letter-spacing: -.06em; line-height: 1.04; }
 .patient-result-hero > div:first-child p:last-child { max-width: 610px; margin: 0; }
 .patient-quick-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--dm-line); border-radius: 14px; overflow: hidden; background: var(--dm-bg-soft); }
+.patient-metric-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .patient-quick-summary > div { min-width: 0; padding: 18px 16px; border-right: 1px solid var(--dm-line); }
 .patient-quick-summary > div:last-child { border-right: 0; }
 .patient-quick-summary small, .patient-result-content .eyebrow { color: var(--dm-blue); font: 600 9px/1.25 var(--dm-mono); letter-spacing: .11em; }
