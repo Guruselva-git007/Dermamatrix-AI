@@ -29,6 +29,14 @@ class LocalLauncherTests(unittest.TestCase):
         self.assertTrue((APP_ROOT / "Start DermaMatrix.command").stat().st_mode & 0o111)
         self.assertTrue((APP_ROOT / "scripts" / "install_macos_local_service.sh").stat().st_mode & 0o111)
 
+    def test_presentation_preflight_checks_the_canonical_runtime(self):
+        preflight = (APP_ROOT / "backend" / "scripts" / "check_local_stack.sh").read_text(encoding="utf-8")
+        self.assertIn("presentation preflight", preflight)
+        self.assertIn("status --porcelain", preflight)
+        self.assertIn("ham10000_resnet34_research.ptw", preflight)
+        self.assertIn("api/model-registry", preflight)
+        self.assertIn("listener on port", preflight)
+
     def test_assessment_progress_uses_the_four_rendered_stages(self):
         frontend = (APP_ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
         markup = (APP_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
