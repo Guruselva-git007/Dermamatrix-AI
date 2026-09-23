@@ -123,12 +123,15 @@ function toast(message) {
   clearTimeout(toast.timer); toast.timer = setTimeout(() => element.classList.remove('show'), 3200);
 }
 
-function selectArea(area) {
-  if (state.assessmentInFlight) return toast('Please wait for the current assessment to finish before changing the health area.');
+function selectArea(area, { userSelected = false } = {}) {
+  if (state.assessmentInFlight) { toast('Please wait for the current assessment to finish before changing the health area.'); return false; }
   const areaChanged = state.area !== area;
-  if (areaChanged) resetImage();
+  if (areaChanged) {
+    resetImage();
+    $('#imageConsent').checked = false;
+  }
   state.area = area;
-  updateAssessmentProgress(1);
+  updateAssessmentProgress(userSelected ? 2 : 1);
   transitionAssessment(AssessmentState.CATEGORY_SELECTED, `${area.toUpperCase()} SELECTED`);
   $$('.area-choice button').forEach(button => {
     const selected = button.dataset.area === area;
@@ -149,7 +152,16 @@ function selectArea(area) {
   $('#home p:last-child').textContent = sweat
     ? 'Complete a short questionnaire for a structured screening summary.'
     : 'Add a clear image for screening support and next-step guidance.';
-  $('#moduleStatus').textContent = capability?.user_message || labels.status;
+  const summaries = {
+    Skin: 'Add a clear skin photo for a quality check and practical next steps.',
+    Hair: 'Add a clear hair or scalp photo to review your concern.',
+    Nails: 'Add a clear nail photo to review your concern.',
+    Sweat: 'Answer a few questions to get a clear summary and next steps.',
+  };
+  $('#moduleStatusSummary').textContent = summaries[area];
+  $('#moduleStatusDetail').textContent = capability?.user_message || labels.status;
+  $('#moduleStatus details').open = false;
+  clearAssessmentConsentError();
   renderAreaSymptoms(area);
   $('#imageWorkflow').hidden = sweat;
   $('#sweatWorkflow').hidden = !sweat;
@@ -173,6 +185,7 @@ function selectArea(area) {
     updateImageContext();
   }
   transitionAssessment(AssessmentState.INPUT_REQUIRED, sweat ? 'QUESTIONNAIRE REQUIRED' : 'IMAGE REQUIRED');
+  return true;
 }
 
 function previewReadinessMessage(readiness) {
@@ -249,6 +262,8 @@ function setImage(file) {
   const supported = /\.(jpe?g|png|webp|avif)$/i.test(file?.name || '');
   if (!file || !supported) return toast('Choose a JPG, PNG, WEBP, or AVIF image.');
   if (file.size > 10 * 1024 * 1024) return toast('Choose an image smaller than 10 MB.');
+  $('#imageConsent').checked = false;
+  clearAssessmentConsentError();
   transitionAssessment(AssessmentState.UPLOADING, 'PREPARING IMAGE PREVIEW');
   if (state.imageUrl) URL.revokeObjectURL(state.imageUrl);
   const readinessToken = ++state.imageReadinessToken;
@@ -300,10 +315,49 @@ function openProfile() {
   form.elements.email_address.value = state.profile.email_address || '';
   form.elements.past_history.value = state.profile.past_history || '';
   form.elements.current_history.value = state.profile.current_history || '';
-  $('#profileModal').classList.add('show'); $('#profileModal').setAttribute('aria-hidden', 'false');
+  openDialog($('#profileModal'), 'input[name="full_name"]');
 }
-function closeProfile() { $('#profileModal').classList.remove('show'); $('#profileModal').setAttribute('aria-hidden', 'true'); }
-function closeResult() { $('#resultModal').classList.remove('show'); $('#resultModal').setAttribute('aria-hidden', 'true'); }
+const dialogOpeners = new WeakMap();
+function openDialog(dialog, initialFocus, opener = document.activeElement) {
+  dialogOpeners.set(dialog, opener);
+  dialog.classList.add('show');
+  dialog.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('dialog-open');
+  dialog.querySelector('.modal-card, .profile-card').scrollTop = 0;
+  dialog.querySelector(initialFocus)?.focus();
+}
+function closeDialog(dialog) {
+  if (!dialog.classList.contains('show')) return;
+  dialog.classList.remove('show');
+  dialog.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('dialog-open');
+  const opener = dialogOpeners.get(dialog);
+  if (opener?.isConnected && !opener.disabled && opener.getClientRects().length) opener.focus({ preventScroll: true });
+  dialogOpeners.delete(dialog);
+}
+function closeProfile() { closeDialog($('#profileModal')); }
+function closeResult() { closeDialog($('#resultModal')); }
+
+function clearAssessmentConsentError() {
+  const error = $('#consentError');
+  error.hidden = true;
+  error.textContent = '';
+  [$('#imageConsent'), $('#dermoscopyConsent')].forEach(input => {
+    input.removeAttribute('aria-invalid');
+    input.removeAttribute('aria-describedby');
+    input.closest('label')?.classList.remove('is-invalid');
+  });
+}
+
+function requireAssessmentConsent(input, message) {
+  const error = $('#consentError');
+  error.textContent = message;
+  error.hidden = false;
+  input.setAttribute('aria-invalid', 'true');
+  input.setAttribute('aria-describedby', 'consentError');
+  input.closest('label')?.classList.add('is-invalid');
+  input.focus();
+}
 
 function setAuthMessage(message = '', success = false) {
   const element = $('#authMessage');
@@ -529,7 +583,7 @@ function finishProcessing(succeeded = false) {
   if (modal) { modal.classList.remove('show'); modal.setAttribute('aria-hidden', 'true'); }
 }
 
-function showPage(page, { syncHistory = true } = {}) {
+function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   setNavigationOpen(false);
   const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings'];
   const target = allowed.includes(page) ? page : 'dashboard';
@@ -540,13 +594,14 @@ function showPage(page, { syncHistory = true } = {}) {
   if (target === 'progress' || target === 'dashboard') loadProgress();
   if (target === 'products') loadCommerceCatalog();
   if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
-  window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
+  if (scrollToTop) window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
 
 function startAreaAssessment(area) {
-  selectArea(area);
-  showPage('home');
-  window.setTimeout(() => $('#screenTitle')?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' }), 120);
+  if (!selectArea(area, { userSelected: true })) return;
+  showPage('home', { scrollToTop: false });
+  $('#screenTitle').focus({ preventScroll: true });
+  $('#screen').scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
 }
 
 function setNavigationOpen(open) {
@@ -1130,8 +1185,9 @@ function renderPatientResult(data) {
 async function analyze() {
   const sweat = state.area === 'Sweat';
   if (!sweat && !state.imageUrl) return;
-  if (!$('#imageConsent').checked) return toast('Confirm image consent before continuing.');
-  if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return toast('Confirm that the image is a dermatoscopic single-lesion photo.');
+  if (!$('#imageConsent').checked) return requireAssessmentConsent($('#imageConsent'), sweat ? 'Please confirm questionnaire consent to continue.' : 'Please confirm image consent to continue.');
+  if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return requireAssessmentConsent($('#dermoscopyConsent'), 'Please confirm this is a dermatoscopic single-lesion photo.');
+  clearAssessmentConsentError();
   const button = $('#analyzeButton');
   const requestId = ++state.assessmentRequestId;
   state.assessmentInFlight = true;
@@ -1203,7 +1259,7 @@ async function analyze() {
     const note = $('#concernNote').value.trim();
     const comparison = data.progress_comparison?.summary || 'Analysis metadata is saved for a registered profile. Uploaded images are not stored.';
     $('#progressText').textContent = note ? `Tracking note: “${note}” ${comparison}` : comparison;
-    showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
+    showResultTab('summary'); openDialog($('#resultModal'), '.modal-close', button);
   } catch (error) {
     if (requestId !== state.assessmentRequestId) return;
     finishProcessing(false);
@@ -1855,7 +1911,7 @@ function showSavedReport(assessmentId) {
   setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.assessment_risk || data.assessment_result?.assessment_risk || data.risk || {}, data.condition_intelligence?.doctor); renderPatientResult(data);
   $('#progressText').textContent = `Saved ${String(item.created_at).slice(0, 10)}. This report can support a clinician discussion; it does not confirm a diagnosis or treatment response.`;
   $('.result-footnote').textContent = 'This is a saved metadata report. The original image, visual candidate overlay, and Grad-CAM image were intentionally not retained.';
-  showResultTab('summary'); $('#resultModal').classList.add('show'); $('#resultModal').setAttribute('aria-hidden', 'false');
+  showResultTab('summary'); openDialog($('#resultModal'), '.modal-close');
 }
 
 async function downloadSavedReport(assessmentId) {
@@ -2033,7 +2089,7 @@ function updateImageContext() {
   renderImageCaptureTips();
 }
 
-$$('.area-choice button').forEach(button => { button.onclick = () => selectArea(button.dataset.area); });
+$$('.area-choice button').forEach(button => { button.onclick = () => selectArea(button.dataset.area, { userSelected: true }); });
 $$('[data-page-nav]').forEach(link => { link.onclick = event => { event.preventDefault(); showPage(link.dataset.pageNav); }; });
 $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(button.dataset.dashboardNav); });
 $$('[data-dashboard-area]').forEach(button => { button.onclick = () => startAreaAssessment(button.dataset.dashboardArea); });
@@ -2045,6 +2101,7 @@ const drop = $('#dropZone');
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
 drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
 $('#analyzeButton').onclick = analyze; $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
+[$('#imageConsent'), $('#dermoscopyConsent')].forEach(input => input.addEventListener('change', clearAssessmentConsentError));
 $$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab(button.dataset.resultTab); });
 $('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory;
 $('#useResultLocationButton').onclick = () => useNearbyLocation({ target: 'result' });
@@ -2080,6 +2137,18 @@ $('.menu-button').onclick = () => setNavigationOpen(!document.body.classList.con
 $('#navScrim').onclick = () => setNavigationOpen(false);
 window.addEventListener('resize', () => { if (window.innerWidth > 880) setNavigationOpen(false); });
 document.addEventListener('keydown', event => {
+  const activeDialog = $('#resultModal').classList.contains('show') ? $('#resultModal') : $('#profileModal').classList.contains('show') ? $('#profileModal') : null;
+  if (activeDialog && event.key === 'Tab') {
+    const focusable = [...activeDialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary')]
+      .filter(element => element.getClientRects().length && !element.closest('[hidden], .result-panel:not(.active)') && (element.tagName === 'SUMMARY' || !element.closest('details:not([open])')));
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (first && last) {
+      if (event.shiftKey && (document.activeElement === first || !activeDialog.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !activeDialog.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    }
+    return;
+  }
   if (document.body.classList.contains('nav-open') && event.key === 'Tab') {
     const focusable = [...$('.sidebar').querySelectorAll('a[href], button:not([disabled])')];
     const first = focusable[0];
@@ -2087,7 +2156,10 @@ document.addEventListener('keydown', event => {
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   }
-  if (event.key === 'Escape') { closeResult(); closeProfile(); if (document.body.classList.contains('nav-open')) setNavigationOpen(false); }
+  if (event.key === 'Escape') {
+    if (activeDialog) { event.preventDefault(); closeDialog(activeDialog); }
+    else if (document.body.classList.contains('nav-open')) setNavigationOpen(false);
+  }
 });
 $$('.product-tabs button').forEach(button => { button.onclick = () => { setProductFilter(button.dataset.filter); renderDiscoveryCatalog(); }; });
 $('#productSearch').oninput = renderDiscoveryCatalog;
@@ -2141,7 +2213,7 @@ async function initialiseApp() {
   // the guest workspace if this optional endpoint responds slowly.
   void loadModelCapabilities().then(() => {
     const message = state.modelCapabilities[state.area]?.user_message;
-    if (message) $('#moduleStatus').textContent = message;
+    if (message) $('#moduleStatusDetail').textContent = message;
   });
   resetRoutineForm();
   $('#checkinDate').value = currentDate();
