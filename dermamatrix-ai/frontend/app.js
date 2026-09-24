@@ -708,6 +708,7 @@ function normaliseAssessmentPresentation(data) {
   const presentationCase = data.presentation_case || result.presentation_case || null;
   const isPresentationCase = Boolean(presentationCase?.matched);
   const visualEvidence = result.visual_evidence || data.visual_evidence || {};
+  const imageFindings = result.canonical_evidence?.image_findings || data.canonical_evidence?.image_findings || result.image_findings || data.image_findings || {};
   const statusCode = assessmentStatus.code || (questionnaire ? 'QUESTIONNAIRE_ASSESSMENT' : classifier.available ? 'RESEARCH_ONLY' : 'MODEL_UNAVAILABLE');
   const resultState = String(result.result_state || '').toLowerCase();
   // A valid image can still reach an uncertain result when its declared area has
@@ -737,11 +738,12 @@ function normaliseAssessmentPresentation(data) {
     presentationCase,
     isPresentationCase,
     visualEvidence,
+    imageFindings,
     assessmentState,
     resultState,
     modelLimitedReview,
-    primaryLabel: isPresentationCase ? 'Education example' : questionnaire ? 'Questionnaire summary' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : modelLimitedReview ? 'Photo and context reviewed' : 'Reassess image',
-    primaryTitle: isPresentationCase ? presentationCase.teaching_label : questionnaire ? (cdss.title || 'Your sweat-pattern summary') : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : researchOnlyReview ? 'Your research screening review is ready' : modelLimitedReview ? 'Your screening summary is ready' : 'We need a clearer look',
+    primaryLabel: isPresentationCase ? 'Education example' : questionnaire ? 'Questionnaire summary' : assessmentState === 'HEALTHY' ? 'Healthy appearance' : hasClassifierFinding ? 'Possible condition' : imageFindings.available ? 'Image findings' : imageFindings.status === 'failed' ? 'Image findings unavailable' : modelLimitedReview ? 'Photo and context reviewed' : 'Reassess image',
+    primaryTitle: isPresentationCase ? presentationCase.teaching_label : questionnaire ? (cdss.title || 'Your sweat-pattern summary') : assessmentState === 'HEALTHY' ? `Your ${String(data.area || 'skin').toLowerCase()} looks healthy` : hasClassifierFinding ? (finding.name || prediction.label) : imageFindings.available ? 'Your image findings are ready' : imageFindings.status === 'failed' ? 'Image measurements were unavailable' : researchOnlyReview ? 'Your research screening review is ready' : modelLimitedReview ? 'Your screening summary is ready' : 'We need a clearer look',
     primaryDescription: isPresentationCase ? presentationCase.teaching_summary : hasClassifierFinding
       ? (likelihoodAvailable
         ? 'This research-only screening result is not a diagnosis and needs independent clinical assessment.'
@@ -753,7 +755,11 @@ function normaliseAssessmentPresentation(data) {
         : researchOnlyReview
           ? 'A research-only model reviewed this image, but its output is not calibrated or diagnostic. Use the next-step guidance and seek clinical care for symptoms, change, or anything that worries you.'
           : modelLimitedReview
-            ? 'Your image and selected area were reviewed, but this deployment has no condition classifier for that area. It cannot identify a condition from the photo; use the next-step guidance and seek clinical care for symptoms, change, or anything that worries you.'
+            ? imageFindings.available
+              ? 'DermaMatrix measured color, tone, and detail in this photo. These measurements cannot confirm their cause or diagnose a condition. Seek clinical care for symptoms, change, or anything that worries you.'
+              : imageFindings.status === 'failed'
+                ? 'The photo was received, but local image measurements could not be completed. The remaining summary uses only the details you reported and the image quality check.'
+                : 'Your image quality and selected area were reviewed, but this deployment has no condition classifier for that area. It cannot identify a condition from the photo; use the next-step guidance and seek clinical care for symptoms, change, or anything that worries you.'
             : unavailableDescription),
     confidence: {
       available: Boolean(likelihoodAvailable),
@@ -802,6 +808,8 @@ function normaliseAssessmentPresentation(data) {
           : cdss.next_step || carePlan.next_step || 'No next step is available for this check.',
     scope: isPresentationCase
       ? 'An exact supplied teaching file matched after you enabled Presentation case matching. Reference metadata is shown alongside the same assessment concern calculation; neither is a diagnosis or disease probability.'
+      : imageFindings.available
+        ? 'DermaMatrix measured this photo locally. No disease classifier or diagnosis was used; the assessment concern score remains based on its separate inputs.'
       : assessmentStatus.notice
         ? distinctStatusSummary(assessmentStatus.label || readableStatus(statusCode), assessmentStatus.notice)
       : questionnaire
@@ -882,6 +890,7 @@ function renderAnalysisDashboard(data) {
   const recommendation = data.recommendations || {};
   const segmentation = data.segmentation || {};
   const candidateRegion = data.candidate_region || {};
+  const imageFindings = presentation.imageFindings || {};
   const validation = data.input_validation || {};
   const uncertainty = classifier.uncertainty || {};
   const presentationCase = data.presentation_case || {};
@@ -927,6 +936,13 @@ function renderAnalysisDashboard(data) {
       ['Image quality', `${presentation.quality.value}${data.quality?.status ? ` · ${data.quality.status}` : ''}`],
       ['Preprocessing', pipeline.preprocessing],
       ['Category relevance', pipeline.category_relevance || validation.category_relevance],
+    ]),
+    technicalEvidenceSection('Local image findings', [
+      ['Mode', imageFindings.assessment_mode],
+      ['Source', imageFindings.source],
+      ['Method version', imageFindings.method_version],
+      ['Measured observations', imageFindings.observations?.length],
+      ['Completeness', data.assessment_completeness?.status || data.assessment_result?.assessment_completeness?.status],
     ]),
     technicalEvidenceSection('Segmentation and region', [
       ['Status', segmentationStatus],
@@ -975,8 +991,8 @@ function renderAnalysisDashboard(data) {
     ? `${questionnaireFeatures.length} questionnaire factors were considered.`
     : classifier.available
       ? 'A configured research-model path produced this result.'
-      : 'No condition classifier ran for this assessment.';
-  $('#analysisPipeline').innerHTML = `<details class="technical-details"><summary>AI Evidence &amp; Technical Details</summary><div class="technical-details-content"><div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(patientImageQuality(quality.value || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed')))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${isPresentationCase ? 'Exact supplied presentation file' : presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${isPresentationCase ? 'Pre-labelled teaching case' : classifier.available ? 'Research output available' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div>${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
+      : imageFindings.available ? `${imageFindings.observations?.length || 0} local image findings were measured. No condition classifier ran.` : 'No condition classifier ran for this assessment.';
+  $('#analysisPipeline').innerHTML = `<details class="technical-details"><summary>Image Evidence &amp; Technical Details</summary><div class="technical-details-content"><div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(patientImageQuality(quality.value || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed')))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${isPresentationCase ? 'Exact supplied presentation file' : presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${isPresentationCase ? 'Pre-labelled teaching case' : classifier.available ? 'Research output available' : imageFindings.available ? 'Local image-findings assessment' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div>${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
   const technicalDetails = $('#analysisPipeline .technical-details');
   technicalDetails?.addEventListener('toggle', () => {
     if (!technicalDetails.open) return;
@@ -1034,6 +1050,14 @@ function supportedExternalUrl(value) {
   }
 }
 
+function renderImageFindingsCard(review) {
+  if (!review || !review.status) return '';
+  if (!review.available) return `<section class="visual-review-card"><p class="eyebrow">IMAGE FINDINGS</p><h3>${review.status === 'failed' ? 'Image measurements unavailable' : 'Retake needed for detailed measurements'}</h3><p>${escapeHTML(review.notice || 'This image did not support detailed local measurements.')}</p></section>`;
+  const rows = (review.observations || []).map(row => `<li><div><strong>${escapeHTML(row.finding || 'Measured feature')}</strong><span>${escapeHTML(row.area || 'Photo region')} · measured locally</span></div><p>${escapeHTML(row.visible_evidence || '')}</p></li>`).join('');
+  const limits = [...(review.not_assessable || []), ...(review.photo_limitations || [])];
+  return `<section class="visual-review-card"><p class="eyebrow">DERMAMATRIX IMAGE FINDINGS</p><h3>Measurements from this photo</h3><p>${escapeHTML(review.summary || 'The submitted image was measured locally.')}</p>${rows ? `<ul class="visual-review-list">${rows}</ul>` : '<p>No detailed image features could be measured reliably.</p>'}${limits.length ? `<div class="visual-review-limits"><strong>What the photo cannot establish</strong><ul>${limits.map(item => `<li>${escapeHTML(item)}</li>`).join('')}</ul></div>` : ''}<small>${escapeHTML(review.notice || 'These are image measurements, not a diagnosis.')}</small></section>`;
+}
+
 function renderPatientResult(data) {
   const presentation = normaliseAssessmentPresentation(data);
   const result = data.assessment_result || {};
@@ -1050,6 +1074,7 @@ function renderPatientResult(data) {
   const imageQuality = presentation.quality.value;
   const conditionFinding = presentation.finding || {};
   const presentationCase = presentation.presentationCase || {};
+  const visualReviewCard = renderImageFindingsCard(presentation.imageFindings);
   const hasVisualExplanation = Boolean(attentionImage || (segmentation.available && segmentation.overlay));
   const hasImage = Boolean(!presentation.questionnaire && state.imageUrl);
   const reportedSymptoms = contextFactors.filter(factor => factor.type === 'reported_symptom').map(factor => factor.label);
@@ -1106,6 +1131,7 @@ function renderPatientResult(data) {
         ? 'This is a summary of the answers you provided. It cannot identify a sweat-gland condition or select medicine or treatment.'
         : 'No product, medicine, or condition-specific treatment is shown until an assessment can establish a reliable result.';
     root.innerHTML = `<section class="assessment-state-card ${isHealthy ? 'is-healthy' : 'is-uncertain'}"><div class="assessment-state-copy"><p class="eyebrow">${isHealthy ? 'APPEARANCE CHECK' : isQuestionnaire ? 'YOUR QUESTIONNAIRE' : 'IMAGE REVIEW'}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p><div class="assessment-state-next"><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(safetyNote)}</p></div><div class="progress-actions">${action}<button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></div></div><div class="assessment-state-visual">${visualMarkup}</div></section>${metricRow}<section class="patient-technical" id="patientTechnicalSlot"></section>${stateProducts}`;
+    if (visualReviewCard) root.querySelector('.assessment-state-card').insertAdjacentHTML('afterend', visualReviewCard);
     if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
     root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
       details.addEventListener('toggle', () => {
@@ -1150,6 +1176,7 @@ function renderPatientResult(data) {
     ? 'Risk score was not assessed for this input.'
     : `Assessment concern score: ${presentation.assessmentRisk.level} · ${presentation.assessmentRisk.score}/100. ${presentation.assessmentRisk.urgency}. This is not a disease probability or diagnosis.`;
   root.innerHTML = `<section class="patient-result-hero"><div><p class="eyebrow">${escapeHTML(presentation.primaryLabel.toUpperCase())}</p><h3>${escapeHTML(presentation.primaryTitle)}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></div>${metricRow}</section>${caseNotice}${teachingDetails}${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><p class="eyebrow">IMPORTANT</p><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}<section class="patient-result-main"><div class="patient-visual-card"><p class="eyebrow">IMAGE / AI VISUALIZATION</p>${visualMarkup}</div><section class="patient-meaning"><p class="eyebrow">WHAT THIS MEANS</p><h3>${presentation.isPresentationCase ? escapeHTML(presentation.primaryTitle) : conditionFinding.name ? escapeHTML(conditionFinding.name) : 'A condition was not classified'}</h3><p>${escapeHTML(presentation.primaryDescription)}</p></section></section><section class="patient-why"><div><p class="eyebrow">WHY THIS RESULT?</p><h3>Information considered</h3>${patientList(observations, 'The available assessment did not produce additional observations.')}</div><div class="patient-what-next"><p class="eyebrow">WHAT TO DO NEXT</p><strong>${escapeHTML(presentation.nextAction)}</strong><p>${escapeHTML(riskSummary)}</p></div></section><section class="patient-guidance-grid"><article><p class="eyebrow">CARE PLAN</p><h3>${escapeHTML(carePlan.heading || 'General care guidance')}</h3><p>${escapeHTML(carePlan.next_step || 'No personalized care plan is currently available.')}</p><small>${escapeHTML(carePlan.routine_guardrail || recommendation.medicine_policy || '')}</small>${treatmentTopics ? `<div class="patient-medication-note"><strong>Treatment topics to discuss</strong><ul class="patient-result-list">${treatmentTopics}</ul><small>${escapeHTML(presentationCase.medication_notice || '')}</small></div>` : ''}</article><article><p class="eyebrow">YOUR ROUTINE</p><div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routineMorning, 'No morning routine is available.')}</div><div><strong>Evening</strong>${patientList(routineEvening, 'No evening routine is available.')}</div></div>${routineWeekly.length ? `<div class="patient-weekly"><strong>Follow-up</strong>${patientList(routineWeekly, '')}</div>` : ''}</article><article><p class="eyebrow">LIFESTYLE &amp; DIET</p><div class="patient-routine-columns"><div><strong>Supportive habits</strong>${patientList(recommendation.diet, 'Maintain a balanced diet. No specific dietary intervention was identified from this assessment.')}</div><div><strong>Supplements</strong>${patientList(recommendation.supplements, 'No supplement guidance is available.')}</div></div></article><article><p class="eyebrow">PRODUCT CATEGORIES TO DISCUSS</p><div class="patient-products">${products || '<p class="patient-empty-copy">General product categories can be explored from the Products page.</p>'}</div>${products ? `<p class="patient-affiliate-note">${escapeHTML(recommendation.affiliate_disclosure || 'Partner links are optional and never influence medical suitability or assessment results.')}</p>` : ''}</article></section><section class="patient-support-grid"><article><p class="eyebrow">${doctor.recommended ? 'PROFESSIONAL SUPPORT' : 'NEED PROFESSIONAL SUPPORT?'}</p><h3>${doctor.recommended ? 'Professional evaluation is recommended' : `Find a ${escapeHTML(String(presentationCase.doctor_specialty || doctor.specialty || 'dermatologist').toLowerCase())}`}</h3><p>${escapeHTML(presentation.isPresentationCase ? `For this teaching scenario, discuss the differential with a ${presentationCase.doctor_specialty}.` : doctor.recommended ? 'Your assessment suggests a clinician discussion would be useful.' : 'Search current nearby listings, then confirm credentials and availability directly.')}</p><button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></article><article><p class="eyebrow">TRACK PROGRESS</p><h3>${state.profile?.patient_id ? 'Continue your care journey' : 'Save your progress'}</h3><p>${escapeHTML(progress.summary || (state.profile?.patient_id ? 'Record a future check-in when there is a meaningful change.' : 'Create an account to save assessment metadata, routines, and future check-ins.'))}</p><button type="button" class="button primary" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Create account to track'} <span>→</span></button></article></section><section class="patient-technical" id="patientTechnicalSlot"></section>`;
+  if (visualReviewCard) root.querySelector('.patient-result-hero').insertAdjacentHTML('afterend', visualReviewCard);
   if (!hasAffiliateDestination) root.querySelector('.patient-affiliate-note')?.remove();
   const carePlanCard = root.querySelector('.patient-guidance-grid > article:first-child');
   if (carePlanCard && medicationInformation.notice) {
@@ -1332,7 +1359,7 @@ function openDirectorySearch(locationValue, { appointment = false } = {}) {
   if (handoff) {
     handoff.classList.add('is-active');
     handoff.querySelector('strong').textContent = appointment ? 'Opening appointment options' : 'Opening nearby specialists';
-    handoff.querySelector('p').textContent = `Current ${searchFocus} listings near ${location} open in a new tab. Check the provider’s details and booking options before you decide.`;
+    handoff.querySelector('p').textContent = `Current ${searchFocus} listings near ${location} open in a new tab. Check the clinic’s details and booking options before you decide.`;
   }
   window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank', 'noopener,noreferrer');
 }
@@ -1850,7 +1877,7 @@ function reportClassification(summary) {
   const result = summary?.assessment_result || {};
   if (result.contract_version) {
     const condition = result.condition || {};
-    if (!condition.available || !condition.name) return 'Health check summary';
+    if (!condition.available || !condition.name) return (result.canonical_evidence?.image_findings || summary?.canonical_evidence?.image_findings || result.image_findings || summary?.image_findings)?.available ? 'Image-findings assessment' : 'Health check summary';
     return Number.isFinite(condition.estimated_likelihood)
       ? `${condition.name} · ${Math.round(condition.estimated_likelihood * 100)}% estimated likelihood`
       : `${condition.name} · research ranking only`;

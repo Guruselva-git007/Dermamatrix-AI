@@ -1,0 +1,76 @@
+"""Failure isolation and provenance checks for the real upload endpoint."""
+
+from __future__ import annotations
+
+import io
+import os
+import sys
+import unittest
+from unittest.mock import patch
+
+from PIL import Image, ImageDraw
+
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
+from app import app
+
+
+def upload(*, area: str = "Hair", context: str = "scalp", dermoscopy: bool = False):
+    image = Image.new("RGB", (620, 620), "#9e725f")
+    draw = ImageDraw.Draw(image)
+    for x in range(0, 620, 13):
+        draw.line((x, 0, x, 619), fill="#43332e", width=3)
+    data = io.BytesIO()
+    image.save(data, "PNG")
+    fields = {
+        "image": (io.BytesIO(data.getvalue()), "photo.png"),
+        "area": area, "image_context": context, "image_consent": "true",
+    }
+    if dermoscopy:
+        fields["dermoscopy_attestation"] = "true"
+    return app.test_client().post("/api/assessments", data=fields, content_type="multipart/form-data")
+
+
+class CanonicalEvidenceTests(unittest.TestCase):
+    def test_independent_component_failures_keep_real_findings(self):
+        for component, name in (
+            ("reported_symptom_severity", "severity"),
+            ("calculate_pirs", "pirs"),
+            ("extract_visual_candidate_region", "candidate_region"),
+        ):
+            with self.subTest(component=component), patch(f"app.{component}", side_effect=RuntimeError("test failure")):
+                result = upload().get_json()
+                evidence = result["canonical_evidence"]
+                self.assertEqual(evidence["component_status"][name], "failed")
+                self.assertEqual(evidence["assessment_type"], "IMAGE_FINDINGS")
+                self.assertTrue(evidence["visible_findings"])
+                self.assertEqual(result["assessment_result"]["canonical_evidence"], evidence)
+                if name == "severity":
+                    self.assertIsNone(result["assessment_result"]["severity"]["score"])
+                if name == "pirs":
+                    self.assertEqual(evidence["pirs"], {})
+
+    def test_image_processing_failure_does_not_fabricate_findings(self):
+        with patch("app.analyze_native_image", side_effect=RuntimeError("test failure")):
+            result = upload().get_json()
+        evidence = result["canonical_evidence"]
+        self.assertEqual(evidence["component_status"]["image_processing"], "failed")
+        self.assertEqual(evidence["visible_findings"], [])
+        self.assertEqual(evidence["measurements"], {})
+        self.assertEqual(evidence["assessment_type"], "LIMITED_EVIDENCE")
+
+    def test_scoped_model_and_segmentation_fail_independently(self):
+        with patch("app.segment_dermoscopic_lesion", side_effect=RuntimeError("test failure")), patch("app.classify_dermoscopic_lesion", side_effect=RuntimeError("test failure")):
+            result = upload(area="Skin", context="dermoscopic_lesion", dermoscopy=True).get_json()
+        evidence = result["canonical_evidence"]
+        self.assertNotEqual(result["quality"]["status"], "LOW_QUALITY")
+        self.assertEqual(evidence["component_status"]["segmentation"], "failed")
+        self.assertEqual(evidence["component_status"]["classification"], "failed")
+        self.assertIsNone(evidence["classification"]["condition"])
+        self.assertTrue(evidence["visible_findings"])
+
+
+if __name__ == "__main__":
+    unittest.main()

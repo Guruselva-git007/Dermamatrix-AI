@@ -305,16 +305,17 @@ def build_assessment_result(response: dict) -> dict:
     It is intentionally separate from ``disease_risk`` because no validated
     disease-risk model is configured in this deployment.
     """
+    canonical = response.get("canonical_evidence") or {}
     classifier = response.get("research_classifier") or {}
     intelligence = response.get("condition_intelligence") or {}
-    severity = response.get("severity") or {}
-    quality = response.get("quality") or {}
+    severity = canonical.get("severity") if canonical else response.get("severity") or {}
+    quality = canonical.get("image_quality") if canonical else response.get("quality") or {}
     validation = response.get("input_validation") or {}
     priority = response.get("risk") or {}
-    assessment_risk = response.get("assessment_risk") or {}
+    assessment_risk = canonical.get("assessment_risk") if canonical else response.get("assessment_risk") or {}
     cdss = response.get("clinical_decision_support") or {}
-    segmentation = response.get("segmentation") or {}
-    candidate = response.get("candidate_region") or {}
+    segmentation = canonical.get("segmentation") if canonical else response.get("segmentation") or {}
+    candidate = canonical.get("candidate_region") if canonical else response.get("candidate_region") or {}
     visual_evidence = response.get("visual_evidence") or {}
     presentation_case = response.get("presentation_case") or {}
     questionnaire = response.get("input_type") == "questionnaire"
@@ -369,6 +370,9 @@ def build_assessment_result(response: dict) -> dict:
             "notice": visual_evidence.get("notice") or candidate.get("notice") or candidate.get("message"),
             "scope": "Contrast-based candidate-region evidence only; it is not disease severity, anatomy detection, or segmentation.",
         },
+        "image_findings": canonical.get("image_findings") if canonical else response.get("image_findings") or {},
+        "canonical_evidence": canonical,
+        "assessment_completeness": response.get("assessment_completeness") or {},
         "disease_risk": {
             "available": False,
             "score": None,

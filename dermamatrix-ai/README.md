@@ -11,8 +11,10 @@ limits are documented in [docs/security.md](docs/security.md).
 
 ## What an uploaded image can do today
 
-- **Face, hair/scalp, nail, or ordinary skin photo:** image-usability feedback and a non-diagnostic discussion-priority based on what the user reports. It does not identify a deficiency or classify a disease.
+- **Face, ordinary skin, hair/scalp, or nail photo:** local image-quality and image-specific pixel measurements, plus a non-diagnostic discussion-priority based on reported concerns. Hair/scalp and nail images receive their own measured image-findings summary even without a condition classifier. These frame measurements do not establish anatomy, hair density, nail disease, or a diagnosis.
 - **Single, in-focus dermatoscopic skin-lesion image:** the optional HAM10000 ResNet-34 research model can show a research-label ranking and Grad-CAM attention after the user confirms the capture type. It shows an estimated likelihood only when a version-matched calibration artifact is configured. It is not lesion segmentation, a diagnosis, or clinical decision-making.
+
+Each accepted image is decoded and measured independently. The assessment first builds one canonical evidence record containing image findings, available scoped model output, reported context, and the status of each local component. Results, saved history, journey comparisons, and PDF reports use that record. A failed component remains unavailable while the other completed evidence is retained; generated reports do not retain source pixels, overlays, or masks.
 
 ### Presentation-case mode
 

@@ -38,6 +38,8 @@ from risk_service import normalise_reported_priority
 from risk_engine import RISK_ENGINE_VERSION, calculate_assessment_risk
 from segmentation_service import extract_visual_candidate_region, segment_dermoscopic_lesion, unavailable_candidate_region
 from sweat_service import sweat_questionnaire_result
+from native_image_findings import analyze_native_image, validate_assessment_completeness
+from canonical_evidence import build_image_evidence
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -533,17 +535,17 @@ def reported_priority(area: str, score: int, urgent_selected: bool) -> dict:
 def priority_payload(priority: dict, label: str) -> dict:
     """Keep the API's reported-concern priority separate from likelihood."""
     return {
-        "score": priority["score"],
-        "level": priority["level"],
-        "severity": priority["severity"],
+        "score": priority.get("score"),
+        "level": priority.get("level"),
+        "severity": priority.get("severity"),
         "label": label,
-        "professional_evaluation_recommended": priority["professional_evaluation_recommended"],
-        "urgent_attention_recommended": priority["urgent_attention_recommended"],
-        "version": priority["version"],
-        "method": priority["method"],
-        "thresholds": priority["thresholds"],
-        "validation_status": priority["validation_status"],
-        "factors": priority["factors"],
+        "professional_evaluation_recommended": priority.get("professional_evaluation_recommended"),
+        "urgent_attention_recommended": priority.get("urgent_attention_recommended"),
+        "version": priority.get("version"),
+        "method": priority.get("method"),
+        "thresholds": priority.get("thresholds"),
+        "validation_status": priority.get("validation_status", "unavailable"),
+        "factors": priority.get("factors", []),
     }
 
 
@@ -632,6 +634,9 @@ def stored_analysis_summary(response: dict) -> dict:
         "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
         "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}), "condition_intelligence": response.get("condition_intelligence", {}), "assessment_result": response.get("assessment_result", {}),
         "presentation_case": response.get("presentation_case"),
+        "image_findings": response.get("image_findings"),
+        "canonical_evidence": response.get("canonical_evidence"),
+        "assessment_completeness": response.get("assessment_completeness"),
         "image_stored": False,
     }
 
@@ -662,9 +667,11 @@ def versioned_progress_summary(connection: pymysql.Connection, user_id: int | No
     return build_progress_comparison(user_id=user_id, area=area, current=current, historical=historical, historical_count=historical_count)
 
 
-def clinician_first_care_plan(risk_score: int) -> dict:
+def clinician_first_care_plan(risk_score: int | None) -> dict:
     """Return safe next steps; never a diagnosis, prescription, or treatment plan."""
-    if risk_score >= 65:
+    if risk_score is None:
+        timing = "The assessment concern indicator was unavailable. Discuss persistent, changing, painful, or worrying symptoms with a qualified clinician."
+    elif risk_score >= 65:
         timing = "Avoid relying on app suggestions for a painful, rapidly changing, or severe concern; seek timely professional care."
     elif risk_score >= 40:
         timing = "Keep a simple, non-irritating routine and consider professional advice before changing products."
@@ -712,7 +719,7 @@ def model_registry():
     """Expose the capability source used by API and frontend status copy."""
     capabilities = public_capability_matrix()
     return jsonify({
-        "shared_components": ["input validation", "reported-concern priority", "care guidance", "progress metadata", "doctor-directory handoff"],
+        "shared_components": ["input validation", "local image findings", "reported-concern priority", "care guidance", "progress metadata", "doctor-directory handoff"],
         "health_area_workflows": public_workflows(),
         "capabilities": capabilities,
         "condition_knowledge": {"version": KNOWLEDGE_VERSION, "capability_matrix": model_capability_matrix()},
@@ -1439,7 +1446,14 @@ def create_assessment():
             message=route["error"], http_status=400, area=area,
             result_state="category_mismatch" if mismatch else "unsupported_image",
         )
-    model_output = run_screening_model(duration, discomfort, change, quality, image_features, urgent_concern)
+    component_failures = {}
+    component_attempts = {}
+    try:
+        model_output = run_screening_model(duration, discomfort, change, quality, image_features, urgent_concern)
+    except Exception:
+        component_failures["reported_priority"] = True
+        app.logger.exception("Reported priority calculation failed")
+        model_output = {"risk_score": None, "status": "unavailable"}
     can_run_research_model, research_reason = route["run_research_classifier"], route["notice"]
     assessment_metadata = model_metadata(SKIN_MODEL_ID if area == "Skin" else "hair-model-adapter" if area == "Hair" else "nail-model-adapter")
     validation = {
@@ -1469,50 +1483,101 @@ def create_assessment():
     # It is deliberately a contrast candidate region, not anatomy detection or
     # lesion segmentation. It gives the shared concern indicator an image
     # input even when no modality-specific disease model is configured.
-    candidate_region = (
-        extract_visual_candidate_region(image_bytes)
-        if route["status"] != "LOW_QUALITY"
-        else unavailable_candidate_region("Image quality is insufficient for a reliable visual candidate-region assessment.")
-    )
+    component_attempts["candidate_region"] = route["status"] != "LOW_QUALITY"
+    try:
+        candidate_region = (
+            extract_visual_candidate_region(image_bytes)
+            if component_attempts["candidate_region"]
+            else unavailable_candidate_region("Image quality is insufficient for a reliable visual candidate-region assessment.")
+        )
+    except Exception:
+        component_failures["candidate_region"] = True
+        app.logger.exception("Candidate-region processing failed")
+        candidate_region = unavailable_candidate_region("Candidate-region processing was unavailable for this photo.")
     segmentation = {"available": False, "status": "not_run", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": research_reason}
+    component_attempts["segmentation"] = bool(can_run_research_model)
+    component_attempts["classification"] = bool(can_run_research_model)
     if can_run_research_model:
-        segmentation = segment_dermoscopic_lesion(image_bytes)
-        research_classifier = classify_dermoscopic_lesion(image_bytes)
+        try:
+            segmentation = segment_dermoscopic_lesion(image_bytes)
+        except Exception:
+            component_failures["segmentation"] = True
+            app.logger.exception("Image segmentation failed")
+            segmentation = {"available": False, "status": "failed", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": "Segmentation was unavailable for this photo."}
+        try:
+            research_classifier = classify_dermoscopic_lesion(image_bytes)
+        except Exception:
+            component_failures["classification"] = True
+            app.logger.exception("Image classification failed")
+            research_classifier["reason"] = "The classifier was unavailable for this photo."
         if not research_classifier.get("available"):
             validation["classification_status"] = "RESEARCH_CLASSIFIER_NOT_AVAILABLE"
             validation["notice"] = "The image met the declared dermatoscopic research route, but no approved research-model weights are configured in this deployment. No condition label was generated."
     manual_symptoms = normalise_symptoms(area, request.form.getlist("symptoms"))
     previous_treatment = request.form.get("previous_treatment", "").strip()[:500]
-    risk_score = model_output["risk_score"]
-    priority = reported_priority(area, risk_score, urgent_concern)
-    severity = reported_symptom_severity(discomfort=discomfort, change=change, symptoms=manual_symptoms, urgent_selected=urgent_concern)
-    assessment_risk = assessment_concern_indicator(
-        area=area, classifier=research_classifier, severity=severity, duration=duration,
-        discomfort=discomfort, change=change, symptoms=manual_symptoms,
-        urgent_selected=urgent_concern, quality=quality, quality_status=image_features["status"],
-        validation=validation, segmentation=segmentation, candidate_region=candidate_region,
-    )
+    try:
+        priority = reported_priority(area, model_output["risk_score"], urgent_concern) if model_output.get("risk_score") is not None else {}
+    except Exception:
+        component_failures["reported_priority"] = True
+        app.logger.exception("Reported priority normalization failed")
+        priority = {}
+    try:
+        severity = reported_symptom_severity(discomfort=discomfort, change=change, symptoms=manual_symptoms, urgent_selected=urgent_concern)
+    except Exception:
+        component_failures["severity"] = True
+        app.logger.exception("Reported severity calculation failed")
+        severity = {}
+    try:
+        assessment_risk = assessment_concern_indicator(
+            area=area, classifier=research_classifier, severity=severity, duration=duration,
+            discomfort=discomfort, change=change, symptoms=manual_symptoms,
+            urgent_selected=urgent_concern, quality=quality, quality_status=image_features["status"],
+            validation=validation, segmentation=segmentation, candidate_region=candidate_region,
+        )
+    except Exception:
+        component_failures["assessment_risk"] = True
+        app.logger.exception("Assessment concern calculation failed")
+        assessment_risk = {}
     patient_context = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment)
     assessment_state = determine_assessment_state(input_type="image", quality={"status": image_features["status"]}, validation=validation, classifier=research_classifier)["state"]
-    cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk, assessment_state=assessment_state)
-    pirs = calculate_pirs(
-        area=area,
-        priority=priority,
-        # The intake-priority helper deliberately has no model confidence.
-        # Record an actual calibrated research likelihood only if a compatible
-        # image classifier has genuinely produced one.
-        model_confidence=(research_classifier.get("condition_likelihood") or {}).get("estimated_likelihood"),
-        image_quality=quality,
-        reported_factors=manual_symptoms,
+    component_attempts["pirs"] = priority.get("score") is not None
+    if component_attempts["pirs"]:
+        try:
+            pirs = calculate_pirs(
+                area=area, priority=priority,
+                model_confidence=(research_classifier.get("condition_likelihood") or {}).get("estimated_likelihood"),
+                image_quality=quality, reported_factors=manual_symptoms,
+            )
+        except Exception:
+            component_failures["pirs"] = True
+            app.logger.exception("PIRS calculation failed")
+            pirs = {}
+    else:
+        pirs = {}
+    try:
+        image_findings = analyze_native_image(image_bytes, area=area, quality_status=image_features["status"])
+    except Exception:
+        component_failures["image_processing"] = True
+        app.logger.exception("Native image analysis failed")
+        image_findings = {"available": False, "status": "failed", "assessment_mode": "LIMITED_EVIDENCE", "observations": [], "measurements": {}, "not_assessable": ["Local image measurements were unavailable for this photo."], "notice": "Image-specific findings could not be measured."}
+    quality_payload = {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}
+    reported_context = {"symptoms": manual_symptoms, "previous_treatment": previous_treatment, "duration": duration, "discomfort": discomfort, "change": change, "urgent_concern": urgent_concern}
+    canonical_evidence = build_image_evidence(
+        area=area, quality=quality_payload, validation=validation, findings=image_findings,
+        candidate=candidate_region, segmentation=segmentation, classifier=research_classifier,
+        reported_context=reported_context, severity=severity, pirs=pirs,
+        assessment_risk=assessment_risk, priority=priority,
+        attempted=component_attempts, failed=component_failures,
     )
+    cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk, assessment_state=assessment_state)
     assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
     user_id = None
     persistence = "mysql"
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
-        "quality": {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}, "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "assessment_risk": assessment_risk, "pirs": pirs, "screening": {"title": priority["title"], "summary": priority["summary"]},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": severity, "clinical_decision_support": cdss, "candidate_region": candidate_region, "visual_evidence": {"available": bool(candidate_region.get("reliable")), "affected_area_percent": candidate_region.get("affected_area_percent") if candidate_region.get("reliable") else None, "source": candidate_region.get("method") if candidate_region.get("reliable") else None, "notice": candidate_region.get("notice") or candidate_region.get("message")}, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region["method"] if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
-        "recommendations": build_recommendations(area, research_classifier, cdss=cdss, assessment_state=assessment_state), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(assessment_risk["score"]), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only",
+        "quality": canonical_evidence["image_quality"], "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "assessment_risk": canonical_evidence["assessment_risk"], "pirs": canonical_evidence["pirs"], "screening": {"title": priority.get("title", "Assessment details reviewed"), "summary": priority.get("summary", "A reported-concern priority was unavailable for this assessment.")},
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": canonical_evidence["severity"], "clinical_decision_support": cdss, "candidate_region": candidate_region, "visual_evidence": {"available": bool(candidate_region.get("reliable")), "affected_area_percent": candidate_region.get("affected_area_percent") if candidate_region.get("reliable") else None, "source": candidate_region.get("method") if candidate_region.get("reliable") else None, "notice": candidate_region.get("notice") or candidate_region.get("message")}, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region.get("method") if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
+        "recommendations": build_recommendations(area, research_classifier, cdss=cdss, assessment_state=assessment_state), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(assessment_risk.get("score")), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only", "canonical_evidence": canonical_evidence, "image_findings": canonical_evidence["image_findings"],
     }
     if area in {"Hair", "Nails"}:
         modality = "Hair/scalp" if area == "Hair" else "Nail"
@@ -1550,11 +1615,13 @@ def create_assessment():
         response["model_pipeline"]["presentation_case"] = "Exact SHA-256 match to an opt-in, pre-labelled teaching file; not AI inference."
         response["recommendations"] = presentation_case_recommendations(presentation_case, response["recommendations"])
         response["care_plan"] = presentation_case_care_plan(presentation_case)
+    response["model_pipeline"]["native_image_findings"] = response["image_findings"].get("method_version", "unavailable")
+    response["assessment_completeness"] = validate_assessment_completeness(response)
     # Guests get an ephemeral result. Authenticated requests persist under the
     # user resolved from the signed cookie, never from a submitted patient id.
-    if not session.get("user_id"):
+    if not session.get("user_id") or priority.get("score") is None:
         attach_condition_intelligence(response)
-        response["persistence"] = "not-persisted-guest"
+        response["persistence"] = "not-saved-incomplete-priority" if session.get("user_id") else "not-persisted-guest"
         response["progress_comparison"] = versioned_progress_summary(None, None, area, response)
         response["journey"] = response["progress_comparison"].get("journey")
         return jsonify(response)

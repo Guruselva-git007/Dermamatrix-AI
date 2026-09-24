@@ -31,7 +31,8 @@ def _model_signature(snapshot: dict) -> tuple[object, ...]:
 def _assessment_indicator(snapshot: dict) -> dict:
     """Prefer the versioned concern indicator; preserve legacy saved history."""
     result = snapshot.get("assessment_result") or {}
-    return snapshot.get("assessment_risk") or result.get("assessment_risk") or snapshot.get("risk") or {}
+    canonical = result.get("canonical_evidence") or snapshot.get("canonical_evidence") or {}
+    return canonical.get("assessment_risk") or snapshot.get("assessment_risk") or result.get("assessment_risk") or snapshot.get("risk") or {}
 
 
 def build_progress_comparison(*, user_id: int | None, area: str, current: dict, historical: list[dict], historical_count: int | None = None) -> dict:

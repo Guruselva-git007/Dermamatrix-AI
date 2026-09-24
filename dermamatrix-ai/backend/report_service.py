@@ -57,6 +57,8 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     result_urgency = result.get("urgency") or {}
     result_input = result.get("input") or {}
     result_visual_evidence = result.get("visual_evidence") or summary.get("visual_evidence") or {}
+    canonical = result.get("canonical_evidence") or summary.get("canonical_evidence") or {}
+    image_findings = canonical.get("image_findings") or result.get("image_findings") or summary.get("image_findings") or {}
     presentation_case = result.get("presentation") or summary.get("presentation_case") or {}
 
     buffer = io.BytesIO()
@@ -98,7 +100,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     outcome_label = {
         "HEALTHY": "No apparent concerns identified in the submitted image",
         "CONDITION": "Possible model-supported condition",
-        "UNCERTAIN": "Could not assess confidently",
+        "UNCERTAIN": "Image-findings assessment" if image_findings.get("available") else "Could not assess confidently",
     }.get(assessment_state, "Assessment state unavailable in this saved record")
     knowledge_finding = _text(
         reference_label or result_condition.get("name") or finding.get("name"),
@@ -182,6 +184,12 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Spacer(1, 1.5 * mm),
         Paragraph(_text((summary.get("explainability") or {}).get("notice") or (classification.get("explainability") or {}).get("explanation_text"), "No additional explainability artifact was retained."), note),
         Paragraph("Evidence and context", heading),
+        Paragraph("Local image findings", heading),
+        Paragraph(_text(image_findings.get("summary"), "No local image findings were retained for this record."), body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(_bullets([f"{item.get('finding', 'Finding')}: {item.get('visible_evidence', '')}" for item in image_findings.get("observations") or []]), body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(_bullets(image_findings.get("not_assessable")), note),
         Paragraph(f"<b>Possible finding:</b> {knowledge_finding}<br/>{knowledge_finding_note}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Reported context factors:</b><br/>{_bullets(reported_factors)}", body),
