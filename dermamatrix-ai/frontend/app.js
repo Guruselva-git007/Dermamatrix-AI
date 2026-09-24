@@ -1088,8 +1088,10 @@ function legacyConsumerResult(data = {}) {
     ],
     visible_findings: limited ? [] : (findings.observations || []).map(item => ({name: item.finding, detail: item.visible_evidence})),
     treatment_options: [], medication_information: recommendations.medication_information || {},
+    common_symptoms: recommendations.common_symptoms || [], possible_causes: recommendations.possible_causes || [],
+    care_steps: recommendations.care_steps || [], sources: recommendations.sources || [],
     routine: recommendations.routine || {}, diet: recommendations.diet || [], lifestyle: recommendations.lifestyle || [],
-    products: recommendations.products || recommendations.general_care_categories || [],
+    products: recommendations.general_care_categories?.length ? recommendations.general_care_categories : recommendations.products || [],
     professional_support: result.guidance?.doctor || data.condition_intelligence?.doctor || {},
   };
 }
@@ -1122,11 +1124,18 @@ function renderUnifiedConsumerResult(data) {
   const image = state.imageUrl
     ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>${visualExplanation}`
     : '<div class="patient-visual-empty"><strong>Image not retained</strong><p>Saved assessments keep their result and measurements, but not the original photo.</p></div>';
-  const products = (consumer.products || []).map(product => `<article class="patient-product"><div class="patient-product-top">${productPreviewMarkup(product, 'patient-product-preview')}<div><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || '')}</p></div></div>${commerceDestinationMarkup(product, 'patient-product-destination', 'Compare online')}</article>`).join('');
+  const products = (consumer.products || []).map(product => `<article class="patient-product"><div class="patient-product-top">${productPreviewMarkup(product, 'patient-product-preview')}<div><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || '')}</p></div></div><small>${escapeHTML(product.precautions || '')}</small>${commerceDestinationMarkup(product, 'patient-product-destination')}</article>`).join('');
   const findings = (consumer.visible_findings || []).map(item => `<li><strong>${escapeHTML(item.name || 'Measured detail')}</strong><span>${escapeHTML(item.detail || '')}</span></li>`).join('');
   const medication = consumer.medication_information || {};
   const treatment = consumer.treatment_options || [];
   const routine = consumer.routine || {};
+  const area = data.area || result.area || 'Skin';
+  const commonTopics = (consumer.common_symptoms || []).length || (consumer.possible_causes || []).length;
+  const medicationTopics = (medication.common_options || []).map(option => `<li><strong>${escapeHTML(option.name || '')}</strong><span>${escapeHTML(option.used_for || '')}</span></li>`).join('');
+  const sources = (consumer.sources || []).map(source => {
+    const url = supportedExternalUrl(source.url);
+    return url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(source.label || 'Care source')} ↗</a>` : '';
+  }).join('');
   const technicalEvidence = $('#analysisPipeline');
   technicalEvidence?.remove();
   let root = $('#patientResultContent');
@@ -1141,9 +1150,12 @@ function renderUnifiedConsumerResult(data) {
     ${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}
     <section class="consumer-panel"><p class="eyebrow">WHY THIS RESULT?</p>${patientList(consumer.why_this_result, 'Only the available image quality and your reported information could be reviewed.')}${retakeSuggested ? `<div class="consumer-retake"><strong>For a better photo</strong>${patientList(consumer.image_quality?.retake_guidance, '')}</div>` : ''}</section>
     ${findings ? `<section class="consumer-panel"><p class="eyebrow">VISIBLE IMAGE MEASUREMENTS</p><ul class="consumer-findings">${findings}</ul><small>These frame measurements cannot locate a condition or confirm its cause.</small></section>` : ''}
-    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">CARE &amp; NEXT STEPS</p><h3>${escapeHTML(carePlan.heading || 'Supportive care')}</h3><p>${escapeHTML(carePlan.next_step || result.guidance?.next_step || 'Track changes and seek professional advice for persistent or worrying symptoms.')}</p>${treatment.length ? patientList(treatment, '') : ''}${medication.available && medication.notice ? `<div class="patient-medication-note"><strong>Medication information</strong><p>${escapeHTML(medication.notice)}</p></div>` : ''}</article><article class="consumer-panel"><p class="eyebrow">YOUR ROUTINE</p><div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routine.morning, 'Keep care gentle and simple.')}</div><div><strong>Evening</strong>${patientList(routine.evening, 'Avoid irritating products.')}</div></div>${followUp.guidance ? `<div class="patient-weekly"><strong>Follow-up</strong><p>${escapeHTML(followUp.guidance)}</p></div>` : ''}</article></section>
-    <section class="consumer-panel"><p class="eyebrow">LIFESTYLE &amp; DIET</p>${patientList(consumer.lifestyle, 'Keep a simple routine and record meaningful changes.')}${consumer.diet?.length ? `<details><summary>Diet and wellbeing</summary>${patientList(consumer.diet, '')}</details>` : ''}</section>
-    <section class="consumer-panel"><p class="eyebrow">PRODUCTS</p>${products ? `<div class="patient-products">${products}</div>` : '<p>Product suggestions are deferred until the concern is clearer.</p>'}</section>
+    ${commonTopics ? `<section class="consumer-grid consumer-education-grid" aria-label="General ${escapeHTML(area.toLowerCase())} information"><article class="consumer-panel"><p class="eyebrow">COMMON ${escapeHTML(area.toUpperCase())} SYMPTOMS</p><p class="consumer-scope">Examples to watch for; these were not detected from your photo.</p>${patientList(consumer.common_symptoms, '')}</article><article class="consumer-panel"><p class="eyebrow">POSSIBLE CAUSES</p><p class="consumer-scope">General possibilities, not a diagnosis of your upload.</p>${patientList(consumer.possible_causes, '')}</article></section>` : ''}
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">${escapeHTML(area.toUpperCase())} CARE STEPS</p><h3>Practical care ideas</h3><p>${escapeHTML(carePlan.next_step || result.guidance?.next_step || 'Track changes and seek professional advice for persistent or worrying symptoms.')}</p>${patientList(consumer.care_steps?.length ? consumer.care_steps : treatment, 'Keep care gentle and monitor changes.')}${treatment.length ? `<div class="patient-medication-note"><strong>Model-supported treatment topics</strong>${patientList(treatment, '')}</div>` : ''}</article><article class="consumer-panel"><p class="eyebrow">YOUR ${escapeHTML(area.toUpperCase())} ROUTINE</p><div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routine.morning, 'Keep care gentle and simple.')}</div><div><strong>Evening</strong>${patientList(routine.evening, 'Avoid irritating products.')}</div></div>${routine.follow_up?.length ? `<div class="patient-weekly"><strong>Follow-up</strong>${patientList(routine.follow_up, '')}</div>` : followUp.guidance ? `<div class="patient-weekly"><strong>Follow-up</strong><p>${escapeHTML(followUp.guidance)}</p></div>` : ''}</article></section>
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">LIFESTYLE</p>${patientList(consumer.lifestyle, 'Keep a simple routine and record meaningful changes.')}</article><article class="consumer-panel"><p class="eyebrow">DIET &amp; NUTRITION</p>${patientList(consumer.diet, 'Eat a varied, balanced diet.')}</article></section>
+    <section class="consumer-panel"><p class="eyebrow">MEDICATION &amp; TREATMENT OPTIONS</p><p class="consumer-scope">Common options for specific symptoms, not a prescription or a conclusion from your photo.</p>${medicationTopics ? `<ul class="consumer-topic-list">${medicationTopics}</ul>` : '<p>Ask a clinician or pharmacist about treatment options for your symptoms.</p>'}<small>${escapeHTML(medication.consultation_notice || '')}</small></section>
+    <section class="consumer-panel"><p class="eyebrow">${escapeHTML(area.toUpperCase())} PRODUCTS TO EXPLORE</p><p class="consumer-scope">Area-based categories; check the label and suitability before buying.</p>${products ? `<div class="patient-products">${products}</div>` : '<p>Explore basic care products for this area with a pharmacist or clinician.</p>'}</section>
+    ${sources ? `<section class="consumer-panel consumer-sources"><p class="eyebrow">CARE INFORMATION SOURCES</p>${sources}</section>` : ''}
     <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">PROFESSIONAL SUPPORT</p><h3>${doctor.recommended ? 'A professional review is recommended' : 'Get help when you need it'}</h3><p>${escapeHTML(doctor.appointment || 'A dermatologist can review persistent, changing, painful, or worrying concerns.')}</p><button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></article><article class="consumer-panel"><p class="eyebrow">TRACK PROGRESS</p><h3>${state.profile?.patient_id ? 'Continue your care journey' : 'Save future check-ins'}</h3><p>Compare meaningful changes over time and keep your assessment history together.</p><button type="button" class="button primary" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Create account to track'} <span>→</span></button></article></section>
     <section class="patient-technical" id="patientTechnicalSlot"></section>`;
   if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
@@ -1611,18 +1623,20 @@ function commerceDestinationMarkup(product, className = 'catalog-destination', a
   const primary = commerce.primary || {};
   const destination = supportedExternalUrl(primary.url || product.url);
   const primaryLabel = actionLabel || (primary.is_affiliate ? `Visit ${primary.merchant || 'partner'}` : primary.destination_type === 'DIRECT_PRODUCT_URL' ? 'View product' : 'Compare online');
-  const action = destination
+  const isGoogleSearch = primary.destination_type === 'GOOGLE_SHOPPING_SEARCH';
+  const action = destination && !isGoogleSearch
     ? `<a class="patient-text-link" href="${escapeHTML(destination)}" target="_blank" rel="noopener noreferrer${primary.is_affiliate ? ' sponsored' : ''}">${escapeHTML(primaryLabel)} ↗</a>`
-    : '<button class="patient-text-link" type="button" data-result-action="products">Explore products →</button>';
+    : '';
   const marketplaceLinks = [primary, ...(commerce.alternatives || [])].filter(option => (
-    option.destination_type === 'AMAZON_SEARCH' || option.destination_type === 'FLIPKART_SEARCH'
+    option.destination_type === 'GOOGLE_SHOPPING_SEARCH' || option.destination_type === 'AMAZON_SEARCH' || option.destination_type === 'FLIPKART_SEARCH'
   )).map(option => {
     const url = supportedExternalUrl(option.url);
-    const label = option.merchant === 'Amazon India' ? 'Amazon' : 'Flipkart';
+    const label = option.destination_type === 'GOOGLE_SHOPPING_SEARCH' ? 'Google' : option.merchant === 'Amazon India' ? 'Amazon' : 'Flipkart';
     return url ? `<a class="commerce-marketplace-link" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">Search ${label} <span aria-hidden="true">↗</span></a>` : '';
   }).filter(Boolean).join('');
   const partnerNote = primary.is_affiliate ? '<small class="commerce-affiliate-label">Partner link · may earn commission</small>' : '';
-  return `<div class="${className}">${action}${partnerNote}${marketplaceLinks ? `<div class="commerce-marketplace-links" aria-label="Search this product on marketplaces">${marketplaceLinks}</div>` : ''}</div>`;
+  const fallback = !action && !marketplaceLinks ? '<button class="patient-text-link" type="button" data-result-action="products">Explore products →</button>' : '';
+  return `<div class="${className}">${action}${fallback}${partnerNote}${marketplaceLinks ? `<div class="commerce-marketplace-links" aria-label="Search this product on marketplaces">${marketplaceLinks}</div>` : ''}</div>`;
 }
 
 function consumerProductDescription(product) {

@@ -168,7 +168,7 @@ class AssessmentStateTests(unittest.TestCase):
         self.assertTrue(low_concern["general_care_categories"])
         self.assertIn("only the area you selected", low_concern["general_care_notice"])
         self.assertIn("skin", low_concern["routine"]["morning"][0].lower())
-        self.assertIn("scalp", build_recommendations("Hair", None, assessment_state="UNCERTAIN", canonical_evidence=evidence)["routine"]["morning"][0].lower())
+        self.assertIn("hair", build_recommendations("Hair", None, assessment_state="UNCERTAIN", canonical_evidence=evidence)["routine"]["morning"][0].lower())
         self.assertIn("nails", build_recommendations("Nails", None, assessment_state="UNCERTAIN", canonical_evidence=evidence)["routine"]["morning"][0].lower())
 
         for override in (
@@ -178,7 +178,30 @@ class AssessmentStateTests(unittest.TestCase):
         ):
             with self.subTest(override=override):
                 limited = build_recommendations("Skin", None, assessment_state="UNCERTAIN", canonical_evidence={**evidence, **override})
-                self.assertEqual(limited["general_care_categories"], [])
+                self.assertTrue(limited["general_care_categories"])
+                self.assertTrue(limited["care_steps"])
+                self.assertTrue(limited["medication_information"]["common_options"])
+
+    def test_every_image_area_has_usable_general_guidance(self):
+        for area in ("Skin", "Hair", "Nails"):
+            for quality, score in (("GOOD", 12), ("LOW_QUALITY", 12), ("GOOD", 75)):
+                with self.subTest(area=area, quality=quality, score=score):
+                    recommendations = build_recommendations(area, None, assessment_state="UNCERTAIN",
+                        canonical_evidence={"image_quality": {"status": quality},
+                                            "assessment_risk": {"score": score}})
+                    response = _response(classifier={"available": False},
+                                         quality={"status": quality, "issues": []})
+                    response["area"] = area
+                    response["recommendations"] = recommendations
+                    consumer = build_assessment_result(response)["consumer"]
+                    for field in ("common_symptoms", "possible_causes", "care_steps", "routine", "diet", "lifestyle", "products", "sources"):
+                        self.assertTrue(consumer[field], field)
+                    self.assertTrue(consumer["medication_information"]["common_options"])
+                    self.assertFalse(consumer["possible_conditions"])
+                    for product in consumer["products"]:
+                        destinations = [product["commerce"]["primary"], *product["commerce"]["alternatives"]]
+                        self.assertEqual({item["destination_type"] for item in destinations},
+                                         {"GOOGLE_SHOPPING_SEARCH", "AMAZON_SEARCH", "FLIPKART_SEARCH"})
 
     def test_clear_hair_and_nail_images_return_a_real_non_diagnostic_result(self):
         from app import app
@@ -210,3 +233,11 @@ class AssessmentStateTests(unittest.TestCase):
             self.assertEqual(result["input_validation"]["classification_status"], "NO_COMPATIBLE_CLASSIFIER_CONFIGURED")
             self.assertEqual(result["recommendations"]["products"], [])
             self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
+            consumer = result["assessment_result"]["consumer"]
+            self.assertTrue(consumer["common_symptoms"])
+            self.assertTrue(consumer["possible_causes"])
+            self.assertTrue(consumer["care_steps"])
+            self.assertTrue(consumer["diet"])
+            self.assertTrue(consumer["lifestyle"])
+            self.assertTrue(consumer["products"])
+            self.assertTrue(consumer["medication_information"]["common_options"])
