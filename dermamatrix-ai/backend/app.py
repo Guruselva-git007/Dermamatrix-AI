@@ -40,6 +40,7 @@ from segmentation_service import extract_visual_candidate_region, segment_dermos
 from sweat_service import sweat_questionnaire_result
 from native_image_findings import analyze_native_image, validate_assessment_completeness
 from canonical_evidence import build_image_evidence
+from condition_evidence_service import assess_condition_evidence
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -583,7 +584,6 @@ def assessment_concern_indicator(*, area: str, classifier: dict, severity: dict,
     display-only and intentionally cannot alter this score or its urgency.
     """
     classifier = classifier or {}
-    candidate_region = candidate_region or {}
     top_prediction = classifier.get("top_prediction") or {}
     likelihood = classifier.get("condition_likelihood") or {}
     uncertainty = classifier.get("uncertainty") or {}
@@ -594,10 +594,10 @@ def assessment_concern_indicator(*, area: str, classifier: dict, severity: dict,
         and likelihood.get("estimated_likelihood") is not None
         and uncertainty.get("status") != "LOW_CONFIDENCE"
     )
-    model_extent = (segmentation or {}).get("affected_area_percent")
-    candidate_extent = candidate_region.get("affected_area_percent") if candidate_region.get("reliable") else None
-    extent = model_extent if isinstance(model_extent, (int, float)) else candidate_extent
-    extent_source = "trained model segmentation" if isinstance(model_extent, (int, float)) else "contrast-based visual candidate-region extraction" if isinstance(candidate_extent, (int, float)) else None
+    model_extent = (segmentation or {}).get("affected_area_percent") if (segmentation or {}).get("available") else None
+    # Otsu contrast can describe a frame, but cannot measure affected anatomy.
+    extent = model_extent if isinstance(model_extent, (int, float)) else None
+    extent_source = "trained model segmentation" if extent is not None else None
     condition_name = top_prediction.get("condition") if classifier_available else None
     condition_source = "calibrated scoped research classifier" if classifier_available else None
     return calculate_assessment_risk(
@@ -1560,13 +1560,19 @@ def create_assessment():
         component_failures["image_processing"] = True
         app.logger.exception("Native image analysis failed")
         image_findings = {"available": False, "status": "failed", "assessment_mode": "LIMITED_EVIDENCE", "observations": [], "measurements": {}, "not_assessable": ["Local image measurements were unavailable for this photo."], "notice": "Image-specific findings could not be measured."}
+    try:
+        condition_evidence = assess_condition_evidence(category=area, image_findings=image_findings, validation=validation)
+    except Exception:
+        component_failures["condition_evidence"] = True
+        app.logger.exception("Condition evidence evaluation failed")
+        condition_evidence = {"status": "FAILED", "possible_concerns": [], "evidence_strength": None, "source": None}
     quality_payload = {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}
     reported_context = {"symptoms": manual_symptoms, "previous_treatment": previous_treatment, "duration": duration, "discomfort": discomfort, "change": change, "urgent_concern": urgent_concern}
     canonical_evidence = build_image_evidence(
         area=area, quality=quality_payload, validation=validation, findings=image_findings,
         candidate=candidate_region, segmentation=segmentation, classifier=research_classifier,
         reported_context=reported_context, severity=severity, pirs=pirs,
-        assessment_risk=assessment_risk, priority=priority,
+        assessment_risk=assessment_risk, priority=priority, condition_evidence=condition_evidence,
         attempted=component_attempts, failed=component_failures,
     )
     cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk, assessment_state=assessment_state)
@@ -1576,7 +1582,7 @@ def create_assessment():
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
         "quality": canonical_evidence["image_quality"], "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "assessment_risk": canonical_evidence["assessment_risk"], "pirs": canonical_evidence["pirs"], "screening": {"title": priority.get("title", "Assessment details reviewed"), "summary": priority.get("summary", "A reported-concern priority was unavailable for this assessment.")},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": canonical_evidence["severity"], "clinical_decision_support": cdss, "candidate_region": candidate_region, "visual_evidence": {"available": bool(candidate_region.get("reliable")), "affected_area_percent": candidate_region.get("affected_area_percent") if candidate_region.get("reliable") else None, "source": candidate_region.get("method") if candidate_region.get("reliable") else None, "notice": candidate_region.get("notice") or candidate_region.get("message")}, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region.get("method") if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": canonical_evidence["severity"], "clinical_decision_support": cdss, "candidate_region": candidate_region, "visual_evidence": {"available": bool(segmentation.get("available") and isinstance(segmentation.get("affected_area_percent"), (int, float))), "affected_area_percent": segmentation.get("affected_area_percent") if segmentation.get("available") else None, "source": "trained model segmentation" if segmentation.get("available") else None, "notice": segmentation.get("notice") or "Affected anatomy was not measured; contrast-region statistics remain technical image detail only."}, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region.get("method") if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
         "recommendations": build_recommendations(area, research_classifier, cdss=cdss, assessment_state=assessment_state), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(assessment_risk.get("score")), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only", "canonical_evidence": canonical_evidence, "image_findings": canonical_evidence["image_findings"],
     }
     if area in {"Hair", "Nails"}:

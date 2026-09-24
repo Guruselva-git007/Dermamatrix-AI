@@ -15,11 +15,18 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
                          findings: dict, candidate: dict, segmentation: dict,
                          classifier: dict, reported_context: dict, severity: dict,
                          pirs: dict, assessment_risk: dict, priority: dict,
+                         condition_evidence: dict,
                          attempted: dict, failed: dict) -> dict:
     """Record only outputs actually produced; unavailable components stay empty."""
     prediction = classifier.get("top_prediction") or {}
     likelihood = classifier.get("condition_likelihood") or {}
     classification_available = bool(classifier.get("available") and prediction.get("condition"))
+    calibrated_classification = bool(
+        classification_available and likelihood.get("available")
+        and likelihood.get("estimated_likelihood") is not None
+        and (classifier.get("calibration") or {}).get("available")
+        and (classifier.get("uncertainty") or {}).get("status") != "LOW_CONFIDENCE"
+    )
     ranked_predictions = classifier.get("top_predictions") or [] if classification_available else []
     # Retain reproducible metadata, never overlays or pixel masks in history.
     candidate_metadata = {key: value for key, value in candidate.items() if key not in {"overlay", "mask"}}
@@ -33,6 +40,7 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
         "pirs": component_status(pirs, attempted=attempted.get("pirs", False), failed=failed.get("pirs", False)),
         "assessment_risk": component_status(assessment_risk, attempted=True, failed=failed.get("assessment_risk", False)),
         "reported_priority": component_status(priority, attempted=True, failed=failed.get("reported_priority", False)),
+        "condition_evidence": component_status(condition_evidence, attempted=True, failed=failed.get("condition_evidence", False)),
     }
     if attempted.get("classification") and not failed.get("classification") and not classification_available:
         statuses["classification"] = "unavailable"
@@ -41,6 +49,8 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
     return {
         "version": "image-evidence-v1",
         "category": area,
+        "input_domain": "ATTESTED_DERMOSCOPY" if validation.get("workflow") == "skin-dermatoscopic-research" else "ORDINARY_PHOTO",
+        "domain_verification": "CAPTURE_ATTESTED_NOT_AUTOMATICALLY_VERIFIED" if validation.get("workflow") == "skin-dermatoscopic-research" else "USER_DECLARED_NOT_AUTOMATICALLY_VERIFIED",
         "image_quality": quality,
         "validation": validation,
         "classification": {
@@ -58,6 +68,7 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
         "candidate_region": candidate_metadata,
         "segmentation": segmentation_metadata,
         "reported_context": reported_context,
+        "condition_evidence": condition_evidence,
         "severity": severity,
         "pirs": pirs,
         "assessment_risk": assessment_risk,
@@ -68,6 +79,7 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
             "classification": classifier.get("model_id") if classification_available else None,
             "severity": severity.get("method") if severity.get("level") else None,
             "pirs": pirs.get("version") if pirs.get("score") is not None else None,
+            "condition_evidence": None,
         },
-        "assessment_type": "RESEARCH_CLASSIFICATION" if classification_available else "IMAGE_FINDINGS" if findings.get("available") else "LIMITED_EVIDENCE",
+        "assessment_type": "CLASSIFICATION_SUPPORTED" if calibrated_classification else "IMAGE_FINDINGS_WITH_RESEARCH_RANKING" if classification_available and findings.get("available") else "IMAGE_FINDINGS" if findings.get("available") else "LIMITED_EVIDENCE",
     }

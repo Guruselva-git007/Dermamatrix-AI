@@ -31,16 +31,17 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     """Create a concise, printable discussion brief from one stored assessment."""
     summary = assessment.get("summary") or {}
     result = summary.get("assessment_result") or {}
+    canonical = result.get("canonical_evidence") or summary.get("canonical_evidence") or {}
     screening = summary.get("screening") or {}
     risk = summary.get("risk") or {}
-    pirs = summary.get("pirs") or {}
-    quality = summary.get("quality") or {}
+    pirs = canonical.get("pirs") if canonical else summary.get("pirs") or {}
+    quality = canonical.get("image_quality") if canonical else summary.get("quality") or {}
     classification = summary.get("classification") or {}
     segmentation = summary.get("segmentation") or {}
     recommendations = summary.get("recommendations") or {}
     medication_information = summary.get("medication_information") or recommendations.get("medication_information") or {}
     care_plan = summary.get("care_plan") or {}
-    severity = summary.get("severity") or {}
+    severity = canonical.get("severity") if canonical else summary.get("severity") or {}
     cdss = summary.get("clinical_decision_support") or {}
     journey = summary.get("journey") or {}
     intelligence = summary.get("condition_intelligence") or {}
@@ -52,12 +53,11 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     result_condition = result.get("condition") or {}
     result_status = result.get("status") or {}
     result_severity = result.get("severity") or {}
-    result_risk = result.get("assessment_risk") or summary.get("assessment_risk") or {}
+    result_risk = canonical.get("assessment_risk") or result.get("assessment_risk") or summary.get("assessment_risk") or {}
     result_priority = result.get("care_priority") or {}
     result_urgency = result.get("urgency") or {}
     result_input = result.get("input") or {}
     result_visual_evidence = result.get("visual_evidence") or summary.get("visual_evidence") or {}
-    canonical = result.get("canonical_evidence") or summary.get("canonical_evidence") or {}
     image_findings = canonical.get("image_findings") or result.get("image_findings") or summary.get("image_findings") or {}
     presentation_case = result.get("presentation") or summary.get("presentation_case") or {}
 
@@ -104,7 +104,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     }.get(assessment_state, "Assessment state unavailable in this saved record")
     knowledge_finding = _text(
         reference_label or result_condition.get("name") or finding.get("name"),
-        "No finding shown because this assessment could not establish a model-supported condition.",
+        "No condition label established; image findings are listed below.",
     )
     knowledge_finding_note = _text(
         presentation_case.get("notice") if reference_label else result_condition.get("notice") or finding.get("label"),
@@ -118,6 +118,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     )
     severity_value = result_severity.get("level") or severity.get("level") or "Not assessed"
     severity_note = result_severity.get("notice") or severity.get("label") or "No symptom severity was assessed."
+    pirs_value = f"{pirs['score']}/100 · {_text(pirs.get('band'))}" if pirs.get("score") is not None else "Not assessed"
     input_quality = (result_input.get("quality") or {}).get("label") or quality.get("label")
     visual_evidence_value = (
         f"{round(float(result_visual_evidence['affected_area_percent']))}% of frame · {_text(result_visual_evidence.get('source'))}"
@@ -140,11 +141,12 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         [Paragraph("Assessment date", eyebrow), Paragraph(_text(created_at), body)],
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
         [Paragraph("Assessment outcome", eyebrow), Paragraph(_text(outcome_label), body)],
-        [Paragraph("Possible finding", eyebrow), Paragraph(knowledge_finding, body)],
+        [Paragraph("Result label", eyebrow), Paragraph(knowledge_finding, body)],
         [Paragraph("Estimated likelihood", eyebrow), Paragraph(_text(likelihood_value), body)],
         [Paragraph("Visual evidence", eyebrow), Paragraph(_text(visual_evidence_value), body)],
         [Paragraph("Assessment concern score", eyebrow), Paragraph(_text(assessment_risk_value), body)],
         [Paragraph("Reported symptom severity", eyebrow), Paragraph(f"{_text(severity_value)} · {_text(severity_note)}", body)],
+        [Paragraph("PIRS (reported-concern tracking)", eyebrow), Paragraph(_text(pirs_value), body)],
         [Paragraph("Care priority", eyebrow), Paragraph(f"{priority_value}<br/><font color='#5C6E80'>Reported concern priority, not disease risk.</font>", body)],
         [Paragraph("Urgency and next step", eyebrow), Paragraph(f"{_text(result_risk.get('urgency_label') or urgency_value)} · {_text(result_urgency.get('notice') or cdss.get('next_step'))}", body)],
         [Paragraph("Image / input readiness", eyebrow), Paragraph(_text(input_quality), body)],
@@ -190,7 +192,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(_bullets([f"{item.get('finding', 'Finding')}: {item.get('visible_evidence', '')}" for item in image_findings.get("observations") or []]), body),
         Spacer(1, 1.5 * mm),
         Paragraph(_bullets(image_findings.get("not_assessable")), note),
-        Paragraph(f"<b>Possible finding:</b> {knowledge_finding}<br/>{knowledge_finding_note}", body),
+        Paragraph(f"<b>Result label:</b> {knowledge_finding}<br/>{knowledge_finding_note}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Reported context factors:</b><br/>{_bullets(reported_factors)}", body),
         Spacer(1, 1.5 * mm),
@@ -283,15 +285,19 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
     analysis_rows = []
     for analysis in analyses[:50]:
         summary = analysis.get("summary") or {}
-        risk = summary.get("assessment_risk") or (summary.get("assessment_result") or {}).get("assessment_risk") or summary.get("risk") or {}
-        classifier = summary.get("classification") or summary.get("research_classifier") or {}
-        prediction = classifier.get("top_prediction") or {}
-        scope = prediction.get("condition") if classifier.get("available") else "Screening summary only"
+        result = summary.get("assessment_result") or {}
+        canonical = result.get("canonical_evidence") or summary.get("canonical_evidence") or {}
+        risk = canonical.get("assessment_risk") or result.get("assessment_risk") or summary.get("assessment_risk") or summary.get("risk") or {}
+        pirs = canonical.get("pirs") or summary.get("pirs") or {}
+        severity = canonical.get("severity") or summary.get("severity") or {}
+        condition = result.get("condition") or {}
+        scope = condition.get("name") if condition.get("available") else "Image findings" if (canonical.get("image_findings") or result.get("image_findings") or {}).get("available") else "Screening summary"
         analysis_rows.append([
             str(analysis.get("created_at", ""))[:10],
             str(analysis.get("area", "")),
             str(scope),
-            f"{risk.get('score', '—')}/100 · {risk.get('level', 'UNCERTAIN')}",
+            f"{risk['score']}/100" if risk.get("score") is not None else "Not assessed",
+            f"{pirs['score']}/100 · {severity.get('level', 'Not assessed')}" if pirs.get("score") is not None else f"Not assessed · {severity.get('level', 'Not assessed')}",
         ])
 
     routine_rows = [[str(item.get("condition_label", "")), str(item.get("routine_name", "")), str(item.get("start_date", "")), f"{item.get('checkin_count', 0)} check-ins"] for item in routines[:50]]
@@ -306,7 +312,7 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
         Paragraph("Saved screening summaries", heading),
         Paragraph("Assessment concern indicators are transparent project-defined estimates, not disease probabilities, diagnoses, or clinically validated medical-risk scores. A screening summary is not a confirmed diagnosis.", note),
         Spacer(1, 1.5 * mm),
-        compact_table(["Date", "Area", "Result scope", "Assessment score"], analysis_rows, [25 * mm, 24 * mm, 77 * mm, 44 * mm]),
+        compact_table(["Date", "Area", "Result scope", "Concern", "PIRS / severity"], analysis_rows, [24 * mm, 18 * mm, 54 * mm, 28 * mm, 46 * mm]),
         Paragraph("Routines", heading),
         compact_table(["Problem recorded", "Routine", "Started", "Tracking"], routine_rows, [47 * mm, 65 * mm, 28 * mm, 30 * mm]),
         Paragraph("Check-in timeline", heading),

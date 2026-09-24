@@ -58,19 +58,24 @@ class AssessmentRiskEngineTests(unittest.TestCase):
         self.assertEqual(clear["score"], uncertain["score"])
         self.assertIn("image-quality score", uncertain["calculation_inputs"]["missing_optional"])
 
-    def test_reliable_image_region_contributes_without_becoming_disease_severity(self):
+    def test_only_validated_segmented_extent_contributes_to_concern(self):
         without_region = indicator(condition_name="Acne", condition_source="calibrated scoped research classifier fixture")
-        smaller_region = indicator(
+        contrast_region = indicator(
             condition_name="Acne", condition_source="calibrated scoped research classifier fixture",
             affected_area_percent=12.0, affected_area_source="contrast-based visual candidate-region extraction",
         )
+        smaller_region = indicator(
+            condition_name="Acne", condition_source="calibrated scoped research classifier fixture",
+            affected_area_percent=12.0, affected_area_source="trained model segmentation",
+        )
         larger_region = indicator(
             condition_name="Acne", condition_source="calibrated scoped research classifier fixture",
-            affected_area_percent=52.0, affected_area_source="contrast-based visual candidate-region extraction",
+            affected_area_percent=52.0, affected_area_source="trained model segmentation",
         )
+        self.assertEqual(contrast_region["score"], without_region["score"])
         self.assertGreater(smaller_region["score"], without_region["score"])
         self.assertGreater(larger_region["score"], smaller_region["score"])
-        self.assertIn("contrast-based visual candidate-region extraction", larger_region["calculation_inputs"]["used"])
+        self.assertIn("trained model segmentation", larger_region["calculation_inputs"]["used"])
         self.assertIn("not a disease probability", larger_region["explanation"].lower())
 
     def test_sweat_remains_questionnaire_only(self):

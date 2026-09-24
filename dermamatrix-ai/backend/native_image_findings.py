@@ -107,7 +107,7 @@ def analyze_native_image(image_bytes: bytes, *, area: str, quality_status: str) 
             _finding("Fine image detail", "central 80% of photo", f"Adjacent-pixel brightness change averages {detail:.1f}/255. Hair strands, skin, clothing, and background can all contribute.", "adjacent_pixel_change"),
             _finding("Where contrast falls", "nine photo regions", f"The {darkest[0]} tile is darkest and the {brightest[0]} tile is brightest; their median brightness differs by {tile_span:.1f}/255.", "tile_median_span"),
         ]
-        summary = f"This hair/scalp photo has a {tonal_span:.0f}-point central light-dark range, with the darkest measured region at the {darkest[0]} of the frame."
+        summary = f"The photo submitted for a hair/scalp check has a {tonal_span:.0f}-point central light-dark range, with the darkest measured region at the {darkest[0]} of the frame."
     elif area == "Nails":
         observations = [
             _finding("Color variation", "central 80% of photo", f"Mean RGB color distance from the crop's median color is {color_deviation:.1f}, calculated from three 0–255 color channels. Surrounding fingers and background also contribute.", "color_deviation"),
@@ -115,7 +115,7 @@ def analyze_native_image(image_bytes: bytes, *, area: str, quality_status: str) 
             _finding("Local surface detail", "central 80% of photo", f"Adjacent-pixel brightness change averages {detail:.1f}/255. This describes image detail, not nail ridges or pits specifically.", "adjacent_pixel_change"),
             _finding("Distribution in the frame", "nine photo regions", f"The {darkest[0]} tile is darkest and the {brightest[0]} tile is brightest; their median brightness differs by {tile_span:.1f}/255.", "tile_median_span"),
         ]
-        summary = f"This nail photo has a {tonal_span:.0f}-point central lightness range and {color_deviation:.1f} mean RGB color distance from its median color."
+        summary = f"The photo submitted for a nail check has a {tonal_span:.0f}-point central lightness range and {color_deviation:.1f} mean RGB color distance from its median color."
     else:
         observations = [
             _finding("Tone variation", "central 80% of photo", f"Brightness spans {p10:.0f}–{p90:.0f} on a 0–255 scale, a {tonal_span:.1f}-point spread.", "luminance_p10_p90"),
@@ -123,7 +123,7 @@ def analyze_native_image(image_bytes: bytes, *, area: str, quality_status: str) 
             _finding("Local detail", "central 80% of photo", f"Adjacent-pixel brightness change averages {detail:.1f}/255. This can reflect skin texture, hair, shadows, or background.", "adjacent_pixel_change"),
             _finding("Distribution in the frame", "nine photo regions", f"The {darkest[0]} tile is darkest and the {brightest[0]} tile is brightest; their median brightness differs by {tile_span:.1f}/255.", "tile_median_span"),
         ]
-        summary = f"This skin photo has a {tonal_span:.0f}-point central lightness range, with the darkest measured region at the {darkest[0]} of the frame."
+        summary = f"The photo submitted for a skin check has a {tonal_span:.0f}-point central lightness range, with the darkest measured region at the {darkest[0]} of the frame."
 
     return {
         "available": True,

@@ -680,13 +680,14 @@ function distinctStatusSummary(label, notice) {
 
 function normaliseAssessmentPresentation(data) {
   const result = data.assessment_result || {};
+  const canonical = result.canonical_evidence || data.canonical_evidence || {};
   const assessmentStatus = result.status || {};
   const classifier = data.research_classifier || data.classification || {};
   const prediction = classifierPredictions(classifier)[0];
   const likelihood = classifier.condition_likelihood || {};
-  const severity = result.severity || data.severity || {};
+  const severity = canonical.severity || result.severity || data.severity || {};
   const priority = result.care_priority || data.risk || {};
-  const quality = result.input?.quality || data.quality || {};
+  const quality = canonical.image_quality || result.input?.quality || data.quality || {};
   const cdss = data.clinical_decision_support || {};
   const carePlan = result.guidance?.care_plan || data.care_plan || {};
   const finding = result.condition || data.condition_intelligence?.finding || {};
@@ -703,12 +704,12 @@ function normaliseAssessmentPresentation(data) {
     ? Number.isFinite(finding.estimated_likelihood)
     : Boolean(likelihood.available && Number.isFinite(prediction?.calibratedProbability));
   const likelihoodValue = result.contract_version ? finding.estimated_likelihood : prediction?.calibratedProbability;
-  const assessmentRisk = result.assessment_risk || data.assessment_risk || { available: false, score: null, level: 'NOT_ASSESSED', notice: 'Assessment concern indicator was not calculated.' };
-  const pirs = data.pirs || {};
+  const assessmentRisk = canonical.assessment_risk || result.assessment_risk || data.assessment_risk || { available: false, score: null, level: 'NOT_ASSESSED', notice: 'Assessment concern indicator was not calculated.' };
+  const pirs = canonical.pirs || data.pirs || {};
   const presentationCase = data.presentation_case || result.presentation_case || null;
   const isPresentationCase = Boolean(presentationCase?.matched);
   const visualEvidence = result.visual_evidence || data.visual_evidence || {};
-  const imageFindings = result.canonical_evidence?.image_findings || data.canonical_evidence?.image_findings || result.image_findings || data.image_findings || {};
+  const imageFindings = canonical.image_findings || result.image_findings || data.image_findings || {};
   const statusCode = assessmentStatus.code || (questionnaire ? 'QUESTIONNAIRE_ASSESSMENT' : classifier.available ? 'RESEARCH_ONLY' : 'MODEL_UNAVAILABLE');
   const resultState = String(result.result_state || '').toLowerCase();
   // A valid image can still reach an uncertain result when its declared area has
@@ -1816,13 +1817,17 @@ function renderDashboard() {
   const checkins = state.checkins || [];
   const latestAnalysis = analyses[0];
   const latestCheckin = checkins[0];
-  const latestRisk = latestAnalysis?.summary?.assessment_risk || latestAnalysis?.summary?.assessment_result?.assessment_risk || latestAnalysis?.summary?.risk;
-  const latestFinding = latestAnalysis?.summary?.condition_intelligence?.finding;
+  const latestEvidence = latestAnalysis?.summary?.assessment_result?.canonical_evidence || latestAnalysis?.summary?.canonical_evidence || {};
+  const latestRisk = latestEvidence.assessment_risk || latestAnalysis?.summary?.assessment_result?.assessment_risk || latestAnalysis?.summary?.assessment_risk || latestAnalysis?.summary?.risk;
   const snapshot = $('#dashboardSnapshot');
   if (snapshot) {
     const cards = [];
     if (latestAnalysis) {
-      const result = latestFinding?.name || latestAnalysis.summary?.classification?.top_prediction?.condition || 'Screening summary saved';
+      const savedResult = latestAnalysis.summary?.assessment_result || {};
+      const savedEvidence = latestEvidence;
+      const result = savedResult.condition?.available && savedResult.condition?.name
+        ? savedResult.condition.name
+        : savedEvidence.image_findings?.available ? 'Image findings saved' : 'Screening summary saved';
       cards.push(`<article class="snapshot-card"><span>◌</span><div><small>LATEST ASSESSMENT</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div><button class="text-button" data-dashboard-nav="progress">View →</button></article>`);
       cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>PERSONAL SCORE</small><strong>${latestRisk?.score === undefined || latestRisk?.score === null ? 'No score yet' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(readableStatus(latestRisk.level || 'recorded'))}`}</strong><p>Based on your latest saved check-in.</p></div></article>`);
     }

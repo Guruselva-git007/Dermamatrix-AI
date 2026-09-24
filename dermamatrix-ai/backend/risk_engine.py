@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-RISK_ENGINE_VERSION = "dermamatrix-assessment-risk-v1.2"
-RISK_METHOD = "Explainable weighted assessment-evidence model with visual candidate-region input"
+RISK_ENGINE_VERSION = "dermamatrix-assessment-risk-v1.3"
+RISK_METHOD = "Explainable weighted assessment-evidence model with validated segmented extent when available"
 RISK_THRESHOLDS = (
     (20, "LOW"),
     (40, "MILD"),
@@ -221,16 +221,15 @@ def calculate_assessment_risk(
     else:
         missing_inputs.append("optional area-relevant symptoms")
 
-    if isinstance(affected_area_percent, (int, float)):
+    if affected_area_source == "trained model segmentation" and isinstance(affected_area_percent, (int, float)):
         extent = max(0.0, min(100.0, float(affected_area_percent)))
         extent_points = 0 if extent < 5 else 3 if extent < 20 else 7 if extent < 45 else 11
         total += extent_points
-        extent_source = affected_area_source or "visual candidate-region extraction"
-        inputs_used.append(extent_source)
+        inputs_used.append(affected_area_source)
         if extent_points:
-            factors.append(_as_factor("visual_extent", f"Visual candidate region: {round(extent)}% of frame", extent_points, extent_source))
+            factors.append(_as_factor("visual_extent", f"Segmented region: {round(extent)}% of frame", extent_points, affected_area_source))
     else:
-        missing_inputs.append("reliable visual candidate-region extent")
+        missing_inputs.append("validated segmented extent")
 
     if area == "Sweat":
         pattern = str(questionnaire.get("pattern", "usual")).lower()

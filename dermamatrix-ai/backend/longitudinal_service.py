@@ -35,6 +35,25 @@ def _assessment_indicator(snapshot: dict) -> dict:
     return canonical.get("assessment_risk") or snapshot.get("assessment_risk") or result.get("assessment_risk") or snapshot.get("risk") or {}
 
 
+def _evidence_snapshot(snapshot: dict) -> dict:
+    """Keep the current journey view tied to the saved evidence record."""
+    result = snapshot.get("assessment_result") or {}
+    canonical = result.get("canonical_evidence") or snapshot.get("canonical_evidence") or {}
+    if not canonical:
+        return {}
+    classification = canonical.get("classification") or {}
+    return {
+        "evidence_version": canonical.get("version"),
+        "assessment_type": canonical.get("assessment_type"),
+        "condition": classification.get("condition") if canonical.get("assessment_type") == "CLASSIFICATION_SUPPORTED" else None,
+        "confidence": classification.get("confidence") if canonical.get("assessment_type") == "CLASSIFICATION_SUPPORTED" else None,
+        "visible_findings": canonical.get("visible_findings") or [],
+        "condition_evidence": canonical.get("condition_evidence") or {},
+        "severity": canonical.get("severity") or {},
+        "pirs": canonical.get("pirs") or {},
+    }
+
+
 def build_progress_comparison(*, user_id: int | None, area: str, current: dict, historical: list[dict], historical_count: int | None = None) -> dict:
     """Return one ongoing-query baseline/follow-up record from account-scoped data."""
     if not user_id:
@@ -45,7 +64,7 @@ def build_progress_comparison(*, user_id: int | None, area: str, current: dict, 
         return {
             "status": "BASELINE_CREATED",
             "summary": "This saved assessment is the baseline for an ongoing query. A future compatible assessment can report measurement changes, but the app does not infer healing or cure.",
-            "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": current.get("created_at"), "baseline_assessment_id": current.get("assessment_id"), "follow_up_count": 0},
+            "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": current.get("created_at"), "baseline_assessment_id": current.get("assessment_id"), "follow_up_count": 0, "evidence_snapshot": _evidence_snapshot(current)},
             "comparison": {"risk": "No earlier saved assessment concern indicator.", "likelihood": "No earlier compatible calibrated likelihood.", "images": "Source images are not retained for before/after comparison."},
         }
 
@@ -71,6 +90,6 @@ def build_progress_comparison(*, user_id: int | None, area: str, current: dict, 
     return {
         "status": "FOLLOW_UP_COMPARABLE" if compatibility == "COMPATIBLE" else "FOLLOW_UP_LIMITED",
         "summary": f"Follow-up saved. {risk_note} {likelihood_note}",
-        "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": baseline.get("created_at"), "baseline_assessment_id": baseline.get("assessment_id"), "follow_up_count": historical_count if historical_count is not None else len(historical), "comparison_compatibility": compatibility},
+        "journey": {"journey_id": journey_id, "type": "ONGOING_QUERY", "area": area, "baseline_date": baseline.get("created_at"), "baseline_assessment_id": baseline.get("assessment_id"), "follow_up_count": historical_count if historical_count is not None else len(historical), "comparison_compatibility": compatibility, "evidence_snapshot": _evidence_snapshot(current)},
         "comparison": {"risk_change": risk_change, "risk_kind": "assessment_concern_indicator", "likelihood_change": likelihood_change, "risk_engine_compatible": risk_compatible, "risk_methodology_version": current_version, "model_lineage_compatible": likelihood_compatible, "previous_assessment": previous.get("created_at"), "images": "Source images are not retained for before/after comparison."},
     }
