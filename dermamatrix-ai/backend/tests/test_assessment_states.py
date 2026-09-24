@@ -196,6 +196,10 @@ class AssessmentStateTests(unittest.TestCase):
                     consumer = build_assessment_result(response)["consumer"]
                     for field in ("common_symptoms", "possible_causes", "care_steps", "routine", "diet", "lifestyle", "products", "sources"):
                         self.assertTrue(consumer[field], field)
+                    self.assertGreaterEqual(len(consumer["diet"]), 10)
+                    self.assertGreaterEqual(len(consumer["lifestyle"]), 8)
+                    self.assertGreaterEqual(len(consumer["nutrition_sections"]), 4)
+                    self.assertGreaterEqual(len(consumer["lifestyle_sections"]), 3)
                     self.assertTrue(consumer["medication_information"]["common_options"])
                     self.assertFalse(consumer["possible_conditions"])
                     for product in consumer["products"]:
@@ -239,5 +243,7 @@ class AssessmentStateTests(unittest.TestCase):
             self.assertTrue(consumer["care_steps"])
             self.assertTrue(consumer["diet"])
             self.assertTrue(consumer["lifestyle"])
+            self.assertTrue(consumer["nutrition_sections"])
+            self.assertTrue(consumer["lifestyle_sections"])
             self.assertTrue(consumer["products"])
             self.assertTrue(consumer["medication_information"]["common_options"])

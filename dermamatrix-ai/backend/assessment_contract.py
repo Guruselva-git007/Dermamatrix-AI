@@ -307,6 +307,8 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "routine": recommendations.get("routine") or {},
         "diet": recommendations.get("diet") or [],
         "lifestyle": recommendations.get("lifestyle") or [],
+        "nutrition_sections": recommendations.get("nutrition_sections") or [],
+        "lifestyle_sections": recommendations.get("lifestyle_sections") or [],
         "products": recommendations.get("general_care_categories") or recommendations.get("products") or [],
         "sources": recommendations.get("sources") or [],
         "professional_support": (response.get("condition_intelligence") or {}).get("doctor") or {},

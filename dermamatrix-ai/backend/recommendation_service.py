@@ -26,6 +26,33 @@ AREA_MORNING_CARE = {
     "Nails": "Keep nails and surrounding skin clean and dry; avoid harsh scrubbing.",
 }
 
+EVERYDAY_NUTRITION = [
+    {"title": "Build a balanced day", "items": [
+        "Include a protein food at regular meals: beans, lentils, tofu, eggs, fish, poultry, dairy, or another food you enjoy.",
+        "Vary vegetables and fruit across the week; fresh, frozen, and cooked choices all count.",
+        "Choose whole grains often, and add nuts, seeds, or other unsaturated-fat foods when they fit your diet.",
+    ]},
+    {"title": "Fluids and supplements", "items": [
+        "Keep water accessible and drink according to thirst, activity, climate, and any advice for your health conditions.",
+        "Use food variety as the starting point; a skin, hair, or nail photo cannot identify a nutrient deficiency.",
+        "If your diet is restricted or you suspect a deficiency, discuss it and any supplements with a clinician or dietitian.",
+    ]},
+]
+
+EVERYDAY_LIFESTYLE = [
+    {"title": "Everyday foundations", "items": [
+        "Keep a regular sleep schedule; most adults need at least 7 hours of sleep each night.",
+        "Build movement into the week. For adults, a practical goal is 150 minutes of moderate activity, adjusted to ability.",
+        "Make room for stress relief that works for you, such as a walk, breathing break, or time with people you trust.",
+    ]},
+]
+
+EVERYDAY_CARE_SOURCES = [
+    {"label": "USDA: build balanced meals", "url": "https://www.myplate.gov/sites/default/files/2024-06/Tipsheet-1-Start-Simple-With-MyPlate.pdf"},
+    {"label": "CDC: sleep", "url": "https://www.cdc.gov/sleep/about/"},
+    {"label": "CDC: adult movement", "url": "https://www.cdc.gov/physical-activity-basics/guidelines/adults.html"},
+]
+
 # Area-based education is shown for every image, including an unclear photo or
 # a high-priority reported symptom. It describes common issues, never findings
 # inferred from that particular image. Sources are public patient guidance.
@@ -39,8 +66,29 @@ AREA_CARE_GUIDANCE = {
             "evening": ["Wash away sunscreen, sweat, and makeup with a gentle cleanser.", "Moisturise while skin is slightly damp; leave irritated spots alone."],
             "follow_up": ["Note new products and whether dryness, itching, breakouts, or color changes improve or worsen.", "Seek an in-person review for a rapidly changing, painful, bleeding, or persistent area."],
         },
-        "diet": ["Build regular meals around protein foods, vegetables or fruit, and whole grains.", "Drink enough fluids for your usual health needs; no single food reliably treats a skin condition.", "Avoid restrictive diets or supplements based on a photo; discuss suspected deficiencies with a clinician."],
-        "lifestyle": ["Avoid harsh exfoliation and repeated picking, which can worsen irritation or marks.", "Keep sun protection consistent; reapply sunscreen as the label directs when outdoors.", "Track changes after a new cosmetic, detergent, or skin product to help spot possible irritants."],
+        "nutrition_sections": [
+            {"title": "Food choices for skin", "items": [
+                "Add vitamin-C-rich produce such as citrus, guava, peppers, tomatoes, or broccoli; vitamin C supports normal collagen formation.",
+                "If breakouts are your concern, try replacing frequent sugary drinks and refined snacks with beans, oats, fruit, and vegetables; some people notice fewer breakouts with lower-glycemic choices.",
+                "Notice your own food triggers without cutting out entire food groups by default; diet alone does not clear every skin concern.",
+            ]},
+            {"title": "Simple meal ideas", "items": [
+                "Breakfast: oats with yogurt or fortified soy, fruit, and nuts; or eggs and whole-grain toast with fruit.",
+                "Lunch: dal or beans with roti or rice and a generous serving of vegetables.",
+                "Dinner: fish, tofu, paneer, or chickpeas with colorful vegetables and a whole grain.",
+            ]},
+        ],
+        "lifestyle_sections": [
+            {"title": "Skin-friendly habits", "items": [
+                "Use shade, clothing, and broad-spectrum SPF 30+ sunscreen when outdoors; reapply as directed.",
+                "Wash gently after heavy sweating and keep showers lukewarm if heat or dryness irritates your skin.",
+                "Avoid picking spots or scrubbing sensitive areas; use one new skin product at a time.",
+            ]},
+            {"title": "Notice what changes", "items": [
+                "Note new cosmetics, detergents, sun exposure, or friction if a rash or irritation recurs.",
+                "Use consistent lighting for future photos and seek care for rapid changes, bleeding, or persistent pain.",
+            ]},
+        ],
         "medication_topics": [
             {"name": "Benzoyl peroxide", "used_for": "An over-the-counter option for mild acne-type pimples; it may dry or irritate skin."},
             {"name": "Salicylic acid", "used_for": "An over-the-counter option often used for blackheads and clogged pores."},
@@ -50,6 +98,8 @@ AREA_CARE_GUIDANCE = {
         "sources": [
             {"label": "AAD: simple skin care", "url": "https://www.aad.org/public/everyday-care/skin-care-basics/care/skin-care-budget"},
             {"label": "AAD: acne treatment ingredients", "url": "https://www.aad.org/public/diseases/acne/diy/adult-acne-treatment"},
+            {"label": "AAD: diet and acne", "url": "https://www.aad.org/public/diseases/acne/causes/diet"},
+            {"label": "NIH: vitamin C", "url": "https://ods.od.nih.gov/factsheets/VitaminC-Consumer/"},
         ],
     },
     "Hair": {
@@ -61,8 +111,29 @@ AREA_CARE_GUIDANCE = {
             "evening": ["Wash the scalp when needed; apply shampoo to the scalp and conditioner mainly to hair lengths.", "Avoid sleeping with tight braids or styles that pull on the hairline."],
             "follow_up": ["Track shedding, new bald patches, persistent flakes, or scalp discomfort over several weeks.", "Arrange a review for sudden or patchy loss, pain, scarring, or persistent scalp symptoms."],
         },
-        "diet": ["Include protein foods such as eggs, lentils, beans, fish, dairy, or other preferred sources regularly.", "Include iron-containing foods and a varied mix of vegetables, fruit, nuts, and seeds.", "Avoid crash diets; discuss tests before taking iron, biotin, or other hair supplements."],
-        "lifestyle": ["Reduce tension from tight hairstyles and handle wet hair gently.", "Limit frequent heat styling or chemical treatments if strands are breaking.", "Record recent illness, stress, or medication changes to discuss if shedding persists."],
+        "nutrition_sections": [
+            {"title": "Nutrients for hair", "items": [
+                "Eat enough overall and include protein regularly; very low-calorie diets and too little protein or iron can contribute to shedding.",
+                "Pair iron-rich beans, lentils, spinach, meat, or seafood with vitamin-C foods such as citrus, guava, tomatoes, or peppers; vitamin C helps absorb plant iron.",
+                "Use nuts, seeds, beans, eggs, seafood, or meat for a mix of zinc and other nutrients rather than relying on a hair supplement.",
+            ]},
+            {"title": "Simple meal ideas", "items": [
+                "Breakfast: eggs or tofu with whole-grain toast and fruit; or oatmeal with milk or fortified soy and nuts.",
+                "Lunch: lentils or chickpeas with roti or rice, greens, and lemon or tomatoes.",
+                "Dinner: fish, chicken, tofu, or beans with vegetables; add a snack if meals are small or activity is high.",
+            ]},
+        ],
+        "lifestyle_sections": [
+            {"title": "Protect hair and scalp", "items": [
+                "Loosen styles that pull at the roots and change tight hairstyles if the hairline feels sore.",
+                "Limit high heat and harsh chemical treatments when hair is fragile; comb gently without tugging.",
+                "Cleanse the scalp as needed for your hair type, especially if sweat or oil builds up.",
+            ]},
+            {"title": "Track shedding patterns", "items": [
+                "Record recent illness, major stress, weight change, or new medicines if shedding starts or increases.",
+                "Seek a review for sudden patches, scalp pain, scarring, or persistent heavy shedding.",
+            ]},
+        ],
         "medication_topics": [
             {"name": "Dandruff shampoos", "used_for": "Ketoconazole or selenium sulfide shampoos are common options for persistent flakes; choose by label and pharmacist advice."},
             {"name": "Topical minoxidil", "used_for": "An option for some types of pattern hair loss, after the cause and suitability are reviewed."},
@@ -72,6 +143,7 @@ AREA_CARE_GUIDANCE = {
             {"label": "AAD: dandruff care", "url": "https://www.aad.org/public/everyday-care/hair-scalp-care/scalp/treat-dandruff"},
             {"label": "AAD: managing hair loss", "url": "https://www.aad.org/public/diseases/hair-loss/treatment/tips"},
             {"label": "AAD: pattern hair loss options", "url": "https://www.aad.org/public/diseases/hair-loss/treatment/male-pattern-hair-loss-treatment"},
+            {"label": "NIH: iron-rich foods", "url": "https://ods.od.nih.gov/factsheets/Iron-Consumer/"},
         ],
     },
     "Nails": {
@@ -83,8 +155,29 @@ AREA_CARE_GUIDANCE = {
             "evening": ["Check for new pain, swelling, color change, or lifting when you trim or clean nails.", "Moisturise cuticles and surrounding skin; keep nails short enough to avoid snagging."],
             "follow_up": ["Compare a changing nail as it grows out; record pain, spreading discoloration, or swelling.", "Ask a clinician or pharmacist about a persistent thick or discolored nail before treating it as fungus."],
         },
-        "diet": ["Eat regular, varied meals with protein foods, vegetables, fruit, and whole grains.", "Include iron and zinc food sources such as beans, lentils, meat, seafood, nuts, or seeds as suited to your diet.", "Skip high-dose biotin or iron for a nail change unless a clinician finds a reason; supplements are not a universal fix."],
-        "lifestyle": ["Use gloves for cleaning and frequent wet work; dry hands well afterward.", "Avoid nail biting, cuticle cutting, and repeated harsh polish removal.", "Keep footwear breathable and avoid sharing nail clippers or towels."],
+        "nutrition_sections": [
+            {"title": "Nutrients for nails", "items": [
+                "Include protein foods regularly alongside varied vegetables, fruit, and whole grains.",
+                "Include iron and zinc foods such as lentils, beans, meat, seafood, nuts, and seeds; add fruit or vegetables with vitamin C to plant-iron meals.",
+                "Foods such as eggs, fish, nuts, seeds, and some vegetables contain biotin; routine high-dose biotin pills have limited evidence for healthy nails.",
+            ]},
+            {"title": "Simple meal ideas", "items": [
+                "Breakfast: eggs or yogurt or fortified soy with fruit and whole grains.",
+                "Lunch: beans or lentils with vegetables, roti or rice, and lemon or tomatoes.",
+                "Dinner: fish, tofu, meat, or chickpeas with cooked greens and a whole grain; nuts or seeds make an easy snack.",
+            ]},
+        ],
+        "lifestyle_sections": [
+            {"title": "Protect nails daily", "items": [
+                "Wear gloves for repeated dishwashing or cleaning and dry hands well afterward.",
+                "Moisturise nails and surrounding skin after handwashing; trim nails and smooth snagged edges.",
+                "Avoid biting nails, cutting cuticles, or using nails as tools; take breaks from harsh manicures.",
+            ]},
+            {"title": "Foot and nail checks", "items": [
+                "Keep feet dry, change damp socks, and choose shoes that do not press on toenails.",
+                "Do not share clippers; note spreading discoloration, pain, lifting, or swelling for a clinician review.",
+            ]},
+        ],
         "medication_topics": [
             {"name": "Antifungal nail lacquer", "used_for": "A pharmacist may suggest this when a fungal nail infection is likely; treatment can take months."},
             {"name": "Prescription antifungal tablets", "used_for": "A clinician may consider these after assessing or testing a persistent fungal nail; monitoring and interactions matter."},
@@ -203,6 +296,8 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
     if product_guidance in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"}:
         products = catalog_for_area(area)
     guidance = AREA_CARE_GUIDANCE.get(area)
+    nutrition_sections = [*EVERYDAY_NUTRITION, *guidance["nutrition_sections"]] if guidance else []
+    lifestyle_sections = [*EVERYDAY_LIFESTYLE, *guidance["lifestyle_sections"]] if guidance else []
     # Educational categories are selected by the upload area alone. Urgent
     # symptoms still get an urgent alert; that does not erase basic care content.
     educational_products = [materialize_product(item) for item in PRODUCT_DISCOVERY_CATALOG
@@ -232,8 +327,10 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         "common_symptoms": guidance["common_symptoms"] if guidance else [],
         "possible_causes": guidance["possible_causes"] if guidance else [],
         "care_steps": guidance["care_steps"] if guidance else [],
-        "diet": guidance["diet"] if guidance else GENERAL_WELLBEING["diet"],
-        "lifestyle": guidance["lifestyle"] if guidance else GENERAL_WELLBEING["lifestyle"],
-        "sources": guidance["sources"] if guidance else [],
+        "nutrition_sections": nutrition_sections,
+        "lifestyle_sections": lifestyle_sections,
+        "diet": [item for section in nutrition_sections for item in section["items"]] if guidance else GENERAL_WELLBEING["diet"],
+        "lifestyle": [item for section in lifestyle_sections for item in section["items"]] if guidance else GENERAL_WELLBEING["lifestyle"],
+        "sources": [*guidance["sources"], *EVERYDAY_CARE_SOURCES] if guidance else [],
         "products": products,
     }
