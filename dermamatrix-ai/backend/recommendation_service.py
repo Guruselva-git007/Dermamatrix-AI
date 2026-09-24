@@ -20,6 +20,12 @@ GENERAL_WELLBEING = {
     "precautions": ["These are general wellbeing suggestions, not treatment for a detected disease.", "Seek professional care promptly for severe pain, rapid change, broken skin, fever, or if you feel unwell."],
 }
 
+AREA_MORNING_CARE = {
+    "Skin": "Cleanse gently if needed and use only products your skin tolerates.",
+    "Hair": "Cleanse the hair and scalp gently when needed, using products you tolerate.",
+    "Nails": "Keep nails and surrounding skin clean and dry; avoid harsh scrubbing.",
+}
+
 PRODUCT_CATALOG = [
     {"id": "barrier-moisturiser", "name": "Fragrance-free barrier moisturiser", "domain": "Skin", "category": "Skin care", "key_property": "Fragrance-conscious emollient", "purpose": "Supportive moisturising care for a gentle skin routine.", "precautions": "Check allergies and stop if irritation occurs.", "search_terms": "fragrance free barrier moisturiser", "tags": ["dry skin", "irritation", "barrier", "eczema"], "affiliate_env": "AFFILIATE_MOISTURISER_URL", "product_url_env": "PRODUCT_MOISTURISER_URL"},
     {"id": "sun-protection", "name": "Broad-spectrum sun protection", "domain": "Skin", "category": "Skin care", "key_property": "Broad-spectrum labelled protection", "purpose": "Everyday sun-protection product discovery for a routine discussion.", "precautions": "Not a treatment; choose a labelled product from a licensed seller.", "search_terms": "broad spectrum sunscreen", "tags": ["sun protection", "pigmentation", "hyperpigmentation", "melasma", "acne"], "affiliate_env": "AFFILIATE_SUNSCREEN_URL", "product_url_env": "PRODUCT_SUNSCREEN_URL"},
@@ -106,7 +112,8 @@ def search_product_discovery(query: str) -> list[dict]:
     })]
 
 
-def build_recommendations(area: str, research_classifier: dict | None, *, cdss: dict | None = None, assessment_state: str | None = None) -> dict:
+def build_recommendations(area: str, research_classifier: dict | None, *, cdss: dict | None = None,
+                          assessment_state: str | None = None, canonical_evidence: dict | None = None) -> dict:
     """Return state-aware education without turning an image into a prescription."""
     research_note = "No condition classification was run for this image type."
     if area == "Sweat":
@@ -121,6 +128,20 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         product_guidance = "HEALTHY_MAINTENANCE_ONLY"
     if product_guidance in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"}:
         products = catalog_for_area(area)
+    evidence = canonical_evidence or {}
+    concern = evidence.get("assessment_risk") or {}
+    image_quality = evidence.get("image_quality") or {}
+    findings = evidence.get("image_findings") or {}
+    concern_score = concern.get("score")
+    optional_general_care = (
+        assessment_state == "UNCERTAIN" and area in {"Skin", "Hair", "Nails"}
+        and findings.get("available") and image_quality.get("status") in {"GOOD", "ACCEPTABLE"}
+        and concern.get("available") and isinstance(concern_score, (int, float))
+        and concern_score < 40 and concern.get("urgency") == "SELF_CARE_MONITOR"
+    )
+    # These are category-only discovery ideas, never products selected from a
+    # photo, a condition label, or the contrast measurements.
+    general_care_categories = catalog_for_area(area, risk_score=int(concern_score)) if optional_general_care else []
     healthy = assessment_state == "HEALTHY"
     return {
         "scope": "Healthy-appearance maintenance education" if healthy else "General wellbeing and personal-care education",
@@ -128,6 +149,8 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         "medicine_policy": "No treatment or medicine is needed based on this assessment. This does not replace care for symptoms, a changing concern, or a clinician recommendation." if healthy else "No medicine, prescription treatment, dose, or diagnosis-specific product is suggested from an uploaded image. A normal-looking or usable image is not interpreted as a treatment decision.",
         "product_guidance": product_guidance,
         "product_notice": "Product choices are deferred until professional discussion because this assessment is uncertain or needs professional evaluation." if product_guidance == "DEFER_PRODUCT_DECISIONS" else "Optional everyday-care categories are shown for a healthy-appearance maintenance routine; they are not treatment products." if healthy else "Only general personal-care categories are shown; they are not selected from a diagnosis or research label.",
+        "general_care_categories": general_care_categories,
+        "general_care_notice": "These optional everyday-care categories match only the area you selected. The photo did not establish a condition or a product need; check suitability before use." if general_care_categories else "Product choices are deferred for this assessment. Seek professional advice for a concerning or changing symptom before choosing a product.",
         "medication_information": {
             "available": False,
             "status": "NO_MEDICATION_RECOMMENDATION",
@@ -136,5 +159,9 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         },
         "affiliate_disclosure": "Affiliate disclosure appears only when an approved partner URL is configured. It never changes analysis, medical suitability, or product ordering.",
         **GENERAL_WELLBEING,
+        "routine": {
+            **GENERAL_WELLBEING["routine"],
+            "morning": [AREA_MORNING_CARE.get(area, GENERAL_WELLBEING["routine"]["morning"][0]), *GENERAL_WELLBEING["routine"]["morning"][1:]],
+        },
         "products": products,
     }

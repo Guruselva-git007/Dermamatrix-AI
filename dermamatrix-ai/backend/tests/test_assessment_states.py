@@ -132,6 +132,29 @@ class AssessmentStateTests(unittest.TestCase):
         self.assertTrue(healthy["products"])
         self.assertIn("No treatment or medicine", healthy["medicine_policy"])
 
+    def test_real_photo_can_show_general_categories_without_condition_products(self):
+        evidence = {
+            "image_quality": {"status": "GOOD"},
+            "image_findings": {"available": True},
+            "assessment_risk": {"available": True, "score": 12, "urgency": "SELF_CARE_MONITOR"},
+        }
+        low_concern = build_recommendations("Skin", None, assessment_state="UNCERTAIN", canonical_evidence=evidence)
+        self.assertEqual(low_concern["products"], [])
+        self.assertTrue(low_concern["general_care_categories"])
+        self.assertIn("only the area you selected", low_concern["general_care_notice"])
+        self.assertIn("skin", low_concern["routine"]["morning"][0].lower())
+        self.assertIn("scalp", build_recommendations("Hair", None, assessment_state="UNCERTAIN", canonical_evidence=evidence)["routine"]["morning"][0].lower())
+        self.assertIn("nails", build_recommendations("Nails", None, assessment_state="UNCERTAIN", canonical_evidence=evidence)["routine"]["morning"][0].lower())
+
+        for override in (
+            {"assessment_risk": {"available": True, "score": 65, "urgency": "URGENT_EVALUATION"}},
+            {"image_quality": {"status": "LOW_QUALITY"}},
+            {"image_findings": {"available": False}},
+        ):
+            with self.subTest(override=override):
+                limited = build_recommendations("Skin", None, assessment_state="UNCERTAIN", canonical_evidence={**evidence, **override})
+                self.assertEqual(limited["general_care_categories"], [])
+
     def test_clear_hair_and_nail_images_return_a_real_non_diagnostic_result(self):
         from app import app
 

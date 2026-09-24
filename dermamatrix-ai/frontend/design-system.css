@@ -563,6 +563,9 @@ main { background: transparent; }
 .patient-product small { display: block; margin-top: 5px; color: var(--dm-faint); font-size: 11px; line-height: 1.4; }
 .patient-text-link { display: inline-flex; margin-top: 9px; padding: 0; border: 0; background: transparent; color: var(--dm-blue-strong); font: 600 12px var(--dm-font); text-decoration: none; cursor: pointer; }
 .patient-affiliate-note { margin: 14px 0 0; color: var(--dm-faint); font-size: 11px; }
+.patient-product-scope { margin: 13px 0 0 !important; color: var(--dm-muted); font-size: 12px !important; }
+.patient-products-link { margin-top: 14px; }
+.patient-what-next > .button { margin-top: 16px; }
 .patient-medication-note { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--dm-line); }
 .patient-medication-note strong { color: var(--dm-ink); font-size: 12px; }
 .patient-medication-note p { margin: 6px 0 0 !important; color: var(--dm-muted); font-size: 12px; line-height: 1.45; }

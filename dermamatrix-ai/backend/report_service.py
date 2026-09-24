@@ -133,8 +133,9 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     references = [reference.get("title", "Source") for reference in (intelligence.get("knowledge") or {}).get("references") or []]
     product_discovery = [
         f"{product.get('name', 'Care category')}: {product.get('purpose', 'General personal-care discovery.')}"
-        for product in recommendations.get("products") or []
+        for product in (recommendations.get("products") or recommendations.get("general_care_categories") or [])
     ]
+    product_scope = recommendations.get("product_notice") if recommendations.get("products") else recommendations.get("general_care_notice")
 
     rows = [
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
@@ -215,7 +216,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Medication information:</b> {_text(medication_information.get('notice'), 'No medication recommendation is generated from this assessment.')} {_text(medication_information.get('consultation_notice'), 'Discuss medication decisions with a qualified doctor or pharmacist.')}", body),
         Spacer(1, 1.5 * mm),
-        Paragraph(f"<b>General product discovery:</b><br/>{_bullets(product_discovery)}", body),
+        Paragraph(f"<b>General product discovery:</b><br/>{_bullets(product_discovery)}<br/>{_text(product_scope, 'No product need was established from this assessment.')}", body),
         Paragraph(f"<b>Ongoing query:</b> {_text(journey.get('journey_id'), 'Not saved as an ongoing query')} · baseline {_text(journey.get('baseline_date'))}", note),
         Paragraph("Important safety notice", heading),
         Paragraph("This educational college-project prototype is not a medical device. It does not diagnose disease, prescribe medicine, or replace a registered medical practitioner. Discuss new routines, products, supplements, symptoms, and treatment decisions with a qualified clinician or pharmacist.", body),
