@@ -11,7 +11,7 @@ explainability artifact when an underlying service did not produce one.
 from __future__ import annotations
 
 
-ASSESSMENT_RESULT_VERSION = "assessment-result-v1.5"
+ASSESSMENT_RESULT_VERSION = "assessment-result-v1.6"
 ASSESSMENT_STATES = frozenset({"HEALTHY", "CONDITION", "UNCERTAIN"})
 # This is intentionally a small, closed vocabulary.  It is the terminal
 # outcome for an image attempt, not a diagnosis, image-category model score,
@@ -217,6 +217,100 @@ def _condition(classifier: dict, intelligence: dict, assessment_state: str) -> d
     }
 
 
+def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality: dict,
+                     classifier: dict, assessment_risk: dict, severity: dict) -> dict:
+    """One display contract for every image route; legacy fields stay intact.
+
+    Frame measurements are deliberately described as frame measurements. An
+    opt-in reference-file match is provenance, never patient image evidence.
+    """
+    area = response.get("area") or "Skin"
+    findings = response.get("image_findings") or {}
+    observations = findings.get("observations") or []
+    measurements = findings.get("measurements") or {}
+    little_measurable_detail = bool(measurements and
+        measurements.get("tonal_span", 100) < 8 and
+        measurements.get("color_deviation", 100) < 5 and
+        measurements.get("adjacent_pixel_change", 100) < 2)
+    reported = (response.get("canonical_evidence") or {}).get("reported_context") or {}
+    quality_limited = terminal["state"] == "poor_quality"
+    calibrated = (classifier.get("condition_likelihood") or {}).get("available") is True
+    likelihood = (classifier.get("condition_likelihood") or {}).get("estimated_likelihood")
+    model_supported = bool(condition.get("available") and calibrated and isinstance(likelihood, (int, float))
+                           and 0 <= likelihood <= 1 and
+                           (classifier.get("uncertainty") or {}).get("ood_status") != "OUT_OF_DISTRIBUTION")
+    if quality_limited:
+        state, title = "quality_limited", "Image quality limits assessment"
+        summary = "A clearer photo is needed to review visible detail. Your reported concerns still inform care priority."
+    elif terminal["state"] == "healthy":
+        state, title = "normal_or_low_concern", "No significant abnormal pattern identified"
+        summary = "A validated normal-appearance signal was returned for this image. Keep watching any symptoms or changes."
+    elif model_supported:
+        state, title = "supported_model_prediction", condition["name"]
+        summary = "A scoped image model produced this result. A clinician can assess its meaning alongside symptoms and examination."
+    elif little_measurable_detail:
+        state, title = "insufficient_evidence", "Photo detail is limited"
+        summary = "The measured area shows little visible variation. A closer, clearer view may help if the area of concern is outside the centre."
+    elif findings.get("available") and observations:
+        state = "image_observation"
+        title = {"Skin": "Visible variation in the skin photo", "Hair": "Light and dark areas in the hair photo",
+                 "Nails": "Color and detail variation in the nail photo"}.get(area, "Image review")
+        summary = findings.get("summary") or "The photo was measured locally. Its cause cannot be determined from these measurements."
+    else:
+        state, title = "insufficient_evidence", "Image review is limited"
+        summary = "The available photo and information do not support a specific visual finding."
+
+    why = [] if quality_limited else ([findings["summary"]] if findings.get("summary") else [])
+    if quality.get("issues"):
+        why.extend(f"Photo quality: {issue}" for issue in quality["issues"][:2])
+    else:
+        why.append("The photo passed basic file and exposure checks; this does not confirm that the affected area is visible.")
+    if reported.get("symptoms"):
+        why.append("Reported concerns: " + ", ".join(str(value) for value in reported["symptoms"][:3]))
+    if reported.get("urgent_concern"):
+        why.append("You selected a prompt-care concern; this affects care priority independently of the photo.")
+    if model_supported:
+        why.insert(0, "A compatible scoped classifier returned a calibrated result for the declared image type.")
+
+    score = assessment_risk.get("score")
+    if not isinstance(score, (int, float)) or not 0 <= score <= 100:
+        score = None
+    pirs = response.get("pirs") or {}
+    pirs_score = pirs.get("score")
+    if not isinstance(pirs_score, (int, float)) or not 0 <= pirs_score <= 100:
+        pirs_score = None
+    recommendations = response.get("recommendations") or {}
+    return {
+        "state": state,
+        "primary_result": {"title": title, "summary": summary,
+                           "source": "calibrated_model" if model_supported else "local_image_measurements" if state == "image_observation" else "available_context",
+                           "confidence": round(likelihood * 100) if model_supported else None,
+                           "evidence_strength": None if model_supported or quality_limited else "Low"},
+        "image_quality": {"usable": not quality_limited, "label": quality.get("label") or "Not assessed",
+                          "issues": quality.get("issues") or [],
+                          "retake_guidance": ["Use bright indirect light and avoid flash glare.",
+                                              "Hold the camera steady and fill the frame with the area of concern."] if quality_limited or little_measurable_detail else []},
+        "pirs": {"score": pirs_score, "label": pirs.get("band")},
+        "concern": {"score": score, "label": assessment_risk.get("level"),
+                    "urgency": assessment_risk.get("urgency_label")},
+        "severity": {"label": severity.get("level") if severity.get("level") not in (None, "NOT_ASSESSED") else None,
+                     "source": "reported_symptoms"},
+        "why_this_result": why,
+        "visible_findings": [] if quality_limited else [{"name": item.get("finding"), "detail": item.get("visible_evidence")}
+                                                       for item in observations[:4]],
+        "possible_conditions": [],
+        "treatment_options": [] if not model_supported else (recommendations.get("treatment_options") or []),
+        "medication_information": recommendations.get("medication_information") or {},
+        "routine": recommendations.get("routine") or {},
+        "diet": recommendations.get("diet") or [],
+        "lifestyle": recommendations.get("lifestyle") or [],
+        "products": recommendations.get("products") or recommendations.get("general_care_categories") or [],
+        "professional_support": (response.get("condition_intelligence") or {}).get("doctor") or {},
+        "technical_details": {"reference_case": bool((response.get("presentation_case") or {}).get("matched")),
+                              "classifier_withheld": bool(classifier.get("available") and not model_supported)},
+    }
+
+
 def _assessment_status(response: dict, classifier: dict, validation: dict, assessment_state: dict) -> dict:
     """Describe what the completed pathway could actually establish.
 
@@ -338,6 +432,10 @@ def build_assessment_result(response: dict) -> dict:
         "area": response.get("area"),
         "result_state": terminal_result["state"],
         "result_state_reason": terminal_result["reason"],
+        "consumer": _consumer_result(
+            response, terminal=terminal_result, condition=condition, quality=quality,
+            classifier=classifier, assessment_risk=assessment_risk, severity=severity,
+        ) if not questionnaire else None,
         "status": assessment_status,
         "input": {
             "type": response.get("input_type", "image"),

@@ -51,6 +51,8 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     doctor = intelligence.get("doctor") or {}
 
     result_condition = result.get("condition") or {}
+    consumer = result.get("consumer") or {}
+    consumer_primary = consumer.get("primary_result") or {}
     result_status = result.get("status") or {}
     result_severity = result.get("severity") or {}
     result_risk = canonical.get("assessment_risk") or result.get("assessment_risk") or summary.get("assessment_risk") or {}
@@ -95,26 +97,24 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         classification_value += f"<br/><font color='#5C6E80'>Estimated likelihood: {_text(round(float(likelihood) * 100))}% · calibration: {_text(calibration.get('calibration_version'))} · certainty: {_text(uncertainty.get('certainty'))}</font>"
     elif classification.get("available"):
         classification_value += "<br/><font color='#5C6E80'>Research ranking only. Calibration artifact unavailable, so no condition likelihood is shown.</font>"
-    reference_label = presentation_case.get("label") or presentation_case.get("teaching_label")
     assessment_state = str(result_status.get("state") or "").upper()
     outcome_label = {
         "HEALTHY": "No apparent concerns identified in the submitted image",
         "CONDITION": "Possible model-supported condition",
         "UNCERTAIN": "Image-findings assessment" if image_findings.get("available") else "Could not assess confidently",
     }.get(assessment_state, "Assessment state unavailable in this saved record")
+    validated_condition_name = result_condition.get("name") if result_condition.get("calibration", {}).get("available") else None
     knowledge_finding = _text(
-        reference_label or result_condition.get("name") or finding.get("name"),
+        consumer_primary.get("title") or validated_condition_name or ("Image findings" if image_findings.get("available") else None),
         "No condition label established; image findings are listed below.",
     )
     knowledge_finding_note = _text(
-        presentation_case.get("notice") if reference_label else result_condition.get("notice") or finding.get("label"),
+        consumer_primary.get("summary") or result_condition.get("notice") or finding.get("label"),
         "The condition-knowledge layer did not add a diagnosis.",
     )
     result_likelihood = result_condition.get("estimated_likelihood")
     likelihood_value = (
-        "Exact reference-file match; not a model probability"
-        if reference_label
-        else f"{round(float(result_likelihood) * 100)}% calibrated research-model likelihood" if result_likelihood is not None else "Not available"
+        f"{round(float(result_likelihood) * 100)}% calibrated research-model likelihood" if result_likelihood is not None and consumer_primary.get("confidence") is not None else "Not available"
     )
     severity_value = result_severity.get("level") or severity.get("level") or "Not assessed"
     severity_note = result_severity.get("notice") or severity.get("label") or "No symptom severity was assessed."
@@ -182,6 +182,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>Method:</b> {_text(result_risk.get('methodology'))} · version {_text(result_risk.get('methodology_version'))}. {_text(result_risk.get('notice'), 'This score is not a disease probability or diagnosis.')}", note),
         Paragraph("Model and explanation scope", heading),
         Paragraph(f"<b>Classification:</b> {classification_value}", body),
+        *([Paragraph(f"<b>Reference-file provenance:</b> {_text(presentation_case.get('notice'))}", note)] if presentation_case.get("is_reference_case") or presentation_case.get("matched") else []),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Segmentation:</b> {_text(segmentation.get('status'), 'Not run')}. {_text(segmentation.get('notice'), '')}", body),
         Spacer(1, 1.5 * mm),
@@ -292,7 +293,8 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
         pirs = canonical.get("pirs") or summary.get("pirs") or {}
         severity = canonical.get("severity") or summary.get("severity") or {}
         condition = result.get("condition") or {}
-        scope = condition.get("name") if condition.get("available") else "Image findings" if (canonical.get("image_findings") or result.get("image_findings") or {}).get("available") else "Screening summary"
+        consumer_title = ((result.get("consumer") or {}).get("primary_result") or {}).get("title")
+        scope = consumer_title or (condition.get("name") if condition.get("available") and condition.get("calibration", {}).get("available") else "Image findings" if (canonical.get("image_findings") or result.get("image_findings") or {}).get("available") else "Screening summary")
         analysis_rows.append([
             str(analysis.get("created_at", ""))[:10],
             str(analysis.get("area", "")),

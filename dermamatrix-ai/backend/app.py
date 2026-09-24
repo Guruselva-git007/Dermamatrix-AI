@@ -31,7 +31,7 @@ from clinical_intelligence_service import clinical_decision_support, normalise_s
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from longitudinal_service import build_progress_comparison
 from pirs_service import calculate_pirs
-from presentation_case_service import presentation_case_care_plan, presentation_case_for_image, presentation_case_recommendations
+from presentation_case_service import presentation_case_for_image
 from recommendation_service import build_recommendations, catalog_for_area, product_discovery_catalog, search_product_discovery
 from report_service import build_assessment_report_pdf, build_history_report_pdf
 from risk_service import normalise_reported_priority
@@ -1545,7 +1545,6 @@ def create_assessment():
         try:
             pirs = calculate_pirs(
                 area=area, priority=priority,
-                model_confidence=(research_classifier.get("condition_likelihood") or {}).get("estimated_likelihood"),
                 image_quality=quality, reported_factors=manual_symptoms,
             )
         except Exception:
@@ -1619,8 +1618,6 @@ def create_assessment():
             "notice": presentation_case["notice"],
         }
         response["model_pipeline"]["presentation_case"] = "Exact SHA-256 match to an opt-in, pre-labelled teaching file; not AI inference."
-        response["recommendations"] = presentation_case_recommendations(presentation_case, response["recommendations"])
-        response["care_plan"] = presentation_case_care_plan(presentation_case)
     response["model_pipeline"]["native_image_findings"] = response["image_findings"].get("method_version", "unavailable")
     response["assessment_completeness"] = validate_assessment_completeness(response)
     # Guests get an ephemeral result. Authenticated requests persist under the
@@ -1646,8 +1643,6 @@ def create_assessment():
         response["patient_context"] = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment, history=history, previous_assessment_count=previous_count)
         response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=response["assessment_risk"], assessment_state=assessment_state)
         response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"], assessment_state=assessment_state, canonical_evidence=canonical_evidence)
-        if presentation_case:
-            response["recommendations"] = presentation_case_recommendations(presentation_case, response["recommendations"])
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only"
         attach_condition_intelligence(response)
         response["progress_comparison"] = versioned_progress_summary(connection, user_id, area, response)

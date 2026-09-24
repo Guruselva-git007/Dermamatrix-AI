@@ -11,6 +11,9 @@ import os
 import sys
 import unittest
 import uuid
+from io import BytesIO
+
+from PIL import Image, ImageDraw
 
 from werkzeug.security import check_password_hash
 
@@ -159,6 +162,31 @@ class AccountMySQLIntegrationTests(unittest.TestCase):
         assessment_id = history[0]["assessment_id"]
         self.assertEqual(self.client_a.get(f"/api/assessments/{assessment_id}").status_code, 200)
         self.assertEqual(self.client_b.get(f"/api/assessments/{assessment_id}").status_code, 404)
+
+        image = Image.new("RGB", (640, 640), "#d4aa8f")
+        draw = ImageDraw.Draw(image)
+        for x in range(80, 560, 18):
+            draw.line((x, 100, x + 20, 540), fill="#785b4b", width=4)
+        buffer = BytesIO(); image.save(buffer, "JPEG")
+        saved_image = self.client_a.post("/api/assessments", data={
+            "image": (BytesIO(buffer.getvalue()), "integration.jpg"),
+            "area": "Hair", "image_context": "scalp", "image_consent": "true",
+            "duration": "2", "discomfort": "1", "change": "2",
+        }, content_type="multipart/form-data")
+        self.assertEqual(saved_image.status_code, 200, saved_image.get_json())
+        image_payload = saved_image.get_json()
+        self.assertEqual(image_payload["persistence"], "mysql")
+        self.assertEqual(image_payload["assessment_result"]["consumer"]["state"], "image_observation")
+        image_id = image_payload["assessment_id"]
+        detail = self.client_a.get(f"/api/assessments/{image_id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.get_json()["assessment"]["consumer"]["primary_result"]["title"],
+                         image_payload["assessment_result"]["consumer"]["primary_result"]["title"])
+        self.assertTrue(self.client_a.get("/api/analysis-history").get_json()["analyses"])
+        report = self.client_a.get(f"/api/reports/{image_id}/download")
+        self.assertEqual(report.status_code, 200)
+        self.assertTrue(report.data.startswith(b"%PDF"))
+        self.assertEqual(self.client_b.get(f"/api/reports/{image_id}/download").status_code, 404)
 
         self.assertEqual(self.client_a.post("/api/auth/logout").status_code, 200)
         self.assertEqual(self.client_a.get("/api/auth/me").status_code, 401)

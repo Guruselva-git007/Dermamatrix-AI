@@ -993,7 +993,7 @@ function renderAnalysisDashboard(data) {
     : classifier.available
       ? 'A configured research-model path produced this result.'
       : imageFindings.available ? `${imageFindings.observations?.length || 0} local image findings were measured. No condition classifier ran.` : 'No condition classifier ran for this assessment.';
-  $('#analysisPipeline').innerHTML = `<details class="technical-details"><summary>Image Evidence &amp; Technical Details</summary><div class="technical-details-content"><div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(patientImageQuality(quality.value || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed')))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${isPresentationCase ? 'Exact supplied presentation file' : presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${isPresentationCase ? 'Pre-labelled teaching case' : classifier.available ? 'Research output available' : imageFindings.available ? 'Local image-findings assessment' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div>${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
+  $('#analysisPipeline').innerHTML = `<details class="technical-details"><summary>AI &amp; Technical Details</summary><div class="technical-details-content"><div class="evidence-summary"><article><small>ASSESSMENT INPUT</small><strong>${escapeHTML(patientImageQuality(quality.value || (presentation.questionnaire ? 'Questionnaire complete' : 'Not assessed')))}</strong><p>${escapeHTML(presentation.quality.note)}</p></article><article><small>WHAT WAS REVIEWED</small><strong>${isPresentationCase ? 'Exact supplied presentation file' : presentation.questionnaire ? 'Questionnaire responses' : 'Image and reported context'}</strong><p>${escapeHTML(presentation.scope)}</p></article><article><small>RESULT SCOPE</small><strong>${isPresentationCase ? 'Pre-labelled teaching case' : classifier.available ? 'Research output available' : imageFindings.available ? 'Local image-findings assessment' : 'Screening summary'}</strong><p>${escapeHTML(evidenceFocus)}</p></article></div>${visualExplanation}<div class="technical-evidence-grid">${technicalGroups}</div></div></details>`;
   const technicalDetails = $('#analysisPipeline .technical-details');
   technicalDetails?.addEventListener('toggle', () => {
     if (!technicalDetails.open) return;
@@ -1059,7 +1059,120 @@ function renderImageFindingsCard(review) {
   return `<section class="visual-review-card"><p class="eyebrow">DERMAMATRIX IMAGE FINDINGS</p><h3>Measurements from this photo</h3><p>${escapeHTML(review.summary || 'The submitted image was measured locally.')}</p>${rows ? `<ul class="visual-review-list">${rows}</ul>` : '<p>No detailed image features could be measured reliably.</p>'}${limits.length ? `<div class="visual-review-limits"><strong>What the photo cannot establish</strong><ul>${limits.map(item => `<li>${escapeHTML(item)}</li>`).join('')}</ul></div>` : ''}<small>${escapeHTML(review.notice || 'These are image measurements, not a diagnosis.')}</small></section>`;
 }
 
+function legacyConsumerResult(data = {}) {
+  const result = data.assessment_result || {};
+  if ((result.input?.type || data.input_type) === 'questionnaire') return null;
+  const canonical = result.canonical_evidence || data.canonical_evidence || {};
+  const findings = canonical.image_findings || result.image_findings || data.image_findings || {};
+  const quality = canonical.image_quality || result.input?.quality || data.quality || {};
+  const condition = result.condition || {};
+  const confidence = condition.available && condition.calibration?.available && Number.isFinite(condition.estimated_likelihood)
+    ? Math.round(condition.estimated_likelihood * 100) : null;
+  const modelSupported = condition.available && condition.name && confidence !== null;
+  const limited = quality.status === 'LOW_QUALITY' || result.result_state === 'poor_quality';
+  const recommendations = result.guidance?.recommendations || data.recommendations || {};
+  const area = result.area || data.area || 'Skin';
+  const title = limited ? 'Image quality limits assessment' : modelSupported ? condition.name
+    : findings.available ? `${area === 'Nails' ? 'Nail' : area} photo review` : 'Image review is limited';
+  return {
+    state: limited ? 'quality_limited' : modelSupported ? 'supported_model_prediction' : findings.available ? 'image_observation' : 'insufficient_evidence',
+    primary_result: {title, summary: findings.summary || 'The available image and reported information were reviewed.', confidence,
+      evidence_strength: confidence === null ? 'Low' : null},
+    image_quality: {usable: !limited, issues: quality.issues || [], retake_guidance: limited ? ['Use bright indirect light and keep the area of concern in focus.'] : []},
+    pirs: canonical.pirs || data.pirs || {},
+    concern: canonical.assessment_risk || result.assessment_risk || data.assessment_risk || {},
+    severity: {label: (canonical.severity || result.severity || data.severity || {}).level},
+    why_this_result: [
+      ...(limited ? [] : (findings.observations || []).slice(0, 3).map(item => `${item.finding}: ${item.visible_evidence}`)),
+      ...(quality.issues || []).map(issue => `Photo quality: ${issue}`),
+    ],
+    visible_findings: limited ? [] : (findings.observations || []).map(item => ({name: item.finding, detail: item.visible_evidence})),
+    treatment_options: [], medication_information: recommendations.medication_information || {},
+    routine: recommendations.routine || {}, diet: recommendations.diet || [], lifestyle: recommendations.lifestyle || [],
+    products: recommendations.products || recommendations.general_care_categories || [],
+    professional_support: result.guidance?.doctor || data.condition_intelligence?.doctor || {},
+  };
+}
+
+function renderUnifiedConsumerResult(data) {
+  const result = data.assessment_result || {};
+  const consumer = result.consumer || legacyConsumerResult(data);
+  if (!consumer || !consumer.primary_result?.title || !consumer.state) return false;
+  const primary = consumer.primary_result;
+  const carePlan = result.guidance?.care_plan || data.care_plan || {};
+  const followUp = result.guidance?.follow_up || data.condition_intelligence?.follow_up || {};
+  const doctor = consumer.professional_support || {};
+  const qualityLimited = consumer.state === 'quality_limited';
+  const retakeSuggested = qualityLimited || (consumer.image_quality?.retake_guidance || []).length > 0;
+  const score = value => Number.isFinite(value) && value >= 0 && value <= 100 ? `${Math.round(value)}/100` : 'Not assessed';
+  const label = value => value && value !== 'NOT_ASSESSED' ? readableStatus(value) : 'Not clearly established';
+  const metric = (name, value, note) => `<div><small>${escapeHTML(name)}</small><strong>${escapeHTML(value)}</strong><p>${escapeHTML(note)}</p></div>`;
+  const metrics = [
+    metric('PIRS', score(consumer.pirs?.score), 'Assessment priority from available information.'),
+    metric('CONCERN', label(consumer.concern?.label), consumer.concern?.urgency || 'Care priority based on the information shared.'),
+    metric('SEVERITY', label(consumer.severity?.label), 'Based on symptoms you reported, when available.'),
+    primary.confidence !== null && Number.isFinite(primary.confidence)
+      ? metric('AI CONFIDENCE', `${primary.confidence}%`, 'Calibrated result from a compatible model.')
+      : metric('EVIDENCE STRENGTH', primary.evidence_strength || 'Limited', 'Scope of the available image and context evidence.'),
+  ].join('');
+  const segmentationOverlay = data.segmentation?.available ? data.segmentation.overlay : null;
+  const attentionImage = data.research_classifier?.available ? data.research_classifier.attention_map?.image : null;
+  const visualExplanation = segmentationOverlay || attentionImage
+    ? `<details class="patient-visual-details" data-deferred-visual><summary>View model visual explanation</summary>${segmentationOverlay ? `<figure><img data-patient-src="${escapeHTML(segmentationOverlay)}" alt="Model segmentation overlay" /><figcaption>Model segmentation</figcaption></figure>` : ''}${attentionImage ? `<figure><img data-patient-src="${escapeHTML(attentionImage)}" alt="Model attention map" /><figcaption>Model attention map</figcaption></figure>` : ''}</details>` : '';
+  const image = state.imageUrl
+    ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>${visualExplanation}`
+    : '<div class="patient-visual-empty"><strong>Image not retained</strong><p>Saved assessments keep their result and measurements, but not the original photo.</p></div>';
+  const products = (consumer.products || []).map(product => `<article class="patient-product"><div class="patient-product-top">${productPreviewMarkup(product, 'patient-product-preview')}<div><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || '')}</p></div></div>${commerceDestinationMarkup(product, 'patient-product-destination', 'Compare online')}</article>`).join('');
+  const findings = (consumer.visible_findings || []).map(item => `<li><strong>${escapeHTML(item.name || 'Measured detail')}</strong><span>${escapeHTML(item.detail || '')}</span></li>`).join('');
+  const medication = consumer.medication_information || {};
+  const treatment = consumer.treatment_options || [];
+  const routine = consumer.routine || {};
+  const technicalEvidence = $('#analysisPipeline');
+  technicalEvidence?.remove();
+  let root = $('#patientResultContent');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'patientResultContent';
+    $('.disclaimer-details').insertAdjacentElement('afterend', root);
+  }
+  root.className = 'patient-result-content consumer-result';
+  root.innerHTML = `<section class="consumer-hero"><div class="consumer-hero-copy"><p class="eyebrow">${escapeHTML(String(data.area || result.area || 'Image').toUpperCase())} ASSESSMENT</p><h3>${escapeHTML(primary.title)}</h3><p>${escapeHTML(primary.summary || '')}</p>${retakeSuggested ? `<button type="button" class="button primary" data-result-action="reassess">Use a clearer photo <span>→</span></button>` : ''}</div><div class="consumer-hero-image">${image}</div></section>
+    <section class="patient-quick-summary patient-metric-row consumer-metrics" aria-label="Assessment metrics">${metrics}</section>
+    ${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}
+    <section class="consumer-panel"><p class="eyebrow">WHY THIS RESULT?</p>${patientList(consumer.why_this_result, 'Only the available image quality and your reported information could be reviewed.')}${retakeSuggested ? `<div class="consumer-retake"><strong>For a better photo</strong>${patientList(consumer.image_quality?.retake_guidance, '')}</div>` : ''}</section>
+    ${findings ? `<section class="consumer-panel"><p class="eyebrow">VISIBLE IMAGE MEASUREMENTS</p><ul class="consumer-findings">${findings}</ul><small>These frame measurements cannot locate a condition or confirm its cause.</small></section>` : ''}
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">CARE &amp; NEXT STEPS</p><h3>${escapeHTML(carePlan.heading || 'Supportive care')}</h3><p>${escapeHTML(carePlan.next_step || result.guidance?.next_step || 'Track changes and seek professional advice for persistent or worrying symptoms.')}</p>${treatment.length ? patientList(treatment, '') : ''}${medication.available && medication.notice ? `<div class="patient-medication-note"><strong>Medication information</strong><p>${escapeHTML(medication.notice)}</p></div>` : ''}</article><article class="consumer-panel"><p class="eyebrow">YOUR ROUTINE</p><div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routine.morning, 'Keep care gentle and simple.')}</div><div><strong>Evening</strong>${patientList(routine.evening, 'Avoid irritating products.')}</div></div>${followUp.guidance ? `<div class="patient-weekly"><strong>Follow-up</strong><p>${escapeHTML(followUp.guidance)}</p></div>` : ''}</article></section>
+    <section class="consumer-panel"><p class="eyebrow">LIFESTYLE &amp; DIET</p>${patientList(consumer.lifestyle, 'Keep a simple routine and record meaningful changes.')}${consumer.diet?.length ? `<details><summary>Diet and wellbeing</summary>${patientList(consumer.diet, '')}</details>` : ''}</section>
+    <section class="consumer-panel"><p class="eyebrow">PRODUCTS</p>${products ? `<div class="patient-products">${products}</div>` : '<p>Product suggestions are deferred until the concern is clearer.</p>'}</section>
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">PROFESSIONAL SUPPORT</p><h3>${doctor.recommended ? 'A professional review is recommended' : 'Get help when you need it'}</h3><p>${escapeHTML(doctor.appointment || 'A dermatologist can review persistent, changing, painful, or worrying concerns.')}</p><button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></article><article class="consumer-panel"><p class="eyebrow">TRACK PROGRESS</p><h3>${state.profile?.patient_id ? 'Continue your care journey' : 'Save future check-ins'}</h3><p>Compare meaningful changes over time and keep your assessment history together.</p><button type="button" class="button primary" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Create account to track'} <span>→</span></button></article></section>
+    <section class="patient-technical" id="patientTechnicalSlot"></section>`;
+  if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
+  root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
+    details.addEventListener('toggle', () => {
+      if (!details.open) return;
+      details.querySelectorAll('img[data-patient-src]').forEach(image => {
+        image.src = image.dataset.patientSrc;
+        image.removeAttribute('data-patient-src');
+      });
+    });
+  });
+  root.querySelectorAll('[data-result-action]').forEach(button => {
+    button.onclick = () => {
+      const action = button.dataset.resultAction;
+      if (action === 'doctor') { closeResult(); showPage('support'); }
+      if (action === 'progress') {
+        if (!state.profile?.patient_id) { showAuthGate('register'); toast('Create an account to save assessments and check-ins.'); return; }
+        closeResult(); showPage('progress');
+      }
+      if (action === 'reassess') { closeResult(); resetImage(); selectArea(state.area); showPage('home'); $('#imageInput')?.focus(); }
+    };
+  });
+  $('#resultModal').classList.add('has-patient-result');
+  return true;
+}
+
 function renderPatientResult(data) {
+  if (renderUnifiedConsumerResult(data)) return;
   const presentation = normaliseAssessmentPresentation(data);
   const result = data.assessment_result || {};
   const classifier = presentation.classifier;
@@ -1838,10 +1951,7 @@ function renderDashboard() {
     const cards = [];
     if (latestAnalysis) {
       const savedResult = latestAnalysis.summary?.assessment_result || {};
-      const savedEvidence = latestEvidence;
-      const result = savedResult.condition?.available && savedResult.condition?.name
-        ? savedResult.condition.name
-        : savedEvidence.image_findings?.available ? 'Image findings saved' : 'Screening summary saved';
+      const result = savedResult.consumer?.primary_result?.title || legacyConsumerResult(latestAnalysis.summary)?.primary_result?.title || 'Health check saved';
       cards.push(`<article class="snapshot-card"><span>◌</span><div><small>LATEST ASSESSMENT</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div><button class="text-button" data-dashboard-nav="progress">View →</button></article>`);
       cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>PERSONAL SCORE</small><strong>${latestRisk?.score === undefined || latestRisk?.score === null ? 'No score yet' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(readableStatus(latestRisk.level || 'recorded'))}`}</strong><p>Based on your latest saved check-in.</p></div></article>`);
     }
@@ -1859,12 +1969,8 @@ function renderDashboard() {
   $('#dashboardActivity').innerHTML = !analyses.length
     ? '<p class="empty-state">No assessments yet. Complete your first assessment to begin your timeline.</p>'
     : analyses.slice(0, 4).map(item => {
-      const classification = item.summary?.classification || {};
-      const prediction = classification.top_prediction;
-      const title = prediction ? prediction.condition : `${readableStatus(item.area)} assessment`;
-      const meta = prediction
-        ? Number.isFinite(prediction.calibrated_probability) ? `${Math.round(prediction.calibrated_probability * 100)}% estimated likelihood` : 'Assessment saved'
-        : 'Assessment saved';
+      const title = reportClassification(item.summary);
+      const meta = 'Assessment saved';
       return `<article class="dashboard-record"><span>◌</span><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.area)} · ${escapeHTML(meta)}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`;
     }).join('');
   const nextStep = $('#nextStepCard');
@@ -1894,18 +2000,8 @@ function resetRoutineForm() {
 
 function reportClassification(summary) {
   const result = summary?.assessment_result || {};
-  if (result.contract_version) {
-    const condition = result.condition || {};
-    if (!condition.available || !condition.name) return (result.canonical_evidence?.image_findings || summary?.canonical_evidence?.image_findings || result.image_findings || summary?.image_findings)?.available ? 'Image-findings assessment' : 'Health check summary';
-    return Number.isFinite(condition.estimated_likelihood)
-      ? `${condition.name} · ${Math.round(condition.estimated_likelihood * 100)}% estimated likelihood`
-      : `${condition.name} · research ranking only`;
-  }
-  const classifier = summary?.classification || {};
-  const prediction = classifierPredictions(classifier)[0];
-  return prediction
-    ? Number.isFinite(prediction.calibratedProbability) ? `${prediction.label} · ${Math.round(prediction.calibratedProbability * 100)}% estimated likelihood` : `${prediction.label} · research ranking only`
-    : 'Health check summary';
+  return result.consumer?.primary_result?.title || legacyConsumerResult(summary)?.primary_result?.title
+    || (summary?.area === 'Sweat' ? 'Sweat questionnaire summary' : 'Health check summary');
 }
 
 function renderReportRegister() {

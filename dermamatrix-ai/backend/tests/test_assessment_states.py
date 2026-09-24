@@ -79,6 +79,31 @@ class AssessmentStateTests(unittest.TestCase):
         self.assertEqual(conflict["result_state"], "uncertain")
         self.assertFalse(conflict["condition"]["available"])
 
+    def test_consumer_result_keeps_confidence_separate_from_image_evidence(self):
+        response = _response(classifier={"available": False}, quality={"status": "GOOD", "label": "Clear", "issues": []})
+        response["image_findings"] = {"available": True, "summary": "Measured tone variation in this photo.", "observations": [
+            {"finding": "Tone variation", "visible_evidence": "Brightness spans 40–180 in the central crop."},
+        ]}
+        response["pirs"] = {"score": 42, "band": "MODERATE"}
+        response["assessment_risk"] = {"score": 68, "level": "HIGH"}
+        response["severity"] = {"level": "MILD"}
+        result = build_assessment_result(response)["consumer"]
+        self.assertEqual(result["state"], "image_observation")
+        self.assertIsNone(result["primary_result"]["confidence"])
+        self.assertEqual(result["primary_result"]["evidence_strength"], "Low")
+        self.assertEqual(result["pirs"]["score"], 42)
+        self.assertEqual(result["concern"]["score"], 68)
+        self.assertEqual(result["severity"]["label"], "MILD")
+        self.assertEqual(result["possible_conditions"], [])
+        self.assertIn("Measured tone variation", result["why_this_result"][0])
+        self.assertIn("Brightness spans", result["visible_findings"][0]["detail"])
+
+        response["quality"] = {"status": "LOW_QUALITY", "label": "Retake", "issues": ["Too blurry"]}
+        limited = build_assessment_result(response)["consumer"]
+        self.assertEqual(limited["state"], "quality_limited")
+        self.assertFalse(limited["visible_findings"])
+        self.assertTrue(limited["image_quality"]["retake_guidance"])
+
     def test_terminal_result_state_is_closed_and_evidence_based(self):
         cases = (
             ({"status": "LOW_QUALITY"}, {"status": "LOW_QUALITY"}, {}, {"state": "UNCERTAIN"}, "poor_quality"),

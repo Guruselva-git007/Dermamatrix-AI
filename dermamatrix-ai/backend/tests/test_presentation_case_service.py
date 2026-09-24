@@ -73,7 +73,9 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertEqual(result["assessment_risk"]["condition_profile"]["key"], "undifferentiated-skin")
         self.assertEqual(result["assessment_risk"]["condition_profile"]["condition_source"], "No condition label used")
         self.assertTrue(result["assessment_result"]["presentation"]["is_reference_case"])
-        self.assertEqual(result["recommendations"]["medication_information"]["status"], "EDUCATIONAL_DISCUSSION_ONLY")
+        self.assertEqual(result["recommendations"]["medication_information"]["status"], "NO_MEDICATION_RECOMMENDATION")
+        self.assertNotIn("teaching", result["assessment_result"]["consumer"]["primary_result"]["title"].lower())
+        self.assertTrue(result["assessment_result"]["consumer"]["technical_details"]["reference_case"])
         self.assertTrue(result["recommendations"]["diet"])
 
     def test_checkbox_combinations_do_not_suppress_reference_risk(self):

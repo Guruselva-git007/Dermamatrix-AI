@@ -2,6 +2,17 @@
 
 The local Flask service serves the frontend and provides a prototype assessment endpoint.
 
+Image responses now include `assessment_result.consumer` (contract v1.6). It
+selects a quality-limited, calibrated-model, measured-image, or insufficient-
+evidence presentation state before the page renders. PIRS, concern, and
+reported symptom severity remain separate; a percentage is displayed only
+when a compatible model has a calibrated likelihood. Existing saved records
+are adapted by the browser at read time, without a database migration.
+The current ordinary-photo measurements describe image pixels, not verified
+skin, scalp, or nail anatomy. They cannot establish a disorder, a normal
+appearance, or a condition-specific treatment. Exact presentation-file matches
+remain provenance in the collapsed technical details and do not select care.
+
 ```bash
 cd /path/to/Dermamatrix-AI
 python3 -m venv .venv
