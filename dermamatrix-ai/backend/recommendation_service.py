@@ -59,13 +59,27 @@ EVERYDAY_CARE_SOURCES = [
 AREA_CARE_GUIDANCE = {
     "Skin": {
         "common_symptoms": ["Dryness, tightness, flaking, or itching", "Redness, burning, or sensitivity", "Pimples, clogged pores, or excess oil", "Dark marks or changing color"],
-        "possible_causes": ["Weather, frequent washing, or irritating skin products", "Acne and blocked pores", "Contact with a new product, fragrance, or other irritant", "Sun exposure or marks left after inflammation"],
-        "care_steps": ["Wash gently with lukewarm water and a mild cleanser; avoid scrubbing or picking.", "Apply a fragrance-free moisturiser after washing, especially where skin feels dry.", "Protect exposed skin with shade or clothing and broad-spectrum SPF 30+ sunscreen.", "Introduce one new product at a time and stop one that causes persistent stinging or worsening irritation."],
+        "cause_sections": [
+            {"title": "Everyday triggers", "items": ["Cold or dry weather, frequent washing, and harsh soaps can leave skin dry or irritated.", "A new cosmetic, fragrance, detergent, or topical product can cause irritation or an allergic contact reaction.", "Sweat, friction from clothing or masks, and picking can aggravate existing spots."]},
+            {"title": "Common skin patterns", "items": ["Blocked pores and acne can cause blackheads, whiteheads, or inflamed pimples.", "Eczema or other inflammatory skin conditions can cause dry, itchy, sensitive patches.", "Some spreading or persistent rashes may be due to infection; a photo alone cannot tell which kind."]},
+            {"title": "Color and change", "items": ["Sun exposure can deepen some dark marks and affect skin over time.", "Inflammation or a healed breakout can leave temporary darker or lighter marks.", "A changing, bleeding, or painful spot needs an in-person examination rather than a cause guessed from color." ]},
+        ],
+        "care_sections": [
+            {"title": "Gentle daily basics", "items": ["Wash with lukewarm water and a mild cleanser, using fingertips rather than a scrub.", "Apply fragrance-free moisturiser to slightly damp skin, especially after washing.", "Use broad-spectrum SPF 30+ sunscreen or protective clothing on exposed skin when outdoors."]},
+            {"title": "Adapt to what you notice", "items": ["If skin feels dry or stings, simplify to cleanser, moisturiser, and sun protection until it settles.", "If breakouts are the concern, choose products labelled non-comedogenic and avoid picking spots.", "Introduce one new product at a time so you can tell what helps or irritates."]},
+            {"title": "Know when to follow up", "items": ["Record changes in size, color, pain, itching, and any new products.", "Arrange a clinician review for persistent rash, deep painful acne, spreading redness, bleeding, or rapid change."]},
+        ],
         "routine": {
-            "morning": ["Gently cleanse if needed; use a moisturiser suited to your skin.", "Apply broad-spectrum SPF 30+ sunscreen to exposed skin before going outdoors."],
-            "evening": ["Wash away sunscreen, sweat, and makeup with a gentle cleanser.", "Moisturise while skin is slightly damp; leave irritated spots alone."],
+            "morning": ["Cleanse skin gently if needed; avoid scrubs and very hot water.", "Apply a moisturiser suited to your skin, focusing on dry areas.", "Finish with broad-spectrum SPF 30+ sunscreen on exposed skin before going outdoors."],
+            "evening": ["Remove makeup and sunscreen with a gentle cleanser without rubbing hard.", "Moisturise while skin is slightly damp; leave irritated spots alone.", "If you use an acne active for a confirmed concern, follow its label and avoid adding several actives together."],
+            "weekly": ["Review whether a product is helping after consistent use; change only one step at a time.", "Clean items that regularly touch your face, such as makeup tools, without over-washing skin."],
             "follow_up": ["Note new products and whether dryness, itching, breakouts, or color changes improve or worsen.", "Seek an in-person review for a rapidly changing, painful, bleeding, or persistent area."],
         },
+        "treatment_sections": [
+            {"title": "For dryness or sensitivity", "items": ["A gentle cleanser and richer fragrance-free cream or ointment may help the skin barrier.", "If an itchy, inflamed rash persists, a clinician can decide whether an anti-inflammatory treatment is appropriate."]},
+            {"title": "For acne-like breakouts", "items": ["For mild blackheads or pimples, a pharmacist can help you choose one suitable acne ingredient to start with.", "Deep, painful, or scarring acne needs a dermatologist's treatment plan."]},
+            {"title": "For spreading or unusual changes", "items": ["A clinician may need to examine a rash before deciding whether an antifungal, antibacterial, or other treatment fits.", "A changing mole or bleeding spot needs direct examination; skin-care products are not a substitute." ]},
+        ],
         "nutrition_sections": [
             {"title": "Food choices for skin", "items": [
                 "Add vitamin-C-rich produce such as citrus, guava, peppers, tomatoes, or broccoli; vitamin C supports normal collagen formation.",
@@ -90,27 +104,44 @@ AREA_CARE_GUIDANCE = {
             ]},
         ],
         "medication_topics": [
-            {"name": "Benzoyl peroxide", "used_for": "An over-the-counter option for mild acne-type pimples; it may dry or irritate skin."},
-            {"name": "Salicylic acid", "used_for": "An over-the-counter option often used for blackheads and clogged pores."},
-            {"name": "Azelaic acid", "used_for": "An acne-care ingredient that may also help marks after breakouts; availability varies by location."},
+            {"name": "Benzoyl peroxide", "used_for": "A common option for mild inflammatory pimples; can dry, irritate, or bleach fabric. Follow the label."},
+            {"name": "Salicylic acid", "used_for": "Often used for blackheads and clogged pores; reduce use if skin becomes dry or irritated."},
+            {"name": "Azelaic acid", "used_for": "Used for some acne and marks after breakouts; availability and strength vary by location."},
+            {"name": "Adapalene", "used_for": "A retinoid option for acne in some places; check suitability first, especially if pregnant or planning pregnancy."},
+            {"name": "Anti-inflammatory or antifungal cream", "used_for": "A clinician or pharmacist may recommend one after the cause of an itchy or spreading rash is assessed."},
         ],
-        "product_ids": ["gentle-cleanser", "barrier-moisturiser", "sun-protection"],
+        "product_ids": ["gentle-cleanser", "barrier-moisturiser", "sun-protection", "salicylic-acid", "benzoyl-peroxide", "azelaic-acid"],
         "sources": [
             {"label": "AAD: simple skin care", "url": "https://www.aad.org/public/everyday-care/skin-care-basics/care/skin-care-budget"},
             {"label": "AAD: acne treatment ingredients", "url": "https://www.aad.org/public/diseases/acne/diy/adult-acne-treatment"},
+            {"label": "AAD: eczema skin care", "url": "https://www.aad.org/public/diseases/eczema/types/atopic-dermatitis/atopic-dermatitis-coping"},
             {"label": "AAD: diet and acne", "url": "https://www.aad.org/public/diseases/acne/causes/diet"},
             {"label": "NIH: vitamin C", "url": "https://ods.od.nih.gov/factsheets/VitaminC-Consumer/"},
         ],
     },
     "Hair": {
         "common_symptoms": ["Scalp itching or visible flakes", "Excess oil or scalp dryness", "Increased shedding or thinning", "Hair breakage or tender scalp"],
-        "possible_causes": ["Dandruff, oily skin, or a dry or irritated scalp", "Heat, chemical processing, or tight hairstyles", "Stress, illness, hormonal changes, or inherited pattern loss", "Low protein or iron intake in some people"],
-        "care_steps": ["Cleanse the scalp as often as your hair type and oiliness require; massage gently rather than scratching.", "Condition the hair lengths to reduce tangles and breakage.", "Limit tight styles, high heat, and rough brushing, especially if hair is fragile.", "If flaking is the main concern, a labelled dandruff shampoo may help; follow its instructions and stop if irritation occurs."],
+        "cause_sections": [
+            {"title": "Scalp and hair care", "items": ["Dandruff, oiliness, dryness, or sensitivity to a hair product can cause flakes or itching.", "Repeated heat, bleaching, relaxers, or rough brushing can weaken strands and increase breakage.", "Tight hairstyles or extensions can pull on follicles and contribute to hairline loss." ]},
+            {"title": "Shedding and thinning", "items": ["Illness, childbirth, surgery, major stress, or rapid weight change can be followed by temporary shedding.", "Inherited pattern hair loss can cause a widening part, receding hairline, or gradual thinning.", "Low protein or iron intake, thyroid changes, hormones, or some medicines can also contribute." ]},
+            {"title": "Patterns needing a closer look", "items": ["Round bald patches may have a different cause from diffuse shedding.", "Pain, redness, scale, scarring, or broken hairs can signal a scalp condition or infection.", "The pattern, timing, scalp examination, and sometimes tests help determine the actual cause." ]},
+        ],
+        "care_sections": [
+            {"title": "Keep the scalp comfortable", "items": ["Wash the scalp as often as your hair texture, oiliness, and activity need; massage gently rather than scratching.", "Rinse shampoo thoroughly and stop a product that repeatedly burns or irritates.", "If flakes are the main concern, a labelled dandruff shampoo may help; follow its instructions." ]},
+            {"title": "Protect fragile strands", "items": ["Use conditioner mainly on hair lengths to reduce tangles and friction.", "Detangle gently, especially when wet; avoid pulling at knots.", "Reduce tight styles, frequent high heat, or harsh chemical processing if breakage is increasing." ]},
+            {"title": "Track meaningful change", "items": ["Note whether loss is gradual, patchy, or sudden and whether the scalp itches or hurts.", "Seek a clinician review for new bald patches, persistent heavy shedding, scalp pain, or scarring." ]},
+        ],
         "routine": {
-            "morning": ["Style hair with minimal pulling; use a wide-tooth comb or gentle brush where helpful.", "Protect exposed scalp from sun with a hat or suitable sun protection."],
-            "evening": ["Wash the scalp when needed; apply shampoo to the scalp and conditioner mainly to hair lengths.", "Avoid sleeping with tight braids or styles that pull on the hairline."],
+            "morning": ["Style hair with minimal pulling and use a wide-tooth comb or gentle brush where helpful.", "Use a loose hairstyle if the scalp or hairline feels tight.", "Protect exposed scalp from sun with a hat or suitable sun protection."],
+            "evening": ["Wash the scalp when needed; apply shampoo to the scalp and conditioner mainly to hair lengths.", "Dry gently rather than rubbing vigorously with a towel.", "Avoid sleeping with tight braids or styles that pull on the hairline."],
+            "weekly": ["Review how often the scalp needs washing and adjust to oiliness, sweat, and hair texture.", "If using a dandruff shampoo, use it according to its label and watch for irritation."],
             "follow_up": ["Track shedding, new bald patches, persistent flakes, or scalp discomfort over several weeks.", "Arrange a review for sudden or patchy loss, pain, scarring, or persistent scalp symptoms."],
         },
+        "treatment_sections": [
+            {"title": "If flakes or itching dominate", "items": ["Dandruff shampoos with labelled active ingredients can help mild flaking when used as directed.", "Persistent redness, thick scale, pain, or hair loss needs an examination to distinguish other scalp conditions." ]},
+            {"title": "If thinning is the concern", "items": ["A clinician can help identify whether loss is patterned, temporary shedding, traction-related, or another type.", "Topical minoxidil is an option for some pattern loss; the expected benefit, ongoing use, and suitability should be reviewed." ]},
+            {"title": "If the scalp is inflamed", "items": ["Infection or inflammatory scalp disease may need a prescribed treatment chosen after assessment.", "New patchy or scarring hair loss is worth early specialist review." ]},
+        ],
         "nutrition_sections": [
             {"title": "Nutrients for hair", "items": [
                 "Eat enough overall and include protein regularly; very low-calorie diets and too little protein or iron can contribute to shedding.",
@@ -135,26 +166,44 @@ AREA_CARE_GUIDANCE = {
             ]},
         ],
         "medication_topics": [
-            {"name": "Dandruff shampoos", "used_for": "Ketoconazole or selenium sulfide shampoos are common options for persistent flakes; choose by label and pharmacist advice."},
-            {"name": "Topical minoxidil", "used_for": "An option for some types of pattern hair loss, after the cause and suitability are reviewed."},
+            {"name": "Ketoconazole shampoo", "used_for": "A medicated shampoo option for dandruff-type flaking; follow the label and check suitability."},
+            {"name": "Selenium sulfide shampoo", "used_for": "Another dandruff shampoo option; apply to the scalp as the label directs and stop if irritated."},
+            {"name": "Other dandruff shampoos", "used_for": "Zinc pyrithione or salicylic acid shampoos may be available depending on location and scalp need."},
+            {"name": "Topical minoxidil", "used_for": "An option for some pattern hair loss, with regular use and clinician or pharmacist guidance about suitability."},
+            {"name": "Clinician-directed scalp treatment", "used_for": "An inflammatory or infected scalp may need a prescribed medicine after examination; a photo cannot choose it."},
         ],
-        "product_ids": ["scalp-cleanser", "gentle-conditioner", "ketoconazole-shampoo"],
+        "product_ids": ["scalp-cleanser", "gentle-conditioner", "ketoconazole-shampoo", "selenium-sulfide-shampoo", "minoxidil-category"],
         "sources": [
             {"label": "AAD: dandruff care", "url": "https://www.aad.org/public/everyday-care/hair-scalp-care/scalp/treat-dandruff"},
             {"label": "AAD: managing hair loss", "url": "https://www.aad.org/public/diseases/hair-loss/treatment/tips"},
+            {"label": "AAD: hair loss causes", "url": "https://www.aad.org/public/diseases/hair-loss/causes/18-causes"},
             {"label": "AAD: pattern hair loss options", "url": "https://www.aad.org/public/diseases/hair-loss/treatment/male-pattern-hair-loss-treatment"},
             {"label": "NIH: iron-rich foods", "url": "https://ods.od.nih.gov/factsheets/Iron-Consumer/"},
         ],
     },
     "Nails": {
         "common_symptoms": ["Brittle, peeling, or splitting nails", "Thickening, discoloration, or lifting", "Soreness or swelling around a nail", "Ridges or a change in nail shape"],
-        "possible_causes": ["Frequent water or detergent exposure and repeated manicures", "Minor injury, tight shoes, or nail biting", "Fungal infection in some thickened or discolored nails", "Skin conditions or other health factors that need examination"],
-        "care_steps": ["Keep nails clean and dry; trim straight across and smooth snags with a file.", "Moisturise nails and surrounding skin after washing, especially if they split.", "Wear gloves for prolonged wet work or cleaning, and use shoes that do not press on toenails.", "Leave cuticles intact; avoid digging into sore nails or covering a changing nail with artificial nails."],
+        "cause_sections": [
+            {"title": "Wear and exposure", "items": ["Repeated wet work, detergents, and polish removal can make nails brittle or peeling.", "Nail biting, aggressive manicures, or using nails as tools can injure the nail and cuticle.", "Tight shoes or repeated toe impact can change nail shape or color." ]},
+            {"title": "Common nail conditions", "items": ["A fungal infection can cause some nails to thicken, crumble, or discolor, especially toenails.", "Psoriasis and other skin conditions can cause pitting, lifting, or changes in nail texture.", "Redness, warmth, and swelling around a nail may reflect an infection or ingrown nail." ]},
+            {"title": "Other changes to check", "items": ["A new medicine or health condition can sometimes affect nail growth or appearance.", "A new or changing dark streak, painful lifting, or persistent swelling needs direct examination.", "Fungus, injury, and psoriasis can look similar; a clinician may need to examine or test a sample." ]},
+        ],
+        "care_sections": [
+            {"title": "Daily nail care", "items": ["Keep nails clean and dry, trim straight across, and gently smooth snagged edges.", "Moisturise the nail plate and surrounding skin after washing.", "Leave cuticles intact and avoid digging under a painful or lifting nail." ]},
+            {"title": "Protect hands and feet", "items": ["Wear gloves for prolonged wet work or cleaning, then dry hands thoroughly.", "Choose shoes with enough room for toes and change damp socks.", "Avoid sharing clippers and use clean tools for nail care." ]},
+            {"title": "Respond to changes", "items": ["Do not hide a changing nail under artificial nails while trying to understand the cause.", "Arrange a review for pain, swelling, spreading discoloration, lifting, or a new dark streak." ]},
+        ],
         "routine": {
-            "morning": ["Dry hands and feet well, including around nails; apply a simple hand or nail moisturiser.", "Wear comfortable shoes and fresh socks if checking toenails."],
-            "evening": ["Check for new pain, swelling, color change, or lifting when you trim or clean nails.", "Moisturise cuticles and surrounding skin; keep nails short enough to avoid snagging."],
+            "morning": ["Dry hands and feet well, including around nails.", "Apply a simple moisturiser to nails and surrounding skin.", "Choose comfortable shoes and fresh, dry socks for toenail care."],
+            "evening": ["Wash and dry hands or feet gently after the day.", "Check for new pain, swelling, color change, or lifting.", "Moisturise cuticles and surrounding skin; avoid picking or cutting them."],
+            "weekly": ["Trim nails as needed with clean clippers and file snagged edges.", "Take a break from polish or artificial nails if nails are dry or splitting."],
             "follow_up": ["Compare a changing nail as it grows out; record pain, spreading discoloration, or swelling.", "Ask a clinician or pharmacist about a persistent thick or discolored nail before treating it as fungus."],
         },
+        "treatment_sections": [
+            {"title": "If nails are brittle", "items": ["Moisturising and reducing repeated wet work can help protect brittle nails.", "Treating the underlying cause matters if the nail keeps splitting or lifting." ]},
+            {"title": "If fungus is suspected", "items": ["A pharmacist can discuss a nail lacquer for a likely fungal problem; treatment may take months.", "A clinician may test a persistent nail before considering prescription tablets." ]},
+            {"title": "If painful or inflamed", "items": ["A swollen nail fold, ingrown nail, or dark streak needs an in-person look before treatment is chosen.", "A dermatologist can distinguish nail psoriasis, injury, and infection when appearances overlap." ]},
+        ],
         "nutrition_sections": [
             {"title": "Nutrients for nails", "items": [
                 "Include protein foods regularly alongside varied vegetables, fruit, and whole grains.",
@@ -179,12 +228,15 @@ AREA_CARE_GUIDANCE = {
             ]},
         ],
         "medication_topics": [
-            {"name": "Antifungal nail lacquer", "used_for": "A pharmacist may suggest this when a fungal nail infection is likely; treatment can take months."},
-            {"name": "Prescription antifungal tablets", "used_for": "A clinician may consider these after assessing or testing a persistent fungal nail; monitoring and interactions matter."},
+            {"name": "Antifungal nail lacquer", "used_for": "A pharmacist may suggest this for a likely fungal nail; it often takes months and is not suitable for everyone."},
+            {"name": "Prescription antifungal tablets", "used_for": "A clinician may consider these for confirmed or persistent fungal nail infection; interactions and liver monitoring can matter."},
+            {"name": "Treatment for an infected nail fold", "used_for": "A painful, swollen nail fold may need clinician-directed care, sometimes including an antibiotic."},
+            {"name": "Treatment for nail psoriasis", "used_for": "A dermatologist may choose anti-inflammatory treatment if psoriasis is the cause; antifungals would not address it."},
         ],
-        "product_ids": ["nail-emollient", "protective-gloves", "nail-antifungal"],
+        "product_ids": ["nail-emollient", "protective-gloves", "nail-antifungal", "nail-clippers", "breathable-socks"],
         "sources": [
             {"label": "AAD: healthy nail care", "url": "https://www.aad.org/public/everyday-care/nail-care-secrets/basics/healthy-nail-tips"},
+            {"label": "AAD: nail changes to examine", "url": "https://www.aad.org/public/everyday-care/nail-care-secrets/basics/nail-changes-dermatologist-should-examine"},
             {"label": "NHS: fungal nail infection", "url": "https://www.nhs.uk/conditions/fungal-nail-infection/"},
             {"label": "NIH: biotin evidence", "url": "https://ods.od.nih.gov/factsheets/Biotin-Consumer/"},
         ],
@@ -207,14 +259,17 @@ PRODUCT_CATALOG = [
 PRODUCT_DISCOVERY_CATALOG = [
     *PRODUCT_CATALOG,
     {"id": "gentle-cleanser", "name": "Gentle facial cleanser", "domain": "Skin", "category": "Skin care", "key_property": "Low-irritation cleansing category", "purpose": "Browse cleanser options as part of a simple routine discussion.", "precautions": "Stop if it burns or worsens irritation; this is not a treatment recommendation.", "search_terms": "gentle facial cleanser", "tags": ["acne", "blackheads", "sensitive skin", "cleanser"]},
-    {"id": "salicylic-acid", "name": "Salicylic acid product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "User-led search for salicylic-acid product options to discuss with a clinician or pharmacist.", "precautions": "Not selected from a photo. Confirm suitability and avoid combining actives without professional advice.", "search_terms": "salicylic acid skin care product", "tags": ["acne", "blackheads", "open comedones", "oil"]},
-    {"id": "benzoyl-peroxide", "name": "Benzoyl peroxide product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "User-led search for benzoyl-peroxide product options to discuss with a clinician or pharmacist.", "precautions": "Not selected from a photo. Check labels and seek professional advice before use, especially for persistent or inflamed concerns.", "search_terms": "benzoyl peroxide skin care product", "tags": ["acne", "pimples", "breakouts"]},
-    {"id": "ketoconazole-shampoo", "name": "Ketoconazole shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "User-led product discovery for a ketoconazole shampoo category.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "ketoconazole shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
-    {"id": "selenium-sulfide-shampoo", "name": "Selenium sulfide shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "User-led product discovery for a selenium-sulfide shampoo category.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "selenium sulfide shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
+    {"id": "salicylic-acid", "name": "Salicylic acid product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "An option to explore when blackheads or clogged pores are the concern.", "precautions": "Not selected from a photo. Confirm suitability and avoid combining actives without professional advice.", "search_terms": "salicylic acid skin care product", "tags": ["acne", "blackheads", "open comedones", "oil"]},
+    {"id": "benzoyl-peroxide", "name": "Benzoyl peroxide product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "A common option to explore for mild acne-type pimples.", "precautions": "Not selected from a photo. Check labels; it may irritate skin or bleach fabric.", "search_terms": "benzoyl peroxide skin care product", "tags": ["acne", "pimples", "breakouts"]},
+    {"id": "azelaic-acid", "name": "Azelaic acid product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Acne and post-breakout marks discussion", "purpose": "Browse azelaic-acid skin products when acne or post-breakout marks are the concern.", "precautions": "Not selected from a photo. Check local availability and suitability; stop if significant irritation occurs.", "search_terms": "azelaic acid skin care product", "tags": ["acne", "post acne marks", "azelaic acid"]},
+    {"id": "ketoconazole-shampoo", "name": "Ketoconazole shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "A labelled medicated shampoo category to explore for persistent dandruff-type flakes.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "ketoconazole shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
+    {"id": "selenium-sulfide-shampoo", "name": "Selenium sulfide shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "Another dandruff-shampoo category to compare if flaking is the concern.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "selenium sulfide shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
     {"id": "zinc-pyrithione-shampoo", "name": "Zinc pyrithione shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "User-led product discovery for a zinc-pyrithione shampoo category.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "zinc pyrithione shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
-    {"id": "minoxidil-category", "name": "Minoxidil product category", "domain": "Hair", "category": "Hair-loss discussion", "key_property": "Hair-loss product category", "purpose": "User-led search for a minoxidil product category to discuss with a qualified clinician or pharmacist.", "precautions": "Hair loss has many causes. Do not use this page to self-diagnose; check suitability and interactions first.", "search_terms": "minoxidil hair loss product", "tags": ["hair loss", "thinning", "pattern hair loss", "alopecia"]},
+    {"id": "minoxidil-category", "name": "Minoxidil product category", "domain": "Hair", "category": "Hair-loss discussion", "key_property": "Hair-loss product category", "purpose": "An option to discuss when gradual pattern hair loss has been identified.", "precautions": "Hair loss has many causes. Do not use this page to self-diagnose; check suitability and interactions first.", "search_terms": "minoxidil hair loss product", "tags": ["hair loss", "thinning", "pattern hair loss", "alopecia"]},
     {"id": "topical-antifungal", "name": "Topical antifungal product category", "domain": "Skin", "category": "Pharmacy discussion", "key_property": "Non-prescription antifungal category", "purpose": "User-led discovery of topical antifungal product categories to discuss after a professional confirms the cause.", "precautions": "Do not self-treat an uncertain rash or start oral medication based on an image or this search page.", "search_terms": "topical antifungal skin product", "tags": ["tinea", "ringworm", "fungal infection"]},
-    {"id": "nail-antifungal", "name": "Nail antifungal product category", "domain": "Nails", "category": "Pharmacy discussion", "key_property": "Nail-treatment category", "purpose": "User-led discovery of nail antifungal product categories to discuss after professional assessment.", "precautions": "Nail discoloration and thickening can have several causes. Confirm the cause before choosing a product.", "search_terms": "nail antifungal product", "tags": ["nail fungus", "onychomycosis", "thick nail"]},
+    {"id": "nail-antifungal", "name": "Nail antifungal product category", "domain": "Nails", "category": "Pharmacy discussion", "key_property": "Nail-treatment category", "purpose": "A pharmacy category to discuss if a persistent nail change is thought to be fungal.", "precautions": "Nail discoloration and thickening can have several causes. Confirm the cause before choosing a product.", "search_terms": "nail antifungal product", "tags": ["nail fungus", "onychomycosis", "thick nail"]},
+    {"id": "nail-clippers", "name": "Clean nail clippers and file", "domain": "Nails", "category": "Nail care", "key_property": "Basic trimming tools", "purpose": "Keep nails trimmed and smooth snagged edges as part of regular care.", "precautions": "Use gently; avoid cutting into sore skin or digging out an ingrown nail.", "search_terms": "nail clippers and nail file", "tags": ["nail care", "clippers", "file"]},
+    {"id": "breathable-socks", "name": "Breathable everyday socks", "domain": "Nails", "category": "Foot care", "key_property": "Dry-foot routine", "purpose": "A practical option when socks stay damp or toenails are exposed to friction.", "precautions": "Choose a comfortable fit and change socks when damp; this is not a fungal treatment.", "search_terms": "breathable moisture wicking socks", "tags": ["toenails", "feet", "socks"]},
     {"id": "vitamin-d-information", "name": "Vitamin D supplement information", "domain": "Wellness", "category": "Supplement information", "key_property": "Testing-first wellbeing discussion", "purpose": "Explore external vitamin D information or products only after discussing relevance with a clinician or pharmacist.", "precautions": "Do not self-dose for a presumed deficiency; images cannot diagnose a vitamin deficiency.", "search_terms": "vitamin D supplement", "tags": ["vitamin d", "supplement", "wellness"]},
     {"id": "iron-information", "name": "Iron supplement information", "domain": "Wellness", "category": "Supplement information", "key_property": "Testing-first wellbeing discussion", "purpose": "Explore external iron information or products only after professional review of symptoms and tests.", "precautions": "Do not start iron for hair, nail, or skin changes without appropriate testing and clinical advice.", "search_terms": "iron supplement", "tags": ["iron", "folate", "supplement", "wellness"]},
 ]
@@ -296,6 +351,12 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
     if product_guidance in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"}:
         products = catalog_for_area(area)
     guidance = AREA_CARE_GUIDANCE.get(area)
+    cause_sections = guidance["cause_sections"] if guidance else []
+    care_sections = guidance["care_sections"] if guidance else []
+    treatment_sections = guidance["treatment_sections"] if guidance else []
+    routine_sections = ([{"title": title, "items": guidance["routine"][key]} for title, key in
+                         (("Morning", "morning"), ("Evening", "evening"), ("Weekly check", "weekly"), ("Follow-up", "follow_up"))]
+                        if guidance else [])
     nutrition_sections = [*EVERYDAY_NUTRITION, *guidance["nutrition_sections"]] if guidance else []
     lifestyle_sections = [*EVERYDAY_LIFESTYLE, *guidance["lifestyle_sections"]] if guidance else []
     # Educational categories are selected by the upload area alone. Urgent
@@ -325,8 +386,12 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
             "morning": [AREA_MORNING_CARE.get(area, GENERAL_WELLBEING["routine"]["morning"][0]), *GENERAL_WELLBEING["routine"]["morning"][1:]],
         },
         "common_symptoms": guidance["common_symptoms"] if guidance else [],
-        "possible_causes": guidance["possible_causes"] if guidance else [],
-        "care_steps": guidance["care_steps"] if guidance else [],
+        "cause_sections": cause_sections,
+        "care_sections": care_sections,
+        "treatment_sections": treatment_sections,
+        "routine_sections": routine_sections,
+        "possible_causes": [item for section in cause_sections for item in section["items"]],
+        "care_steps": [item for section in care_sections for item in section["items"]],
         "nutrition_sections": nutrition_sections,
         "lifestyle_sections": lifestyle_sections,
         "diet": [item for section in nutrition_sections for item in section["items"]] if guidance else GENERAL_WELLBEING["diet"],
