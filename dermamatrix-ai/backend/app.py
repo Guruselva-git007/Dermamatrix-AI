@@ -498,7 +498,11 @@ def routine_payload(payload: dict) -> tuple[str, str, str, str] | None:
 
 def image_quality(image_bytes: bytes, filename: str | None = None) -> tuple[int, dict]:
     """Return non-diagnostic image usability checks; never a disease classifier."""
-    image, image_format, width, height = _opened_image(image_bytes, filename)
+    return _image_quality_from_decoded(*_opened_image(image_bytes, filename))
+
+
+def _image_quality_from_decoded(image: Image.Image, image_format: str, width: int, height: int) -> tuple[int, dict]:
+    """Measure a validated image without decoding the upload again."""
     resized = image.resize((1, 1))
     brightness = sum(ImageStat.Stat(resized).mean) / 3
     edge_variance = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES).convert("L")).var[0]
@@ -1417,17 +1421,19 @@ def create_assessment():
             message="The uploaded image was empty.", http_status=400, area=area,
         )
     try:
-        quality, image_features = image_quality(image_bytes, image_file.filename)
+        decoded_image, image_format, width, height = _opened_image(image_bytes, image_file.filename)
+        quality, image_features = _image_quality_from_decoded(decoded_image, image_format, width, height)
     except ImageValidationError as error:
         return rejected_image_upload(message=str(error), http_status=422, area=area)
     except Exception:
         return rejected_image_upload(
             message="The selected file could not be read as an image.", http_status=422, area=area,
         )
+    presentation_enabled = request.form.get("presentation_case_enabled") == "true"
     presentation_case = presentation_case_for_image(
         image_bytes,
         area,
-        request.form.get("presentation_case_enabled") == "true",
+        presentation_enabled,
     )
     try:
         duration = int(request.form.get("duration", 0)); discomfort = int(request.form.get("discomfort", 0)); change = int(request.form.get("change", 0))
@@ -1486,7 +1492,7 @@ def create_assessment():
     component_attempts["candidate_region"] = route["status"] != "LOW_QUALITY"
     try:
         candidate_region = (
-            extract_visual_candidate_region(image_bytes)
+            extract_visual_candidate_region(image_bytes, decoded_image=decoded_image)
             if component_attempts["candidate_region"]
             else unavailable_candidate_region("Image quality is insufficient for a reliable visual candidate-region assessment.")
         )
@@ -1494,6 +1500,16 @@ def create_assessment():
         component_failures["candidate_region"] = True
         app.logger.exception("Candidate-region processing failed")
         candidate_region = unavailable_candidate_region("Candidate-region processing was unavailable for this photo.")
+    try:
+        image_findings = analyze_native_image(
+            image_bytes, area=area, quality_status=image_features["status"], decoded_image=decoded_image,
+        )
+    except Exception:
+        component_failures["image_processing"] = True
+        app.logger.exception("Native image analysis failed")
+        image_findings = {"available": False, "status": "failed", "assessment_mode": "LIMITED_EVIDENCE", "observations": [], "measurements": {}, "not_assessable": ["Local image measurements were unavailable for this photo."], "notice": "Image-specific findings could not be measured."}
+    # Release the full-resolution RGB copy before optional model inference.
+    del decoded_image
     segmentation = {"available": False, "status": "not_run", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": research_reason}
     component_attempts["segmentation"] = bool(can_run_research_model)
     component_attempts["classification"] = bool(can_run_research_model)
@@ -1554,12 +1570,6 @@ def create_assessment():
     else:
         pirs = {}
     try:
-        image_findings = analyze_native_image(image_bytes, area=area, quality_status=image_features["status"])
-    except Exception:
-        component_failures["image_processing"] = True
-        app.logger.exception("Native image analysis failed")
-        image_findings = {"available": False, "status": "failed", "assessment_mode": "LIMITED_EVIDENCE", "observations": [], "measurements": {}, "not_assessable": ["Local image measurements were unavailable for this photo."], "notice": "Image-specific findings could not be measured."}
-    try:
         condition_evidence = assess_condition_evidence(category=area, image_findings=image_findings, validation=validation)
     except Exception:
         component_failures["condition_evidence"] = True
@@ -1618,6 +1628,12 @@ def create_assessment():
             "notice": presentation_case["notice"],
         }
         response["model_pipeline"]["presentation_case"] = "Exact SHA-256 match to an opt-in, pre-labelled teaching file; not AI inference."
+    elif presentation_enabled:
+        response["presentation_case"] = {
+            "matched": False,
+            "status": "NO_EXACT_MATCH",
+            "notice": "This file did not match a supplied teaching case exactly. The standard image assessment was used; no teaching-case label was assigned.",
+        }
     response["model_pipeline"]["native_image_findings"] = response["image_findings"].get("method_version", "unavailable")
     response["assessment_completeness"] = validate_assessment_completeness(response)
     # Guests get an ephemeral result. Authenticated requests persist under the

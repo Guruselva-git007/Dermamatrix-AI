@@ -179,11 +179,11 @@ def segment_dermoscopic_lesion(image_bytes: bytes) -> dict:
     }
 
 
-def extract_visual_candidate_region(image_bytes: bytes) -> dict:
+def extract_visual_candidate_region(image_bytes: bytes, *, decoded_image: Image.Image | None = None) -> dict:
     """Extract a contrast-based visual candidate region, not model segmentation."""
     import numpy as np
 
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = decoded_image.copy() if decoded_image is not None else Image.open(io.BytesIO(image_bytes)).convert("RGB")
     image.thumbnail((600, 600))
     gray = np.asarray(image.convert("L").filter(ImageFilter.MedianFilter(size=3)), dtype=np.uint8)
     threshold = _otsu_threshold(gray)

@@ -27,6 +27,8 @@ edited, or re-encoded photos, and never creates a probability, diagnosis,
 patient risk score, prescription, or personal treatment plan. Leave the
 checkbox off for every ordinary/patient image. See
 [the presentation-case guide](docs/presentation-case-mode.md).
+For the local viva sequence, verified sample files, and a concise capability
+script, see [the presentation runbook](docs/presentation-runbook-20260925.md).
 
 See [the model card](docs/model-card.md), [research-data protocol](docs/research-data-protocol.md), and [UNM atlas governance audit](docs/unm-atlas-governance.md) before any model training or evaluation. The public UNM Inclusive Dermatology Atlas is recorded as an educational reference only; it is not downloaded, scraped, or used for model training because public pages do not grant that permission.
 

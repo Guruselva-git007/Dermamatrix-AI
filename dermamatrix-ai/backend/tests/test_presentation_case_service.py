@@ -19,6 +19,26 @@ from presentation_case_service import PRESENTATION_CASES, presentation_case_for_
 
 
 class PresentationCaseTests(unittest.TestCase):
+    def test_unmapped_photo_with_presentation_enabled_stays_a_standard_assessment(self):
+        from app import app
+
+        image = Image.new("RGB", (640, 640), (210, 195, 180))
+        ImageDraw.Draw(image).rectangle((150, 150, 490, 490), fill=(95, 85, 75))
+        payload = BytesIO()
+        image.save(payload, format="JPEG")
+        response = app.test_client().post("/api/assessments", data={
+            "image": (BytesIO(payload.getvalue()), "ordinary.jpg"),
+            "area": "Skin", "image_context": "face_skin", "image_consent": "true",
+            "presentation_case_enabled": "true",
+        }, content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()
+        self.assertEqual(result["presentation_case"]["status"], "NO_EXACT_MATCH")
+        self.assertFalse(result["presentation_case"]["matched"])
+        self.assertFalse(result["assessment_result"]["presentation"]["is_reference_case"])
+        self.assertFalse(result["research_classifier"]["available"])
+        self.assertFalse(result["assessment_result"]["condition"]["available"])
+
     def test_case_lookup_requires_an_exact_digest_and_matching_area(self):
         digest = "f229ef0cf5e9318dea63fd500ca3a72d0f9bd7709cbd76912773e8614a2e5733"
         case = presentation_case_for_digest(digest, "Skin")

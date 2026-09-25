@@ -36,18 +36,22 @@ def _finding(name: str, region: str, evidence: str, metric: str) -> dict:
     }
 
 
-def analyze_native_image(image_bytes: bytes, *, area: str, quality_status: str) -> dict:
+def analyze_native_image(image_bytes: bytes, *, area: str, quality_status: str,
+                         decoded_image: Image.Image | None = None) -> dict:
     """Measure the actual image after bounded decoding and orientation repair."""
     import numpy as np
 
     if area not in LIMITATIONS:
         raise ValueError("Unsupported image-finding area")
 
-    with Image.open(io.BytesIO(image_bytes)) as opened:
-        image = ImageOps.exif_transpose(opened).convert("RGB")
-        original_size = image.size
-        image.thumbnail((768, 768), Image.Resampling.LANCZOS)
-        pixels = np.asarray(image, dtype=np.float32)
+    if decoded_image is None:
+        with Image.open(io.BytesIO(image_bytes)) as opened:
+            image = ImageOps.exif_transpose(opened).convert("RGB")
+    else:
+        image = ImageOps.exif_transpose(decoded_image)
+    original_size = image.size
+    image.thumbnail((768, 768), Image.Resampling.LANCZOS)
+    pixels = np.asarray(image, dtype=np.float32)
 
     height, width = pixels.shape[:2]
     if min(width, height) < 10:

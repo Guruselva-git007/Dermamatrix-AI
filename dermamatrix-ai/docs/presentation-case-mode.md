@@ -1,10 +1,16 @@
 # Presentation-case mode
 
-This opt-in review feature is for the twelve supplied viva images only. It is
+This opt-in review feature is for the twenty mapped viva images only. It is
 not a machine-learning feature. The server calculates SHA-256 over the uploaded
 bytes and only matches an unchanged original file in the small source-controlled
 fingerprint table. Any different, edited, re-saved, or patient image remains in
 the standard image-quality/context workflow and receives no disease label.
+
+The local sibling `../DERMA PRESENTATION/` folder also contains five newer personal
+photos without verified teaching labels. They are deliberately not mapped,
+trained on, or pushed to Git. They follow the ordinary Skin photo workflow,
+even when presentation matching is selected; the result then states that no
+exact teaching file matched.
 
 ## Use during the review
 
@@ -36,6 +42,14 @@ or personal treatment plan.
 | Nails | Thickened discoloured nail — possible onychomycosis differential |
 | Nails | Nail dystrophy — nail psoriasis/fungal differential |
 | Nails | Blue-grey nail discoloration — prompt-assessment teaching scenario |
+| Hair | Dandruff / seborrheic dermatitis reference |
+| Hair | Scalp flaking and itch reference |
+| Skin | Atrophic acne scarring |
+| Skin | Facial dark patches — hyperpigmentation / melasma differential |
+| Skin | Facial pigmentation patch |
+| Skin | Lip pigmentation |
+| Skin | Facial skin concerns vocabulary chart — multi-condition overview, no single case label |
+| Skin | Inflammatory acne-pattern reference |
 
 ## Evidence boundaries
 

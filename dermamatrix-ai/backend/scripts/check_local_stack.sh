@@ -18,9 +18,18 @@ fail() {
 }
 
 [[ -f "$project_dir/frontend/index.html" && -f "$project_dir/frontend/app.js" ]] || fail "frontend files are missing from $project_dir."
-[[ -x "$project_dir/.venv/bin/python" || -x "$project_dir/.ml-venv/bin/python" ]] || fail "project Python environment is missing."
+if [[ -x "$project_dir/.venv/bin/python" ]]; then
+  python_bin="$project_dir/.venv/bin/python"
+elif [[ -x "$project_dir/.ml-venv/bin/python" ]]; then
+  python_bin="$project_dir/.ml-venv/bin/python"
+else
+  fail "project Python environment is missing."
+fi
 [[ -f "$backend_dir/.env" ]] || fail "local backend configuration is missing."
 [[ -f "$weights_path" ]] || fail "required Skin research weight is missing."
+expected_weight_hash="a800e9df6330d377ed4a37b32e2cbd78821da5e9c3980a30bd42155d097f0250"
+actual_weight_hash="$(/usr/bin/shasum -a 256 "$weights_path" | /usr/bin/cut -d ' ' -f 1)"
+[[ "$actual_weight_hash" == "$expected_weight_hash" ]] || fail "the Skin research weight differs from the verified local weight."
 
 git_root="$($git_bin -C "$project_dir" rev-parse --show-toplevel 2>/dev/null)" || fail "the project is not inside its Git workspace."
 branch="$($git_bin -C "$project_dir" branch --show-current)"
@@ -55,4 +64,7 @@ while IFS= read -r pid; do
 done <<< "$listener_pids"
 [[ "$listener_in_workspace" == true ]] || fail "the listener on port $app_port is not running from $backend_dir."
 
-echo "DermaMatrix presentation preflight passed: main is clean and synchronized; local API, MySQL, registry, Skin weight, and canonical listener are ready."
+"$python_bin" "$script_dir/check_presentation_assets.py" || fail "local teaching files are incomplete or unreadable."
+"$python_bin" "$script_dir/check_research_model.py" || fail "the installed research model or dermoscopy demo sample is unavailable."
+
+echo "DermaMatrix presentation preflight passed: main is clean and synchronized; local API, MySQL, registry, teaching files, and the verified research model are ready."
