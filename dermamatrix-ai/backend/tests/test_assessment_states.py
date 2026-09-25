@@ -273,6 +273,8 @@ class AssessmentStateTests(unittest.TestCase):
                 self.assertEqual(result["assessment_result"]["status"]["code"], "RESEARCH_ONLY")
                 self.assertEqual(len(result["research_classifier"]["raw_logits"]), 10)
                 self.assertEqual(len(result["research_classifier"]["top_predictions"]), 5)
+                self.assertEqual(result["model_pipeline"]["classification"], result["research_classifier"]["model"])
+                self.assertEqual(result["model_pipeline"]["preprocessing"], result["research_classifier"]["preprocessing"])
             self.assertEqual(result["model_metadata"]["model_id"], model_id)
             self.assertEqual(result["input_validation"]["classification_status"], "ELIGIBLE_FOR_SCOPED_RESEARCH_CLASSIFIER" if area == "Nails" and nail_weights_available() else "NO_COMPATIBLE_CLASSIFIER_CONFIGURED")
             self.assertEqual(result["recommendations"]["products"], [])

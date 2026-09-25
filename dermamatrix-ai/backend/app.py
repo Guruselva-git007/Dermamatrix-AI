@@ -698,7 +698,7 @@ def clinician_first_care_plan(risk_score: int | None) -> dict:
         "routine_guardrail": "Use gentle cleansing, avoid picking or harsh scrubs, and stop any product that stings or irritates. This is general self-care, not a treatment plan.",
         "product_guardrail": "Personal-care categories are not chosen for a disease or a deficiency. Discuss new products, supplements, allergies, pregnancy, broken skin, and ongoing treatment with a pharmacist or registered medical practitioner.",
         "diet_guidance": "For general wellbeing, aim for regular meals with protein, fruits or vegetables, and hydration. Do not use supplements or diet changes to self-treat a suspected condition.",
-        "diagnosis_notice": "The app reports screening support and, only in dermatoscopic lesion mode, a research label—not a verified diagnosis.",
+        "diagnosis_notice": "The app reports screening support and may show a local research-model ranking for supported Skin or Nail images—not a verified diagnosis.",
     }
 
 
@@ -1617,6 +1617,8 @@ def create_assessment():
     if area in {"Hair", "Nails"}:
         modality = "Hair/scalp" if area == "Hair" else "Nail"
         response["modality_score"] = {"score": quality, "label": "Image readiness score, not a hair/nail health score or diagnosis."}
+    if area in {"Hair", "Nails"} and not research_classifier.get("available"):
+        modality = "Hair/scalp" if area == "Hair" else "Nail"
         response["model_pipeline"] = {
             "workflow": route["workflow"],
             "image_quality_gate": "completed",

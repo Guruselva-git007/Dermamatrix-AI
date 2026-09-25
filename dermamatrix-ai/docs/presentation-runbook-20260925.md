@@ -1,5 +1,7 @@
 # Presentation runbook — 26 September 2026
 
+> Historical pre-integration walkthrough. The current Skin and Nail research-model routes are documented in [the local model source report](local-model-source-and-validation-20260925.md) and [the viva guide](viva-guide-20260925.md). Do not use the older capability statements below as the live model registry.
+
 ## Start and verify
 
 1. Double-click `Start DermaMatrix.command`, or run it from Terminal in this

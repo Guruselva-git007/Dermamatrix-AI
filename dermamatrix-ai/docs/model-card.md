@@ -1,5 +1,7 @@
 # DermaMatrix model card
 
+> Historical baseline and rejected-experiment record. For currently installed ordinary Skin and Nail research adapters, use [local model sourcing and verification](local-model-source-and-validation-20260925.md) and the live `/api/model-registry` endpoint.
+
 ## Current runnable components
 
 | Component | Intended input | Output | Clinical status |
