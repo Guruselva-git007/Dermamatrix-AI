@@ -18,13 +18,15 @@ from datetime import datetime, timedelta, timezone
 
 import pymysql
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
-from PIL import Image, ImageFilter, ImageStat
+from PIL import Image, ImageFilter, ImageOps, ImageStat
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 from model_service import MODEL_VERSION, run_screening_model
 from lesion_classifier import classify_dermoscopic_lesion
-from model_metadata import SKIN_MODEL_ID, all_model_metadata, model_metadata, public_capability_matrix
+from clinical_skin_classifier import classify_clinical_skin_photo
+from nail_classifier import classify_nail_photo
+from model_metadata import CLINICAL_SKIN_MODEL_ID, NAIL_MODEL_ID, SKIN_MODEL_ID, all_model_metadata, model_metadata, public_capability_matrix
 from assessment_router import public_workflows, route_image_assessment
 from assessment_contract import build_assessment_result, build_rejected_image_result, determine_assessment_state
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
@@ -373,7 +375,7 @@ def _opened_image(image_bytes: bytes, filename: str | None = None) -> tuple[Imag
             if expected_format and detected_format != expected_format:
                 raise ImageValidationError("The file extension does not match the image content. Export the image again and retry.")
         with Image.open(io.BytesIO(image_bytes)) as source:
-            image = source.convert("RGB")
+            image = ImageOps.exif_transpose(source).convert("RGB")
     except ImageValidationError:
         raise
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
@@ -507,23 +509,32 @@ def _image_quality_from_decoded(image: Image.Image, image_format: str, width: in
     brightness = sum(ImageStat.Stat(resized).mean) / 3
     edge_variance = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES).convert("L")).var[0]
     issues = []
-    if min(width, height) < 450:
-        issues.append("The image is too small; retake it at a higher resolution.")
-    if brightness < 55:
-        issues.append("The image is too dark; use even, indirect light.")
+    blocking_issues = []
+    if min(width, height) < 224:
+        blocking_issues.append("The image is too small; retake it at a higher resolution.")
+    elif min(width, height) < 450:
+        issues.append("A higher-resolution close-up may show more detail.")
+    if brightness < 25:
+        blocking_issues.append("The image is too dark; use even, indirect light.")
+    elif brightness < 55:
+        issues.append("Lighting is dim; even, indirect light may help.")
+    if brightness > 245:
+        blocking_issues.append("The image is overexposed; avoid flash glare.")
     elif brightness > 220:
-        issues.append("The image is overexposed; avoid flash glare.")
-    if edge_variance < 90:
-        issues.append("The image may be out of focus; retake it sharply.")
+        issues.append("Bright glare may hide detail; try indirect light.")
+    if edge_variance < 20:
+        blocking_issues.append("The image is extremely blurred; retake it sharply.")
+    elif edge_variance < 90:
+        issues.append("The image may be soft; a steadier close-up may help.")
     resolution_score = min(1.0, (width * height) / (1000 * 1000)) * 18
     light_score = max(0, 18 - abs(brightness - 145) / 8)
     focus_score = min(18, edge_variance / 11)
     quality = int(max(0, min(98, 46 + resolution_score + light_score + focus_score)))
-    quality_status = "LOW_QUALITY" if issues else "GOOD" if quality >= 85 else "ACCEPTABLE"
+    quality_status = "LOW_QUALITY" if blocking_issues else "GOOD" if quality >= 85 and not issues else "ACCEPTABLE"
     return quality, {
         "width": width, "height": height, "pixel_count": width * height, "format": image_format, "brightness": round(brightness, 1),
-        "edge_variance": round(edge_variance, 1), "usable_for_research_model": not issues,
-        "status": quality_status, "issues": issues,
+        "edge_variance": round(edge_variance, 1), "usable_for_research_model": not blocking_issues,
+        "status": quality_status, "issues": blocking_issues + issues,
     }
 
 
@@ -635,7 +646,7 @@ def stored_analysis_summary(response: dict) -> dict:
         "screening": response["screening"], "manual_context": response["manual_context"], "patient_context": response.get("patient_context", {}), "severity": response.get("severity", {}), "clinical_decision_support": response.get("clinical_decision_support", {}), "progress_comparison": response.get("progress_comparison", {}), "journey": response.get("journey"),
         "candidate_region": {key: candidate.get(key) for key in ("available", "method", "reliable", "affected_area_percent", "notice", "message")},
         "segmentation": {key: segmentation.get(key) for key in ("available", "status", "model", "affected_area_percent", "segmentation_confidence", "notice", "message")},
-        "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
+        "classification": {key: classifier.get(key) for key in ("available", "model", "model_id", "model_version", "dataset_version", "pipeline_version", "top_prediction", "top_predictions", "alternatives", "raw_logits", "class_order", "input_shape", "preprocessing", "condition_likelihood", "calibration", "uncertainty", "explainability", "model_confidence", "model_confidence_kind", "non_condition_top_class", "raw_top_score", "low_confidence", "below_confidence_threshold", "confidence_threshold", "confidence_notice", "notice")},
         "recommendations": response.get("recommendations", {}), "care_plan": response.get("care_plan", {}), "explainability": response.get("explainability", {}), "condition_intelligence": response.get("condition_intelligence", {}), "assessment_result": response.get("assessment_result", {}),
         "presentation_case": response.get("presentation_case"),
         "image_findings": response.get("image_findings"),
@@ -1461,7 +1472,11 @@ def create_assessment():
         app.logger.exception("Reported priority calculation failed")
         model_output = {"risk_score": None, "status": "unavailable"}
     can_run_research_model, research_reason = route["run_research_classifier"], route["notice"]
-    assessment_metadata = model_metadata(SKIN_MODEL_ID if area == "Skin" else "hair-model-adapter" if area == "Hair" else "nail-model-adapter")
+    assessment_metadata = model_metadata(
+        SKIN_MODEL_ID if route["workflow"] == "skin-dermatoscopic-research" else
+        CLINICAL_SKIN_MODEL_ID if area == "Skin" else
+        "hair-model-adapter" if area == "Hair" else NAIL_MODEL_ID
+    )
     validation = {
         "status": route["status"],
         "image_context": route["image_context"],
@@ -1511,24 +1526,29 @@ def create_assessment():
     # Release the full-resolution RGB copy before optional model inference.
     del decoded_image
     segmentation = {"available": False, "status": "not_run", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": research_reason}
-    component_attempts["segmentation"] = bool(can_run_research_model)
+    component_attempts["segmentation"] = bool(can_run_research_model and route["workflow"] == "skin-dermatoscopic-research")
     component_attempts["classification"] = bool(can_run_research_model)
     if can_run_research_model:
+        if route["workflow"] == "skin-dermatoscopic-research":
+            try:
+                segmentation = segment_dermoscopic_lesion(image_bytes)
+            except Exception:
+                component_failures["segmentation"] = True
+                app.logger.exception("Image segmentation failed")
+                segmentation = {"available": False, "status": "failed", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": "Segmentation was unavailable for this photo."}
         try:
-            segmentation = segment_dermoscopic_lesion(image_bytes)
-        except Exception:
-            component_failures["segmentation"] = True
-            app.logger.exception("Image segmentation failed")
-            segmentation = {"available": False, "status": "failed", "affected_area_percent": None, "segmentation_confidence": None, "overlay": None, "mask": None, "message": "Segmentation was unavailable for this photo."}
-        try:
-            research_classifier = classify_dermoscopic_lesion(image_bytes)
+            research_classifier = (
+                classify_dermoscopic_lesion(image_bytes) if route["workflow"] == "skin-dermatoscopic-research" else
+                classify_clinical_skin_photo(image_bytes) if area == "Skin" else
+                classify_nail_photo(image_bytes)
+            )
         except Exception:
             component_failures["classification"] = True
             app.logger.exception("Image classification failed")
             research_classifier["reason"] = "The classifier was unavailable for this photo."
         if not research_classifier.get("available"):
             validation["classification_status"] = "RESEARCH_CLASSIFIER_NOT_AVAILABLE"
-            validation["notice"] = "The image met the declared dermatoscopic research route, but no approved research-model weights are configured in this deployment. No condition label was generated."
+            validation["notice"] = "The image met the declared research route, but its local model could not run. No condition label was generated."
     manual_symptoms = normalise_symptoms(area, request.form.getlist("symptoms"))
     previous_treatment = request.form.get("previous_treatment", "").strip()[:500]
     try:
@@ -1575,7 +1595,7 @@ def create_assessment():
         component_failures["condition_evidence"] = True
         app.logger.exception("Condition evidence evaluation failed")
         condition_evidence = {"status": "FAILED", "possible_concerns": [], "evidence_strength": None, "source": None}
-    quality_payload = {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": not image_features["issues"], "status": image_features["status"], "label": "Suitable for visual review" if not image_features["issues"] else "Retake recommended", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}
+    quality_payload = {"score": quality, "image_quality_score": round(quality / 100, 2), "quality_passed": image_features["status"] != "LOW_QUALITY", "status": image_features["status"], "label": "Retake recommended" if image_features["status"] == "LOW_QUALITY" else "Suitable for visual review", "issues": image_features["issues"], "visibility": "Not automatically assessed; choose the matching image type and ensure the relevant area is centred."}
     reported_context = {"symptoms": manual_symptoms, "previous_treatment": previous_treatment, "duration": duration, "discomfort": discomfort, "change": change, "urgent_concern": urgent_concern}
     canonical_evidence = build_image_evidence(
         area=area, quality=quality_payload, validation=validation, findings=image_findings,
@@ -1591,7 +1611,7 @@ def create_assessment():
     response = {
         "assessment_id": assessment_id, "created_at": datetime.now(timezone.utc).isoformat(), "area": area, "input_type": "image", "source_file": secure_filename(image_file.filename),
         "quality": canonical_evidence["image_quality"], "input_validation": validation, "risk": priority_payload(priority, "Reported-concern priority, not disease risk"), "assessment_risk": canonical_evidence["assessment_risk"], "pirs": canonical_evidence["pirs"], "screening": {"title": priority.get("title", "Assessment details reviewed"), "summary": priority.get("summary", "A reported-concern priority was unavailable for this assessment.")},
-        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": canonical_evidence["severity"], "clinical_decision_support": cdss, "candidate_region": candidate_region, "visual_evidence": {"available": bool(segmentation.get("available") and isinstance(segmentation.get("affected_area_percent"), (int, float))), "affected_area_percent": segmentation.get("affected_area_percent") if segmentation.get("available") else None, "source": "trained model segmentation" if segmentation.get("available") else None, "notice": segmentation.get("notice") or "Affected anatomy was not measured; contrast-region statistics remain technical image detail only."}, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": "RGB conversion, median denoising, resize/centre crop for research classifier" if can_run_research_model else "RGB conversion and image-quality evaluation", "candidate_region": candidate_region.get("method") if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": "ResNet-34 convolutional features" if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") else "not run", "classification": "HAM10000 research classifier" if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": "Grad-CAM research attention map" if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
+        "manual_context": {"symptoms": manual_symptoms, "previous_treatment": previous_treatment}, "patient_context": patient_context, "severity": canonical_evidence["severity"], "clinical_decision_support": cdss, "candidate_region": candidate_region, "visual_evidence": {"available": bool(segmentation.get("available") and isinstance(segmentation.get("affected_area_percent"), (int, float))), "affected_area_percent": segmentation.get("affected_area_percent") if segmentation.get("available") else None, "source": "trained model segmentation" if segmentation.get("available") else None, "notice": segmentation.get("notice") or "Affected anatomy was not measured; contrast-region statistics remain technical image detail only."}, "segmentation": segmentation, "model": model_output, "model_metadata": assessment_metadata, "research_classifier": research_classifier, "model_pipeline": {"workflow": route["workflow"], "input_validation": validation["status"], "category_relevance": validation["category_relevance"], "anatomical_relevance": validation["relevance_status"], "image_quality_gate": image_features["status"], "preprocessing": research_classifier.get("preprocessing") if research_classifier.get("available") else "EXIF transpose, RGB conversion, image-quality evaluation", "candidate_region": candidate_region.get("method") if candidate_region.get("available") else "not run", "segmentation": segmentation.get("status", "not_run"), "feature_extraction": assessment_metadata.get("architecture", "not run") if research_classifier.get("available") else "not run", "attention_map": "Grad-CAM research attention map" if research_classifier.get("available") and route["workflow"] == "skin-dermatoscopic-research" else "not available", "classification": research_classifier.get("model") if research_classifier.get("available") else route["classification_status"], "calibration": research_classifier.get("calibration", {}).get("status", "NOT_RUN"), "uncertainty": research_classifier.get("uncertainty", {}).get("status", "NOT_RUN"), "explainability": research_classifier.get("explainability", {}).get("explanation_text") if research_classifier.get("available") else "not available because no compatible classifier ran", "model_lineage": {key: assessment_metadata.get(key) for key in ("model_id", "model_version", "dataset_version", "pipeline_version", "status")}},
         "recommendations": build_recommendations(area, research_classifier, cdss=cdss, assessment_state=assessment_state, canonical_evidence=canonical_evidence), "medical_disclaimer": "Educational prototype only. This response is not a diagnosis or medical advice.", "clinical_status": "prompt_professional_care_selected" if urgent_concern else "screening_complete", "urgent_notice": "You selected a prompt-care concern. Contact a registered medical practitioner or local urgent/emergency service now if you feel severely unwell; do not wait for app results." if urgent_concern else None, "persistence": persistence, "care_plan": clinician_first_care_plan(assessment_risk.get("score")), "commerce_eligibility": "personal_care_only" if cdss["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only", "canonical_evidence": canonical_evidence, "image_findings": canonical_evidence["image_findings"],
     }
     if area in {"Hair", "Nails"}:

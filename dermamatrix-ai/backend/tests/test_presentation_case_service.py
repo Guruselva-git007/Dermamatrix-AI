@@ -16,6 +16,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from presentation_case_service import PRESENTATION_CASES, presentation_case_for_digest
+from clinical_skin_classifier import weights_available as clinical_skin_weights_available
 
 
 class PresentationCaseTests(unittest.TestCase):
@@ -36,8 +37,9 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertEqual(result["presentation_case"]["status"], "NO_EXACT_MATCH")
         self.assertFalse(result["presentation_case"]["matched"])
         self.assertFalse(result["assessment_result"]["presentation"]["is_reference_case"])
-        self.assertFalse(result["research_classifier"]["available"])
-        self.assertFalse(result["assessment_result"]["condition"]["available"])
+        self.assertEqual(result["research_classifier"]["available"], clinical_skin_weights_available())
+        if clinical_skin_weights_available():
+            self.assertEqual(result["research_classifier"]["model_id"], "clinical-skin-efficientnet-research")
 
     def test_case_lookup_requires_an_exact_digest_and_matching_area(self):
         digest = "f229ef0cf5e9318dea63fd500ca3a72d0f9bd7709cbd76912773e8614a2e5733"
@@ -86,8 +88,7 @@ class PresentationCaseTests(unittest.TestCase):
         result = response.get_json()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(result["presentation_case"]["matched"])
-        self.assertEqual(result["research_classifier"]["available"], False)
-        self.assertEqual(result["assessment_result"]["condition"]["available"], False)
+        self.assertEqual(result["research_classifier"]["available"], clinical_skin_weights_available())
         self.assertTrue(result["assessment_risk"]["available"])
         self.assertIsInstance(result["assessment_risk"]["score"], int)
         self.assertEqual(result["assessment_risk"]["condition_profile"]["key"], "undifferentiated-skin")

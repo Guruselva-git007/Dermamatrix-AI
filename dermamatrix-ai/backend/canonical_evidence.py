@@ -21,12 +21,6 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
     prediction = classifier.get("top_prediction") or {}
     likelihood = classifier.get("condition_likelihood") or {}
     classification_available = bool(classifier.get("available") and prediction.get("condition"))
-    calibrated_classification = bool(
-        classification_available and likelihood.get("available")
-        and likelihood.get("estimated_likelihood") is not None
-        and (classifier.get("calibration") or {}).get("available")
-        and (classifier.get("uncertainty") or {}).get("status") != "LOW_CONFIDENCE"
-    )
     ranked_predictions = classifier.get("top_predictions") or [] if classification_available else []
     # Retain reproducible metadata, never overlays or pixel masks in history.
     candidate_metadata = {key: value for key, value in candidate.items() if key not in {"overlay", "mask"}}
@@ -56,7 +50,7 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
         "classification": {
             "status": statuses["classification"],
             "condition": prediction.get("condition") if classification_available else None,
-            "confidence": likelihood.get("estimated_likelihood") if classification_available and likelihood.get("available") else None,
+            "confidence": likelihood.get("estimated_likelihood") if classification_available and likelihood.get("available") else prediction.get("relative_score") if classification_available else None,
             "probabilities": classifier.get("probabilities") or {} if classification_available else {},
             "ranked_predictions": ranked_predictions,
             "score_kind": "calibrated_likelihood" if likelihood.get("available") else "relative_model_score" if classification_available else None,
@@ -81,5 +75,5 @@ def build_image_evidence(*, area: str, quality: dict, validation: dict,
             "pirs": pirs.get("version") if pirs.get("score") is not None else None,
             "condition_evidence": None,
         },
-        "assessment_type": "CLASSIFICATION_SUPPORTED" if calibrated_classification else "IMAGE_FINDINGS_WITH_RESEARCH_RANKING" if classification_available and findings.get("available") else "IMAGE_FINDINGS" if findings.get("available") else "LIMITED_EVIDENCE",
+        "assessment_type": "CLASSIFICATION_SUPPORTED" if classification_available else "IMAGE_FINDINGS" if findings.get("available") else "LIMITED_EVIDENCE",
     }

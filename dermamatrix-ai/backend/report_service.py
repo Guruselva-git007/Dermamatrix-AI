@@ -96,14 +96,15 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     if likelihood is not None and classification.get("available"):
         classification_value += f"<br/><font color='#5C6E80'>Estimated likelihood: {_text(round(float(likelihood) * 100))}% · calibration: {_text(calibration.get('calibration_version'))} · certainty: {_text(uncertainty.get('certainty'))}</font>"
     elif classification.get("available"):
-        classification_value += "<br/><font color='#5C6E80'>Research ranking only. Calibration artifact unavailable, so no condition likelihood is shown.</font>"
+        raw_score = prediction.get("relative_score")
+        classification_value += f"<br/><font color='#5C6E80'>Raw model score: {_text(round(float(raw_score) * 100)) if isinstance(raw_score, (int, float)) else 'not available'}%. This is a relative research ranking, not a calibrated likelihood or diagnosis.</font>"
     assessment_state = str(result_status.get("state") or "").upper()
     outcome_label = {
         "HEALTHY": "No apparent concerns identified in the submitted image",
         "CONDITION": "Possible model-supported condition",
         "UNCERTAIN": "Image-findings assessment" if image_findings.get("available") else "Could not assess confidently",
     }.get(assessment_state, "Assessment state unavailable in this saved record")
-    validated_condition_name = result_condition.get("name") if result_condition.get("calibration", {}).get("available") else None
+    validated_condition_name = result_condition.get("name") if result_condition.get("available") else None
     knowledge_finding = _text(
         consumer_primary.get("title") or validated_condition_name or ("Image findings" if image_findings.get("available") else None),
         "No condition label established; image findings are listed below.",
@@ -114,7 +115,9 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     )
     result_likelihood = result_condition.get("estimated_likelihood")
     likelihood_value = (
-        f"{round(float(result_likelihood) * 100)}% calibrated research-model likelihood" if result_likelihood is not None and consumer_primary.get("confidence") is not None else "Not available"
+        f"{round(float(result_likelihood) * 100)}% calibrated research-model likelihood" if result_likelihood is not None
+        else f"{consumer_primary.get('confidence')}% raw model score (uncalibrated)" if consumer_primary.get("confidence") is not None and consumer_primary.get("confidence_kind") == "raw_softmax"
+        else "Not available"
     )
     severity_value = result_severity.get("level") or severity.get("level") or "Not assessed"
     severity_note = result_severity.get("notice") or severity.get("label") or "No symptom severity was assessed."
@@ -143,7 +146,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
         [Paragraph("Assessment outcome", eyebrow), Paragraph(_text(outcome_label), body)],
         [Paragraph("Result label", eyebrow), Paragraph(knowledge_finding, body)],
-        [Paragraph("Estimated likelihood", eyebrow), Paragraph(_text(likelihood_value), body)],
+        [Paragraph("Model score", eyebrow), Paragraph(_text(likelihood_value), body)],
         [Paragraph("Visual evidence", eyebrow), Paragraph(_text(visual_evidence_value), body)],
         [Paragraph("Assessment concern score", eyebrow), Paragraph(_text(assessment_risk_value), body)],
         [Paragraph("Reported symptom severity", eyebrow), Paragraph(f"{_text(severity_value)} · {_text(severity_note)}", body)],
@@ -294,7 +297,7 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
         severity = canonical.get("severity") or summary.get("severity") or {}
         condition = result.get("condition") or {}
         consumer_title = ((result.get("consumer") or {}).get("primary_result") or {}).get("title")
-        scope = consumer_title or (condition.get("name") if condition.get("available") and condition.get("calibration", {}).get("available") else "Image findings" if (canonical.get("image_findings") or result.get("image_findings") or {}).get("available") else "Screening summary")
+        scope = consumer_title or (condition.get("name") if condition.get("available") else "Image findings" if (canonical.get("image_findings") or result.get("image_findings") or {}).get("available") else "Screening summary")
         analysis_rows.append([
             str(analysis.get("created_at", ""))[:10],
             str(analysis.get("area", "")),

@@ -10,7 +10,7 @@ sweat-gland conditions that do not have a configured validated model.
 from __future__ import annotations
 
 from clinical_intelligence_service import AREA_SYMPTOMS
-from model_metadata import public_capability_matrix
+from model_metadata import CLINICAL_SKIN_MODEL_ID, NAIL_MODEL_ID, model_metadata, public_capability_matrix
 
 
 KNOWLEDGE_VERSION = "dermamatrix-condition-knowledge-v1.3"
@@ -484,18 +484,18 @@ def model_capability_matrix() -> list[dict]:
     likelihood = {
         "Skin": "Only with a version-matched independent-validation calibration artifact",
         "Hair": "Unavailable: no configured validated hair/scalp classifier",
-        "Nails": "Unavailable: no configured validated nail classifier",
+        "Nails": "Unavailable: the nail research classifier has no version-matched calibration artifact",
         "Sweat": "Unavailable: transparent questionnaire prioritisation is not a validated condition model",
     }
     matrix = []
     for capability in public_capability_matrix():
         area = capability["area"]
-        model_conditions = ontology_names if area == "Skin" else []
+        model_conditions = ontology_names if area == "Skin" else [name for name in model_metadata(NAIL_MODEL_ID)["classes"] if name != "Healthy Nail"] if area == "Nails" else []
         matrix.append({
             "health_area": area,
             "input": capability["supported_input"],
             "model_supported_conditions": model_conditions,
-            "knowledge_conditions": model_conditions,
+            "knowledge_conditions": ontology_names if area == "Skin" else [],
             "likelihood": likelihood[area],
             "xai": capability["explainability"],
             "specialty": specialty[area],
@@ -591,6 +591,15 @@ def build_assessment_intelligence(*, area: str, classifier: dict, priority: dict
             "relative_score": top_prediction.get("relative_score"),
             "label": "Highest-ranked research label; raw model ranking is not a real-world likelihood or diagnosis.",
             "notice": likelihood.get("notice") or "No calibrated condition likelihood is available.",
+        }
+    elif area in {"Nails", "Skin"} and classifier.get("model_id") in {NAIL_MODEL_ID, CLINICAL_SKIN_MODEL_ID} and state == "CONDITION" and classifier.get("available") and (classifier.get("top_prediction") or {}).get("condition"):
+        label = classifier["top_prediction"]["condition"]
+        finding = {
+            "status": "MODEL_SUPPORTED_RESEARCH_RANKING_ONLY", "name": label,
+            "condition_id": None, "model_class": label, "estimated_likelihood": None,
+            "relative_score": classifier["top_prediction"].get("relative_score"),
+            "label": "Highest-ranked local research class; raw score is not a disease probability or diagnosis.",
+            "notice": "No condition-specific clinical knowledge or treatment is inferred from this experimental label.",
         }
     else:
         finding = {

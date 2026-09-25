@@ -141,9 +141,9 @@ function selectArea(area, { userSelected = false } = {}) {
   });
   const sweat = area === 'Sweat';
   const labels = {
-    Skin: { title: 'Check your skin', status: 'Start with a clear photo. If you have a dermatoscopic lesion image, choose that image type for a more focused research check.', upload: 'Add a clear skin photo', copy: 'Face, body, affected area, or dermatoscopic lesion photo.' },
+    Skin: { title: 'Check your skin', status: 'Ordinary skin photos use the local clinical-photo research model. Attested dermatoscope photos use the separate lesion model.', upload: 'Add a clear skin photo', copy: 'Face, body, affected area, or dermatoscopic lesion photo.' },
     Hair: { title: 'Check hair & scalp', status: 'Start with a clear photo of your hair or scalp. Your result will explain what can be reviewed.', upload: 'Add a clear hair or scalp photo', copy: 'Choose the image type that best matches your concern.' },
-    Nails: { title: 'Check your nails', status: 'Start with a clear nail photo. Your result will explain what can be reviewed.', upload: 'Add a clear nail photo', copy: 'Choose the image type that best matches your concern.' },
+    Nails: { title: 'Check your nails', status: 'A clear close-up can receive a local ten-class Nail research ranking.', upload: 'Add a clear nail photo', copy: 'Choose the image type that best matches your concern.' },
     Sweat: { title: 'Assess a sweat pattern', status: 'Answer a few questions to get a clear summary and next steps.', upload: '', copy: '' },
   }[area];
   const capability = state.modelCapabilities[area];
@@ -154,9 +154,9 @@ function selectArea(area, { userSelected = false } = {}) {
     ? 'Complete a short questionnaire for a structured screening summary.'
     : 'Add a clear image for screening support and next-step guidance.';
   const summaries = {
-    Skin: 'Add a clear skin photo for a quality check and practical next steps.',
+    Skin: 'Add a clear skin photo for a local model ranking and practical next steps.',
     Hair: 'Add a clear hair or scalp photo to review your concern.',
-    Nails: 'Add a clear nail photo to review your concern.',
+    Nails: 'Add a clear nail close-up for a local research ranking and next steps.',
     Sweat: 'Answer a few questions to get a clear summary and next steps.',
   };
   $('#moduleStatusSummary').textContent = summaries[area];
@@ -948,6 +948,13 @@ function renderAnalysisDashboard(data) {
     technicalEvidenceSection('Classification', [
       ['Status', modelStatus],
       ['Output', predictionValue],
+      ['Score kind', classifier.model_confidence_kind],
+      ['Model score', Number.isFinite(classifier.model_confidence) ? `${Math.round(classifier.model_confidence * 100)}%` : undefined],
+      ['Prediction margin', Number.isFinite(uncertainty.margin) ? `${Math.round(uncertainty.margin * 100)} percentage points` : undefined],
+      ['OOD status', uncertainty.ood_status],
+      ['Top five', classifierPredictions(classifier).slice(0, 5).map(item => `${item.label}: ${Math.round((item.calibratedProbability ?? item.relativeScore ?? 0) * 100)}%`).join(' · ') || undefined],
+      ['Raw logits', Array.isArray(classifier.raw_logits) ? classifier.raw_logits.join(', ') : undefined],
+      ['Class order', Array.isArray(classifier.class_order) ? classifier.class_order.join(', ') : undefined],
       ['Calibration', calibration.status || pipeline.calibration],
       ['Uncertainty', uncertainty.status || pipeline.uncertainty],
     ]),
@@ -1115,7 +1122,7 @@ function renderUnifiedConsumerResult(data) {
     metric('CONCERN', label(consumer.concern?.label), consumer.concern?.urgency || 'Care priority based on the information shared.'),
     metric('SEVERITY', label(consumer.severity?.label), 'Based on symptoms you reported, when available.'),
     primary.confidence !== null && Number.isFinite(primary.confidence)
-      ? metric('AI CONFIDENCE', `${primary.confidence}%`, 'Calibrated result from a compatible model.')
+      ? metric('MODEL SCORE', `${primary.confidence}%`, primary.confidence_kind === 'raw_softmax' ? 'Raw softmax ranking; not a diagnostic probability.' : 'Calibrated estimate; not a diagnosis.')
       : metric('EVIDENCE STRENGTH', primary.evidence_strength || 'Limited', 'Scope of the available image and context evidence.'),
   ].join('');
   const segmentationOverlay = data.segmentation?.available ? data.segmentation.overlay : null;
@@ -1199,8 +1206,14 @@ function renderUnifiedConsumerResult(data) {
 
 function renderResearchDermoscopyResult(data) {
   const classifier = data.research_classifier || {};
-  if (!classifier.available) return false;
-  const rankings = classifierPredictions(classifier).slice(0, 3);
+  if (!classifier.available || !['Skin', 'Nails'].includes(data.area)) return false;
+  const nail = data.area === 'Nails';
+  const dermoscopy = data.input_validation?.workflow === 'skin-dermatoscopic-research';
+  const imageKind = nail ? 'nail' : dermoscopy ? 'dermoscopic' : 'clinical skin';
+  const researchArea = nail ? 'NAIL PHOTO' : dermoscopy ? 'DERMOSCOPY' : 'CLINICAL SKIN PHOTO';
+  const consumer = data.assessment_result?.consumer || {};
+  const primary = consumer.primary_result || {};
+  const rankings = classifierPredictions(classifier).slice(0, 5);
   const technicalEvidence = $('#analysisPipeline');
   technicalEvidence?.remove();
   let root = $('#patientResultContent');
@@ -1211,12 +1224,23 @@ function renderResearchDermoscopyResult(data) {
   }
   root.className = 'patient-result-content consumer-result dermoscopy-result';
   const image = state.imageUrl
-    ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Submitted dermoscopic image" /><span>Submitted dermoscopic image</span></div>`
+    ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Submitted ${imageKind} image" /><span>Submitted ${imageKind} image</span></div>`
     : '<div class="patient-visual-empty"><strong>Image not retained</strong><p>Saved reports contain metadata only.</p></div>';
   const attentionImage = state.imageUrl && classifier.attention_map?.image
     ? `<details class="patient-visual-details" data-deferred-visual><summary>View Grad-CAM research attention map</summary><figure><img data-patient-src="${escapeHTML(classifier.attention_map.image)}" alt="Grad-CAM research attention map" /><figcaption>Highlighted regions contributed to the model ranking. This is not a lesion boundary or diagnosis.</figcaption></figure></details>`
     : '';
-  const rankingItems = rankings.map((item, index) => `<li><span>Rank ${index + 1}</span><strong>${escapeHTML(item.label)}</strong></li>`).join('');
+  const rankingPercent = value => !Number.isFinite(value) ? '—' : value > 0 && value < 0.01 ? '&lt;1%' : `${Math.round(value * 100)}%`;
+  const rankingItems = rankings.map((item, index) => `<li><span>Rank ${index + 1}</span><strong>${escapeHTML(item.label)}</strong><span>${rankingPercent(Number.isFinite(item.calibratedProbability) ? item.calibratedProbability : item.relativeScore)}</span></li>`).join('');
+  const metric = (name, value, note) => `<div><small>${escapeHTML(name)}</small><strong>${escapeHTML(String(value))}</strong><p>${escapeHTML(note)}</p></div>`;
+  const score = value => Number.isFinite(value) ? `${Math.round(value)}/100` : 'Not assessed';
+  const metrics = [
+    metric('MODEL SCORE', `${primary.confidence ?? '—'}%`, primary.confidence_kind === 'raw_softmax' ? 'Raw softmax; not a diagnostic probability.' : 'Calibrated model estimate; not a diagnosis.'),
+    metric('EVIDENCE', primary.evidence_strength || 'Low', 'Image quality, ranking strength, and model limits.'),
+    metric('PIRS', score(consumer.pirs?.score), 'Separate reported-concern priority.'),
+    metric('SEVERITY', readableStatus(consumer.severity?.label || 'Not assessed'), 'Based on reported symptoms.'),
+    metric('CONCERN', readableStatus(consumer.concern?.label || 'Not assessed'), 'Assessment concern, separate from model score.'),
+  ].join('');
+  const alternatives = (consumer.possible_conditions || []).map(item => `<li><strong>${escapeHTML(item.name || '')}</strong><span>${Number.isFinite(item.score) ? item.score === 0 ? '&lt;1%' : `${item.score}%` : 'Score unavailable'}</span></li>`).join('');
   const calibrated = Boolean(classifier.calibration?.available && classifier.condition_likelihood?.available);
   const calibrationHeading = calibrated ? 'Model estimate needs clinical evaluation' : 'No calibrated condition likelihood';
   const calibrationNote = calibrated
@@ -1224,12 +1248,15 @@ function renderResearchDermoscopyResult(data) {
     : 'Raw model scores are relative rankings, not disease probabilities. No clinical decision should be made from this result.';
   const noMatchNotice = data.presentation_case?.status === 'NO_EXACT_MATCH'
     ? `<section class="patient-presentation-notice"><p class="eyebrow">PRESENTATION MODE</p><strong>No teaching-case match</strong><p>${escapeHTML(data.presentation_case.notice || '')}</p></section>` : '';
-  root.innerHTML = `<section class="consumer-hero"><div class="consumer-hero-copy"><p class="eyebrow">DERMOSCOPY RESEARCH REVIEW</p><h3>Model ranking available</h3><p>The installed HAM10000 ResNet-34 research model ranked labels for this attested dermoscopic image. The ranking is not a diagnosis and cannot determine whether this lesion is benign or malignant.</p></div><div class="consumer-hero-image">${image}</div></section>
+  root.innerHTML = `<section class="consumer-hero"><div class="consumer-hero-copy"><p class="eyebrow">DERMAMATRIX ASSESSMENT · ${researchArea} RESEARCH</p><h3>${escapeHTML(primary.title || rankings[0]?.label || 'Model ranking available')}</h3><p>${escapeHTML(primary.summary || 'The local model ranked its trained classes for this image.')}</p></div><div class="consumer-hero-image">${image}</div></section>
+    <section class="patient-quick-summary patient-metric-row consumer-metrics" aria-label="Assessment metrics">${metrics}</section>
     ${noMatchNotice}
-    <section class="patient-presentation-notice"><p class="eyebrow">RESEARCH LIMIT</p><strong>${calibrationHeading}</strong><p>${calibrationNote}</p></section>
+    <section class="patient-presentation-notice"><p class="eyebrow">RESEARCH LIMIT</p><strong>${calibrationHeading}</strong><p>${calibrationNote} ${!dermoscopy ? escapeHTML(classifier.notice || '') : ''}</p></section>
     ${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}
-    <section class="consumer-panel"><p class="eyebrow">RESEARCH MODEL OUTPUT</p><h3>Ranked categories</h3><ol class="research-ranking">${rankingItems}</ol><p>These labels describe a research model's ordering for one image. They are not clinical findings, calibrated likelihoods, or a screening clearance.</p>${attentionImage}</section>
-    <section class="consumer-panel"><p class="eyebrow">WHAT TO DO NEXT</p><h3>Have concerns assessed directly</h3><p>Arrange a qualified clinician's review for a new, changing, bleeding, painful, or otherwise concerning lesion. A normal-looking photo or a low input-based concern score cannot rule out skin cancer.</p><div class="progress-actions"><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button><button type="button" class="button quiet" data-result-action="reassess">Start another check <span>→</span></button></div></section>
+    <section class="consumer-panel"><p class="eyebrow">WHY THIS RESULT?</p>${patientList(consumer.why_this_result, 'The local model ranked this class highest among its trained labels.')}</section>
+    ${alternatives ? `<section class="consumer-panel"><p class="eyebrow">OTHER MODEL MATCHES</p><ul class="research-ranking">${alternatives}</ul></section>` : ''}
+    <section class="consumer-panel"><p class="eyebrow">AI &amp; TECHNICAL DETAILS</p><details><summary>See all five model rankings and visual explanation</summary><ol class="research-ranking">${rankingItems}</ol><p>Scores compare the model's trained classes. They do not establish a diagnosis or rule out a condition outside its taxonomy.</p>${attentionImage}</details></section>
+    <section class="consumer-panel"><p class="eyebrow">WHAT TO DO NEXT</p><h3>Have concerns assessed directly</h3><p>${nail ? 'Arrange a clinician review for a new or changing dark streak, pain, swelling, lifting, or persistent nail change. The Healthy Nail research class cannot rule out disease.' : dermoscopy ? 'Arrange a qualified clinician\'s review for a new, changing, bleeding, painful, or otherwise concerning lesion. A normal-looking photo or a low input-based concern score cannot rule out skin cancer.' : 'Arrange a clinician review for a persistent, spreading, painful, or changing skin concern. The five broad research labels cannot rule out another condition; the lesion review class is not a cancer diagnosis.'}</p><div class="progress-actions"><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button><button type="button" class="button quiet" data-result-action="reassess">Start another check <span>→</span></button></div></section>
     <section class="patient-technical" id="patientTechnicalSlot"></section>`;
   if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
   root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
@@ -1241,7 +1268,7 @@ function renderResearchDermoscopyResult(data) {
   root.querySelectorAll('[data-result-action]').forEach(button => {
     button.onclick = () => {
       if (button.dataset.resultAction === 'doctor') { closeResult(); showPage('support'); return; }
-      closeResult(); resetImage(); selectArea('Skin'); showPage('home'); $('#imageInput')?.focus();
+      closeResult(); resetImage(); selectArea(data.area); showPage('home'); $('#imageInput')?.focus();
     };
   });
   $('#resultModal').classList.add('has-patient-result');

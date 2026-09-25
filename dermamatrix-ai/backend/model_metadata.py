@@ -15,6 +15,14 @@ SKIN_MODEL_ID = "ham10000-resnet34-research"
 SKIN_MODEL_VERSION = "Tschandl-2020-resnet34"
 SKIN_DATASET_VERSION = "HAM10000-2018-upstream-weight-lineage"
 PIPELINE_VERSION = "dermamatrix-inference-v1.2"
+NAIL_MODEL_ID = "nail-convnexttiny-research"
+NAIL_MODEL_VERSION = "shibarashii-convnexttiny-gradual-unfreeze-2025"
+NAIL_DATASET_VERSION = "upstream-nail-ten-class-unverified-provenance"
+NAIL_PIPELINE_VERSION = "dermamatrix-nail-inference-v1"
+CLINICAL_SKIN_MODEL_ID = "clinical-skin-efficientnet-research"
+CLINICAL_SKIN_MODEL_VERSION = "RevelaCap-clinical-skin-v1-a614ae0"
+CLINICAL_SKIN_DATASET_VERSION = "upstream-clinical-v2-mixed-public-datasets"
+CLINICAL_SKIN_PIPELINE_VERSION = "dermamatrix-clinical-skin-inference-v1"
 
 # These are product capability states, not clinical-validation labels.  They
 # allow the API and frontend to communicate exactly what a route can do
@@ -29,6 +37,27 @@ CAPABILITY_STATES = frozenset({
 
 
 MODEL_METADATA = {
+    CLINICAL_SKIN_MODEL_ID: {
+        "model_id": CLINICAL_SKIN_MODEL_ID,
+        "model_name": "DermaMatrix local clinical Skin EfficientNet research adapter",
+        "model_version": CLINICAL_SKIN_MODEL_VERSION,
+        "dataset_version": CLINICAL_SKIN_DATASET_VERSION,
+        "pipeline_version": CLINICAL_SKIN_PIPELINE_VERSION,
+        "status": "RESEARCH_ONLY", "deployment_status": "RESEARCH_ONLY",
+        "task": "five-class educational clinical-photo ranking",
+        "architecture": "EfficientNet-B0", "input_modality": "USER_DECLARED_CLINICAL_SKIN_PHOTO",
+        "input_size": [224, 224],
+        "classes": ["Eczema / dermatitis", "Urticaria / allergic reaction", "Folliculitis / acne-like", "Psoriasis / papulosquamous", "Lesion — dermoscopic review recommended"],
+        "preprocessing": "EXIF transpose; RGB; resize to 224x224; ImageNet mean/std normalization.",
+        "training_data": "Upstream Clinical V2 mixed public data, including SCIN and Fitzpatrick17k. DermaMatrix did not train these weights.",
+        "evaluation": {"status": "UPSTREAM_SELF_REPORTED_INTERNAL_ONLY", "test_sample_count": 1515,
+                       "balanced_accuracy": 0.67, "macro_f1": 0.6527,
+                       "smartphone_SCIN_subgroup_macro_f1": 0.43,
+                       "external_validation": "NOT_AVAILABLE"},
+        "calibration": {"status": "NOT_CONFIGURED"}, "ood": {"status": "NOT_CONFIGURED"},
+        "source_url": "https://huggingface.co/RevelaCap/clinical-skin-condition-v1",
+        "limitations": "Research only. Upstream publisher explicitly says not clinically validated or suitable for patient-facing decisions. Five broad labels cannot rule out conditions outside the taxonomy; lesion class is a review prompt. No independent external validation, calibration, anatomy verification, or OOD detector.",
+    },
     SKIN_MODEL_ID: {
         "model_id": SKIN_MODEL_ID,
         "model_name": "HAM10000 ResNet-34 research adapter",
@@ -41,7 +70,7 @@ MODEL_METADATA = {
         "input_modality": "DERMOSCOPIC",
         "input_size": [224, 224],
         "classes": ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"],
-        "preprocessing": "RGB conversion; resize short edge to 280; centre crop to 224; tensor conversion.",
+        "preprocessing": "EXIF transpose; RGB conversion; resize short edge to 280; centre crop to 224; float tensor in [0, 1] without ImageNet normalization.",
         "training_data": "Upstream HAM10000/dermatoscopy research weight. The exact training-run manifest is not bundled in this repository.",
         "evaluation": {
             "status": "NOT_AVAILABLE_IN_REPOSITORY",
@@ -68,13 +97,26 @@ MODEL_METADATA = {
         "task": "not available",
         "limitations": "No governed training data, weights, calibration artifact, or evaluation report is bundled.",
     },
-    "nail-model-adapter": {
-        "model_id": "nail-model-adapter",
-        "model_name": "Nail image-model adapter",
-        "status": "NOT_CONFIGURED",
-        "deployment_status": "NOT_AVAILABLE",
-        "task": "not available",
-        "limitations": "No governed training data, weights, calibration artifact, or evaluation report is bundled.",
+    NAIL_MODEL_ID: {
+        "model_id": NAIL_MODEL_ID,
+        "model_name": "DermaMatrix local Nail ConvNeXt research adapter",
+        "model_version": NAIL_MODEL_VERSION,
+        "dataset_version": NAIL_DATASET_VERSION,
+        "pipeline_version": NAIL_PIPELINE_VERSION,
+        "status": "RESEARCH_ONLY",
+        "deployment_status": "RESEARCH_ONLY",
+        "task": "ten-class nail-photo ranking",
+        "architecture": "ConvNeXt Tiny",
+        "input_modality": "USER_DECLARED_NAIL_CLOSE_UP",
+        "input_size": [224, 224],
+        "classes": ["Melanonychia", "Beau's Lines", "Blue Nail", "Clubbing", "Healthy Nail", "Koilonychia", "Muehrcke's Lines", "Onychogryphosis", "Pitting", "Terry's Nails"],
+        "preprocessing": "EXIF transpose; RGB; resize short edge to 236; center crop 224; ImageNet normalization (assumed because upstream transform was not published).",
+        "training_data": "Upstream publisher supplied weights and metrics; dataset identity, patient grouping, and image-source provenance were not published.",
+        "evaluation": {"status": "UPSTREAM_SELF_REPORTED_INTERNAL_ONLY", "internal_test": {"sample_count": 307, "accuracy": 0.8892508, "macro_f1": 0.8852184}, "external_validation": "NOT_AVAILABLE"},
+        "calibration": {"status": "NOT_CONFIGURED"},
+        "ood": {"status": "NOT_CONFIGURED"},
+        "source_url": "https://huggingface.co/shibarashii/nail-disease-detection",
+        "limitations": "Research only. No published training transform, patient-level split, external clinical validation, calibration, anatomy verification, or OOD detector. Raw scores are not disease probabilities; Healthy Nail cannot rule out disease.",
     },
     "onychomycosis-resnet18-research": {
         "model_id": "onychomycosis-resnet18-research",
@@ -154,7 +196,7 @@ HEALTH_AREA_CAPABILITY_CONFIG = {
     "Skin": {
         "model_id": SKIN_MODEL_ID,
         "input_mode": "image",
-        "supported_input": "Attested dermatoscopic single-lesion image",
+        "supported_input": "Declared ordinary clinical skin photo or attested dermatoscopic single-lesion image",
         "display_name": "Skin",
         "classification_available_when_ready": True,
         "explainability": "Grad-CAM only when the configured research model runs",
@@ -165,7 +207,7 @@ HEALTH_AREA_CAPABILITY_CONFIG = {
             "Scoped research-model eligibility",
             "Reported-priority and structured summary",
         ),
-        "user_message": "Image-quality screening is available. The optional lesion model is research-only and accepts only an attested dermatoscopic single-lesion image.",
+        "user_message": "Local research models separately rank declared ordinary clinical skin photos and attested dermatoscopic single-lesion images; neither is a diagnosis.",
     },
     "Hair": {
         "model_id": "hair-model-adapter",
@@ -184,20 +226,21 @@ HEALTH_AREA_CAPABILITY_CONFIG = {
         "user_message": "DermaMatrix measures this hair/scalp photo locally and provides image findings, reported-context guidance, and an explicit classification limit.",
     },
     "Nails": {
-        "model_id": "nail-model-adapter",
+        "model_id": NAIL_MODEL_ID,
         "input_mode": "image",
         "supported_input": "Declared fingernail, toenail, or nail close-up",
         "display_name": "Nail health",
-        "classification_available_when_ready": False,
-        "explainability": "Unavailable without a compatible classifier",
+        "classification_available_when_ready": True,
+        "explainability": "Top-class score and score margin; no validated visual attention map",
         "processing_stages": (
             "Image received",
             "Image-quality check",
             "Declared nail route",
             "Local nail-photo measurements",
+            "Local ten-class research-model ranking",
             "Reported-priority and structured summary",
         ),
-        "user_message": "DermaMatrix measures this nail photo locally and provides image findings, reported-context guidance, and an explicit classification limit.",
+        "user_message": "A locally installed ten-class nail research model can rank a declared nail close-up; its scores are uncalibrated and require clinical review.",
     },
     "Sweat": {
         "model_id": "sweat-questionnaire-v1",
@@ -224,6 +267,14 @@ def model_metadata(model_id: str) -> dict:
     if model_id == SKIN_MODEL_ID:
         metadata["weights_available"] = os.path.isfile(
             os.path.join(os.path.dirname(__file__), "models", "ham10000_resnet34_research.ptw")
+        )
+    if model_id == NAIL_MODEL_ID:
+        metadata["weights_available"] = os.path.isfile(
+            os.path.join(os.path.dirname(__file__), "models", "nail_convnexttiny_research.pth")
+        )
+    if model_id == CLINICAL_SKIN_MODEL_ID:
+        metadata["weights_available"] = os.path.isfile(
+            os.path.join(os.path.dirname(__file__), "models", "clinical_skin_best_model.pth")
         )
     return metadata
 
@@ -252,6 +303,8 @@ def public_capability_matrix() -> list[dict]:
             and config["classification_available_when_ready"]
             and weights_available
         )
+        if area == "Skin":
+            runtime_inference_available = runtime_inference_available or bool(model_metadata(CLINICAL_SKIN_MODEL_ID).get("weights_available"))
         records.append({
             "area": area,
             "display_name": config["display_name"],
@@ -265,6 +318,6 @@ def public_capability_matrix() -> list[dict]:
             "explainability": config["explainability"],
             "processing_stages": list(config["processing_stages"]),
             "user_message": config["user_message"],
-            "limitations": metadata.get("limitations"),
+            "limitations": ("Ordinary clinical photos and attested dermoscopy use separate local research models. Neither is clinically validated, calibrated, or suitable for diagnosis or treatment selection." if area == "Skin" else metadata.get("limitations")),
         })
     return records

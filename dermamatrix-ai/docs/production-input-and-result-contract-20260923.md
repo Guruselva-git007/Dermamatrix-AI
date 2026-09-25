@@ -1,5 +1,7 @@
 # Production input and result contract — 2026-09-23
 
+> Historical snapshot. The current local research routes for ordinary Skin and Nail photos, and the updated result contract, are documented in [local model sourcing and verification](local-model-source-and-validation-20260925.md) and the current code. The limitations below described the 2026-09-23 deployment.
+
 ## Purpose
 
 This release makes every completed Skin, Hair/scalp, and Nail image attempt

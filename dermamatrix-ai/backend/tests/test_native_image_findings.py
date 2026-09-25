@@ -14,6 +14,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from app import app
+from nail_classifier import weights_available as nail_weights_available
 
 
 def photo(kind: str) -> bytes:
@@ -45,7 +46,11 @@ class NativeImageFindingsTests(unittest.TestCase):
                 self.assertEqual(findings["source"], "local_pixel_analysis")
                 self.assertTrue(findings["observations"])
                 self.assertEqual(result["assessment_completeness"]["status"], "complete_available_evidence")
-                self.assertFalse(result["assessment_result"]["condition"]["available"])
+                if area == "Hair" or not nail_weights_available():
+                    self.assertFalse(result["assessment_result"]["condition"]["available"])
+                else:
+                    self.assertTrue(result["research_classifier"]["available"])
+                    self.assertEqual(result["assessment_result"]["status"]["code"], "RESEARCH_ONLY")
                 self.assertEqual(result["assessment_result"]["image_findings"], findings)
                 results.append(findings["measurements"])
             self.assertNotEqual(results[0]["adjacent_pixel_change"], results[1]["adjacent_pixel_change"])

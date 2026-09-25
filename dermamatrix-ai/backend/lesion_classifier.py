@@ -13,7 +13,7 @@ import os
 import base64
 from functools import lru_cache
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from calibration_service import calibrated_probabilities, load_temperature_calibration, prediction_uncertainty
 from model_metadata import SKIN_DATASET_VERSION, SKIN_MODEL_ID, SKIN_MODEL_VERSION, PIPELINE_VERSION
@@ -67,7 +67,7 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
     import torch.nn.functional as functional
     from torchvision import transforms
 
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
     tensor = transforms.Compose([transforms.Resize(280), transforms.CenterCrop(224), transforms.ToTensor()])(image).unsqueeze(0)
     activations = []
     hook = model.layer4.register_forward_hook(lambda _module, _inputs, output: activations.append(output))
@@ -93,7 +93,8 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
         hook.remove()
     calibration = load_temperature_calibration(SKIN_MODEL_ID, SKIN_MODEL_VERSION, CLASSES)
     likelihoods = calibrated_probabilities(logit_values, calibration)
-    uncertainty = prediction_uncertainty(likelihoods)
+    uncertainty = prediction_uncertainty(likelihoods if likelihoods is not None else raw_probabilities,
+                                          score_kind="calibrated" if likelihoods is not None else "raw_softmax")
     ranked = sorted(enumerate(raw_probabilities), key=lambda value: value[1], reverse=True)
     top_index = ranked[0][0]
     top_likelihood = float(likelihoods[top_index]) if likelihoods is not None else None
@@ -104,7 +105,7 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
             "calibrated_probability": round(float(likelihoods[index]), 4) if likelihoods is not None else None,
             "relative_score": round(float(raw_score), 4),
         }
-        for index, raw_score in ranked[:3]
+        for index, raw_score in ranked[:5]
     ]
     return {
         "available": True,
@@ -112,6 +113,10 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
         "dataset_version": SKIN_DATASET_VERSION, "pipeline_version": PIPELINE_VERSION,
         "image_requirement": "Single, in-focus dermatoscopic lesion image only—not a face photo or selfie.",
         "top_predictions": predictions,
+        "raw_logits": [round(float(value), 6) for value in logit_values],
+        "class_order": list(CLASSES),
+        "preprocessing": "EXIF transpose; RGB; resize short edge to 280; center crop 224; float tensor in [0, 1] (no ImageNet normalization)",
+        "input_shape": [1, 3, 224, 224],
         "top_prediction": {
             "condition": LABELS[CLASSES[top_index]],
             "calibrated_probability": round(top_likelihood, 4) if top_likelihood is not None else None,
@@ -133,7 +138,8 @@ def classify_dermoscopic_lesion(image_bytes: bytes) -> dict:
         "calibration": calibration,
         "uncertainty": uncertainty,
         "normal_appearance": {"available": False, "status": "NOT_SUPPORTED_BY_CONFIGURED_MODEL", "is_normal": None, "validated": False, "confidence": None, "minimum_confidence": None, "condition_signal": "NOT_EVALUATED", "notice": "The configured HAM10000 lesion model has no validated normal-appearance class."},
-        "model_confidence": round(top_likelihood, 4) if top_likelihood is not None else None,
+        "model_confidence": round(top_likelihood, 4) if top_likelihood is not None else round(float(raw_probabilities[top_index]), 4),
+        "model_confidence_kind": "calibrated_probability" if top_likelihood is not None else "raw_softmax",
         "raw_top_score": round(float(raw_probabilities[top_index]), 4),
         "low_confidence": uncertainty["certainty"] == "LOW",
         "below_confidence_threshold": uncertainty["certainty"] == "LOW",

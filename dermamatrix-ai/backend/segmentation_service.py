@@ -15,7 +15,7 @@ import io
 import os
 from functools import lru_cache
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageOps
 
 
 NOTICE = "A trained lesion-segmentation model is required before a mask can be presented as model segmentation."
@@ -145,7 +145,7 @@ def segment_dermoscopic_lesion(image_bytes: bytes) -> dict:
         }
     import torch
 
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
     try:
         with torch.inference_mode():
             probabilities = _probability_mask(model(_normalised_tensor(image)), (image.height, image.width))
@@ -183,7 +183,7 @@ def extract_visual_candidate_region(image_bytes: bytes, *, decoded_image: Image.
     """Extract a contrast-based visual candidate region, not model segmentation."""
     import numpy as np
 
-    image = decoded_image.copy() if decoded_image is not None else Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = decoded_image.copy() if decoded_image is not None else ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes))).convert("RGB")
     image.thumbnail((600, 600))
     gray = np.asarray(image.convert("L").filter(ImageFilter.MedianFilter(size=3)), dtype=np.uint8)
     threshold = _otsu_threshold(gray)

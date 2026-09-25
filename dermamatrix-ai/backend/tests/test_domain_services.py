@@ -19,6 +19,8 @@ if BACKEND_DIR not in sys.path:
 from calibration_service import calibrated_probabilities, prediction_uncertainty
 from assessment_contract import ASSESSMENT_RESULT_VERSION, build_assessment_result
 from assessment_router import route_image_assessment
+from clinical_skin_classifier import weights_available as clinical_skin_weights_available
+from nail_classifier import weights_available as nail_weights_available
 from clinical_intelligence_service import clinical_decision_support, normalise_symptoms, patient_context_snapshot, reported_symptom_severity
 from condition_knowledge import KNOWLEDGE_VERSION, build_assessment_intelligence, educational_condition_catalog, educational_condition_topic, model_capability_matrix
 from commerce_service import materialize_product, resolve_product_destination
@@ -146,25 +148,28 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(result["care_priority"]["score"], 18)
         self.assertEqual(result["status"]["code"], "MODEL_UNAVAILABLE")
 
-    def test_status_contract_preserves_ood_and_low_confidence_without_a_diagnosis(self):
+    def test_status_contract_preserves_ranked_match_under_ood_and_low_confidence(self):
         base = {
             "area": "Skin", "input_type": "image", "quality": {"status": "GOOD"},
             "input_validation": {"status": "VALID"}, "risk": {}, "severity": {},
-            "clinical_decision_support": {}, "condition_intelligence": {"finding": {}},
+            "clinical_decision_support": {}, "condition_intelligence": {"finding": {"name": "Benign keratosis-like lesion"}},
             "segmentation": {}, "candidate_region": {}, "recommendations": {}, "care_plan": {},
         }
         ood = build_assessment_result({
             **base,
-            "research_classifier": {"available": True, "uncertainty": {"status": "CALIBRATED_OUTPUT", "ood_status": "OUT_OF_DISTRIBUTION"}},
+            "research_classifier": {"available": True, "top_prediction": {"condition": "Benign keratosis-like lesion", "relative_score": 0.41}, "top_predictions": [{"label": "Benign keratosis-like lesion", "relative_score": 0.41}, {"label": "Melanocytic nevus", "relative_score": 0.29}], "uncertainty": {"status": "LOW_CONFIDENCE", "ood_status": "OUT_OF_DISTRIBUTION", "margin": 0.12}},
         })
         uncertain = build_assessment_result({
             **base,
-            "research_classifier": {"available": True, "uncertainty": {"status": "LOW_CONFIDENCE", "ood_status": "OOD_NOT_EVALUATED"}},
+            "research_classifier": {"available": True, "top_prediction": {"condition": "Benign keratosis-like lesion", "relative_score": 0.41}, "top_predictions": [{"label": "Benign keratosis-like lesion", "relative_score": 0.41}, {"label": "Melanocytic nevus", "relative_score": 0.29}], "uncertainty": {"status": "LOW_CONFIDENCE", "ood_status": "OOD_NOT_EVALUATED", "margin": 0.12}},
         })
-        self.assertEqual(ood["status"]["code"], "OUT_OF_DISTRIBUTION")
-        self.assertEqual(uncertain["status"]["code"], "UNCERTAIN")
-        self.assertFalse(ood["condition"]["available"])
-        self.assertFalse(uncertain["condition"]["available"])
+        self.assertEqual(ood["status"]["code"], "RESEARCH_ONLY")
+        self.assertEqual(uncertain["status"]["code"], "RESEARCH_ONLY")
+        self.assertTrue(ood["condition"]["available"])
+        self.assertTrue(uncertain["condition"]["available"])
+        self.assertEqual(ood["consumer"]["primary_result"]["evidence_strength"], "Low")
+        self.assertEqual(uncertain["consumer"]["primary_result"]["confidence"], 41)
+        self.assertEqual(uncertain["consumer"]["possible_conditions"][0]["name"], "Melanocytic nevus")
 
     def test_logout_clears_the_signed_browser_session(self):
         """A later guest/login view cannot recover a signed-out Flask session."""
@@ -316,15 +321,19 @@ class MlContractTests(unittest.TestCase):
         self.assertEqual(risk["condition_profile"]["key"], "undifferentiated-skin")
         self.assertEqual(risk["condition_profile"]["condition_source"], "No condition label used")
 
-    def test_health_area_router_never_routes_general_images_to_lesion_classifier(self):
+    def test_health_area_router_uses_separate_local_models_for_general_skin_and_nails(self):
         clear_image = {"status": "GOOD", "usable_for_research_model": True}
         skin = route_image_assessment(area="Skin", image_context="face_skin", dermoscopy_attested=False, image_features=clear_image)
         hair = route_image_assessment(area="Hair", image_context="scalp", dermoscopy_attested=False, image_features=clear_image)
         nail = route_image_assessment(area="Nails", image_context="toenail", dermoscopy_attested=False, image_features=clear_image)
         self.assertTrue(skin["accepted"])
-        self.assertFalse(skin["run_research_classifier"])
+        self.assertEqual(skin["run_research_classifier"], clinical_skin_weights_available())
+        if clinical_skin_weights_available():
+            self.assertEqual(skin["workflow"], "skin-clinical-research")
         self.assertFalse(hair["run_research_classifier"])
-        self.assertFalse(nail["run_research_classifier"])
+        self.assertEqual(nail["run_research_classifier"], nail_weights_available())
+        if nail_weights_available():
+            self.assertEqual(nail["workflow"], "nail-photo-research")
         self.assertEqual(skin["relevance_status"], "USER_DECLARED_CONTEXT_NOT_AUTOMATICALLY_VERIFIED")
 
     def test_only_attested_dermoscopic_skin_route_can_enter_research_classifier(self):

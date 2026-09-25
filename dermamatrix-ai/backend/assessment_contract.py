@@ -44,19 +44,10 @@ def determine_assessment_state(*, input_type: str, quality: dict | None = None,
     finding = finding or {}
     validation_status = str(validation.get("status") or "").upper()
     quality_status = str(quality.get("status") or "").upper()
-    uncertainty = classifier.get("uncertainty") or {}
-    uncertainty_status = str(uncertainty.get("status") or "").upper()
-    ood_status = str(uncertainty.get("ood_status") or "").upper()
-
     if input_type == "questionnaire":
         return {"state": "UNCERTAIN", "reason": "QUESTIONNAIRE_HAS_NO_VALIDATED_NORMAL_OR_CONDITION_MODEL"}
     if quality_status == "LOW_QUALITY" or validation_status in {"LOW_QUALITY", "INVALID_INPUT", "UNSUPPORTED"}:
         return {"state": "UNCERTAIN", "reason": "INPUT_UNSUITABLE"}
-    if ood_status == "OUT_OF_DISTRIBUTION":
-        return {"state": "UNCERTAIN", "reason": "OUT_OF_DISTRIBUTION"}
-    if uncertainty_status in {"LOW_CONFIDENCE", "UNCERTAIN"}:
-        return {"state": "UNCERTAIN", "reason": "MODEL_UNCERTAIN"}
-
     normal = classifier.get("normal_appearance") or {}
     normal_confidence = normal.get("confidence")
     normal_threshold = normal.get("minimum_confidence")
@@ -77,6 +68,8 @@ def determine_assessment_state(*, input_type: str, quality: dict | None = None,
         return {"state": "UNCERTAIN", "reason": "CONFLICTING_MODEL_SIGNALS"}
     if explicit_normal:
         return {"state": "HEALTHY", "reason": "VALIDATED_NORMAL_APPEARANCE"}
+    if classifier.get("available") and classifier.get("non_condition_top_class"):
+        return {"state": "UNCERTAIN", "reason": "RESEARCH_NON_CONDITION_CLASS_RANKED_FIRST"}
     if classifier.get("available") and condition_evidence:
         return {"state": "CONDITION", "reason": "SCOPED_MODEL_CONDITION_OUTPUT"}
     return {"state": "UNCERTAIN", "reason": "NO_VALIDATED_OUTCOME_SIGNAL"}
@@ -110,7 +103,6 @@ def determine_terminal_result_state(*, input_type: str, quality: dict | None = N
     if (
         validation_status in {"INVALID_INPUT", "UNSUPPORTED"}
         or relevance_status in {"UNSUPPORTED", "UNSUPPORTED_IMAGE", "NON_MEDICAL_IMAGE"}
-        or ood_status == "OUT_OF_DISTRIBUTION"
     ):
         return {"state": "unsupported_image", "reason": "UNSUPPORTED_OR_OUT_OF_SCOPE_INPUT"}
     if assessment_state.get("state") == "CONDITION":
@@ -236,9 +228,22 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
     quality_limited = terminal["state"] == "poor_quality"
     calibrated = (classifier.get("condition_likelihood") or {}).get("available") is True
     likelihood = (classifier.get("condition_likelihood") or {}).get("estimated_likelihood")
-    model_supported = bool(condition.get("available") and calibrated and isinstance(likelihood, (int, float))
-                           and 0 <= likelihood <= 1 and
-                           (classifier.get("uncertainty") or {}).get("ood_status") != "OUT_OF_DISTRIBUTION")
+    raw_score = (classifier.get("top_prediction") or {}).get("relative_score")
+    display_score = likelihood if calibrated and isinstance(likelihood, (int, float)) else raw_score
+    model_supported = bool(terminal["state"] not in {"poor_quality", "category_mismatch", "unsupported_image"}
+                           and (condition.get("available") or (classifier.get("available") and classifier.get("non_condition_top_class"))) and isinstance(display_score, (int, float))
+                           and 0 <= display_score <= 1)
+    model_title = condition.get("name") or (classifier.get("top_prediction") or {}).get("condition")
+    uncertainty = classifier.get("uncertainty") or {}
+    margin = uncertainty.get("margin")
+    evidence = "Low"
+    if model_supported and not quality_limited and uncertainty.get("ood_status") != "OUT_OF_DISTRIBUTION":
+        if display_score >= 0.55 and isinstance(margin, (int, float)) and margin >= 0.20:
+            evidence = "Moderate"
+        if calibrated and display_score >= 0.80 and isinstance(margin, (int, float)) and margin >= 0.35 and quality.get("status") == "GOOD":
+            evidence = "High"
+    if classifier.get("model_id") in {"clinical-skin-efficientnet-research", "nail-convnexttiny-research"}:
+        evidence = "Low"
     if quality_limited:
         state, title = "quality_limited", "Image quality limits assessment"
         summary = "A clearer photo is needed to review visible detail. Your reported concerns still inform care priority."
@@ -246,8 +251,8 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         state, title = "normal_or_low_concern", "No significant abnormal pattern identified"
         summary = "A validated normal-appearance signal was returned for this image. Keep watching any symptoms or changes."
     elif model_supported:
-        state, title = "supported_model_prediction", condition["name"]
-        summary = "A scoped image model produced this result. A clinician can assess its meaning alongside symptoms and examination."
+        state, title = ("research_model_ranking" if classifier.get("non_condition_top_class") else "supported_model_prediction"), model_title
+        summary = "This is the local model's closest match for the submitted image. The score compares its trained labels; a clinician must assess its meaning."
     elif little_measurable_detail:
         state, title = "insufficient_evidence", "Photo detail is limited"
         summary = "The measured area shows little visible variation. A closer, clearer view may help if the area of concern is outside the centre."
@@ -270,7 +275,11 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
     if reported.get("urgent_concern"):
         why.append("You selected a prompt-care concern; this affects care priority independently of the photo.")
     if model_supported:
-        why.insert(0, "A compatible scoped classifier returned a calibrated result for the declared image type.")
+        why.insert(0, f"The local {classifier.get('model', 'image model')} ranked {model_title} highest among its trained classes.")
+        if isinstance(margin, (int, float)):
+            why.insert(1, f"Its lead over the next trained class was {round(margin * 100)} percentage points in model score.")
+        if uncertainty.get("ood_status") == "OUT_OF_DISTRIBUTION":
+            why.append("Domain evidence is weak, so treat this ranking as low evidence.")
 
     score = assessment_risk.get("score")
     if not isinstance(score, (int, float)) or not 0 <= score <= 100:
@@ -283,9 +292,10 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
     return {
         "state": state,
         "primary_result": {"title": title, "summary": summary,
-                           "source": "calibrated_model" if model_supported else "local_image_measurements" if state == "image_observation" else "available_context",
-                           "confidence": round(likelihood * 100) if model_supported else None,
-                           "evidence_strength": None if model_supported or quality_limited else "Low"},
+                           "source": "calibrated_model" if model_supported and calibrated else "raw_model_ranking" if model_supported else "local_image_measurements" if state == "image_observation" else "available_context",
+                           "confidence": round(display_score * 100) if model_supported else None,
+                           "confidence_kind": "calibrated_probability" if model_supported and calibrated else "raw_softmax" if model_supported else None,
+                           "evidence_strength": evidence if model_supported else None if quality_limited else "Low"},
         "image_quality": {"usable": not quality_limited, "label": quality.get("label") or "Not assessed",
                           "issues": quality.get("issues") or [],
                           "retake_guidance": ["Use bright indirect light and avoid flash glare.",
@@ -298,7 +308,8 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "why_this_result": why,
         "visible_findings": [] if quality_limited else [{"name": item.get("finding"), "detail": item.get("visible_evidence")}
                                                        for item in observations[:4]],
-        "possible_conditions": [],
+        "possible_conditions": [{"name": item.get("label"), "score": round(item["calibrated_probability"] * 100) if calibrated and isinstance(item.get("calibrated_probability"), (int, float)) else round(item["relative_score"] * 100) if isinstance(item.get("relative_score"), (int, float)) else None}
+                                for item in (classifier.get("top_predictions") or [])[1:3]] if model_supported else [],
         "common_symptoms": recommendations.get("common_symptoms") or [],
         "possible_causes": recommendations.get("possible_causes") or [],
         "care_steps": recommendations.get("care_steps") or [],
@@ -317,6 +328,11 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "sources": recommendations.get("sources") or [],
         "professional_support": (response.get("condition_intelligence") or {}).get("doctor") or {},
         "technical_details": {"reference_case": bool((response.get("presentation_case") or {}).get("matched")),
+                              "raw_logits": classifier.get("raw_logits") if model_supported else None,
+                              "class_order": classifier.get("class_order") if model_supported else None,
+                              "top_k": classifier.get("top_predictions") if model_supported else [],
+                              "prediction_margin": margin if model_supported else None,
+                              "preprocessing": classifier.get("preprocessing") if model_supported else None,
                               "classifier_withheld": bool(classifier.get("available") and not model_supported)},
     }
 
@@ -359,14 +375,7 @@ def _assessment_status(response: dict, classifier: dict, validation: dict, asses
             "label": "Input unsuitable for a condition assessment",
             "notice": validation.get("notice") or "Retake a clear, relevant image before relying on this screening summary.",
         }
-    if ood_status == "OUT_OF_DISTRIBUTION":
-        return {
-            "state": state,
-            "code": "OUT_OF_DISTRIBUTION",
-            "label": "Image is outside the configured model scope",
-            "notice": uncertainty.get("notice") or "No condition result is shown for an image outside the configured model scope.",
-        }
-    if classifier.get("available"):
+    if classifier.get("available") and (state in {"CONDITION", "HEALTHY"} or classifier.get("non_condition_top_class")):
         if state == "HEALTHY":
             return {
                 "state": state,
@@ -374,18 +383,11 @@ def _assessment_status(response: dict, classifier: dict, validation: dict, asses
                 "label": "No apparent concerns identified",
                 "notice": "This result comes from a validated normal-appearance model signal. It is not a diagnosis and does not replace care for symptoms or a changing concern.",
             }
-        if uncertainty_status == "LOW_CONFIDENCE":
-            return {
-                "state": state,
-                "code": "UNCERTAIN",
-                "label": "Research-model output is uncertain",
-                "notice": uncertainty.get("notice") or "The model output did not meet the configured certainty threshold.",
-            }
         return {
             "state": state,
             "code": "RESEARCH_ONLY",
             "label": "Research-only model output",
-            "notice": classifier.get("notice") or "This research result is not a diagnosis or a clinically validated decision.",
+            "notice": (uncertainty.get("notice") or "") + " This research result is not a diagnosis or a clinically validated decision.",
         }
     if uncertainty_status in {"UNCERTAIN", "LOW_CONFIDENCE"} and validation_status not in {"VALID", "VALID_RELEVANT"}:
         return {

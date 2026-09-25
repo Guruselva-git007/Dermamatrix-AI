@@ -1,6 +1,6 @@
 # DermaMatrix AI
 
-An educational prototype for integumentary-health screening workflows. It covers skin-and-sweat, hair/scalp, and nail concerns with image upload, consent, usability checks, a reported-concern priority, and a narrow dermatoscopic lesion research path.
+An educational prototype for integumentary-health screening workflows. It covers skin-and-sweat, hair/scalp, and nail concerns with image upload, consent, usability checks, reported-concern priority, and separate local research image paths for ordinary Skin photos, dermatoscopic lesions, and Nail close-ups.
 
 > **Safety note:** This app is not a medical device and cannot diagnose disease. It is a college-project prototype designed to support, not replace, a qualified clinician.
 
@@ -11,10 +11,14 @@ limits are documented in [docs/security.md](docs/security.md).
 
 ## What an uploaded image can do today
 
-- **Face, ordinary skin, hair/scalp, or nail photo:** local image-quality and image-specific pixel measurements, plus a non-diagnostic discussion-priority based on reported concerns. Hair/scalp and nail images receive their own measured image-findings summary even without a condition classifier. These frame measurements do not establish anatomy, hair density, nail disease, or a diagnosis.
-- **Single, in-focus dermatoscopic skin-lesion image:** the optional HAM10000 ResNet-34 research model can show a research-label ranking and Grad-CAM attention after the user confirms the capture type. It shows an estimated likelihood only when a version-matched calibration artifact is configured. It is not lesion segmentation, a diagnosis, or clinical decision-making.
+- **Ordinary face/body/affected-skin photo:** a separate five-class local EfficientNet research model can rank broad skin patterns. Install it once with `.venv/bin/python backend/scripts/install_clinical_skin_research_model.py`. Its [publisher](https://huggingface.co/RevelaCap/clinical-skin-condition-v1) reports 0.67 balanced accuracy overall and lower performance on the SCIN smartphone-photo subset; it is not validated for clinical use. The "lesion review" class is a referral prompt, not a cancer label.
+- **Hair/scalp photo:** local image-quality and image-specific pixel measurements, plus a non-diagnostic discussion-priority based on reported concerns. No compatible Hair condition classifier has passed the source and mapping checks yet. These frame measurements do not establish hair density or a diagnosis.
+- **Single, in-focus dermatoscopic skin-lesion image:** the bundled HAM10000 ResNet-34 research model shows the top five research labels, raw score, and Grad-CAM attention after capture-type confirmation. It shows an estimated likelihood only when a version-matched calibration artifact is configured. It is not lesion segmentation, a diagnosis, or clinical decision-making.
+- **Declared nail close-up:** a locally installed ten-class ConvNeXt Tiny research checkpoint shows its top five labels, raw logits, and raw scores. Install it once with `.venv/bin/python backend/scripts/install_nail_research_model.py`; assessment inference is fully local and needs no account, API key, provider, or network. The [upstream MIT model](https://huggingface.co/shibarashii/nail-disease-detection) reports 88.9% accuracy on 307 internal test images, but does not publish its training transform, patient grouping, or external validation. The adapter states its assumed ImageNet transform in each result. The Healthy Nail class cannot rule out disease, and raw scores are not disease probabilities.
 
 Each accepted image is decoded and measured independently. The assessment first builds one canonical evidence record containing image findings, available scoped model output, reported context, and the status of each local component. Results, saved history, journey comparisons, and PDF reports use that record. A failed component remains unavailable while the other completed evidence is retained; generated reports do not retain source pixels, overlays, or masks.
+
+See [local model sourcing and verification](docs/local-model-source-and-validation-20260925.md) for checkpoint hashes, published metrics, local pipeline checks, and the precise Hair limitation.
 
 ### Presentation-case mode
 
@@ -70,6 +74,8 @@ requirements.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
+.venv/bin/python backend/scripts/install_clinical_skin_research_model.py
+.venv/bin/python backend/scripts/install_nail_research_model.py
 # Create backend/.env from backend/.env.example, then set a local MYSQL_PASSWORD.
 bash backend/scripts/run_local_mysql.sh
 .venv/bin/python backend/app.py

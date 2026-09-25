@@ -17,6 +17,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from app import app
+from clinical_skin_classifier import weights_available as clinical_skin_weights_available
 from visual_review_service import review_skin_photo
 
 
@@ -41,7 +42,9 @@ class VisualReviewTests(unittest.TestCase):
         result = response.get_json()
         self.assertEqual(result["image_findings"]["assessment_mode"], "IMAGE_FINDINGS")
         self.assertTrue(result["image_findings"]["observations"])
-        self.assertEqual(result["assessment_result"]["status"]["code"], "MODEL_UNAVAILABLE")
+        self.assertEqual(result["assessment_result"]["status"]["code"], "RESEARCH_ONLY" if clinical_skin_weights_available() else "MODEL_UNAVAILABLE")
+        if clinical_skin_weights_available():
+            self.assertEqual(result["research_classifier"]["model_id"], "clinical-skin-efficientnet-research")
         self.assertEqual(result["assessment_completeness"]["status"], "complete_available_evidence")
 
     def test_vision_request_contains_actual_pixels_and_does_not_store_response(self):

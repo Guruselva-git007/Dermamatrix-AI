@@ -15,6 +15,7 @@ from assessment_contract import (
     determine_terminal_result_state,
 )
 from recommendation_service import build_recommendations
+from nail_classifier import weights_available as nail_weights_available
 
 
 def _response(*, classifier: dict, finding: dict | None = None, quality: dict | None = None,
@@ -79,6 +80,31 @@ class AssessmentStateTests(unittest.TestCase):
         self.assertEqual(conflict["result_state"], "uncertain")
         self.assertFalse(conflict["condition"]["available"])
 
+    def test_research_non_condition_class_is_a_ranking_not_a_healthy_result(self):
+        classifier = {
+            "available": True,
+            "model_id": "nail-convnexttiny-research",
+            "model": "Nail ConvNeXt research adapter",
+            "non_condition_top_class": True,
+            "top_prediction": {"condition": "Healthy Nail", "relative_score": 0.72},
+            "top_predictions": [
+                {"label": "Healthy Nail", "relative_score": 0.72},
+                {"label": "Pitting", "relative_score": 0.18},
+            ],
+            "uncertainty": {"status": "UNCALIBRATED", "margin": 0.54},
+        }
+        response = _response(classifier=classifier)
+        response["area"] = "Nails"
+        result = build_assessment_result(response)
+        self.assertEqual(result["status"]["code"], "RESEARCH_ONLY")
+        self.assertEqual(result["status"]["state"], "UNCERTAIN")
+        self.assertEqual(result["result_state"], "uncertain")
+        self.assertFalse(result["condition"]["available"])
+        self.assertEqual(result["consumer"]["state"], "research_model_ranking")
+        self.assertEqual(result["consumer"]["primary_result"]["title"], "Healthy Nail")
+        self.assertEqual(result["consumer"]["primary_result"]["confidence_kind"], "raw_softmax")
+        self.assertEqual(result["consumer"]["primary_result"]["evidence_strength"], "Low")
+
     def test_consumer_result_keeps_confidence_separate_from_image_evidence(self):
         response = _response(classifier={"available": False}, quality={"status": "GOOD", "label": "Clear", "issues": []})
         response["image_findings"] = {"available": True, "summary": "Measured tone variation in this photo.", "observations": [
@@ -108,7 +134,8 @@ class AssessmentStateTests(unittest.TestCase):
         cases = (
             ({"status": "LOW_QUALITY"}, {"status": "LOW_QUALITY"}, {}, {"state": "UNCERTAIN"}, "poor_quality"),
             ({"status": "GOOD"}, {"status": "VALID", "relevance_status": "CATEGORY_MISMATCH"}, {}, {"state": "UNCERTAIN"}, "category_mismatch"),
-            ({"status": "GOOD"}, {"status": "VALID"}, {"uncertainty": {"ood_status": "OUT_OF_DISTRIBUTION"}}, {"state": "UNCERTAIN"}, "unsupported_image"),
+            ({"status": "GOOD"}, {"status": "VALID"}, {"uncertainty": {"ood_status": "OUT_OF_DISTRIBUTION"}}, {"state": "UNCERTAIN"}, "uncertain"),
+            ({"status": "GOOD"}, {"status": "UNSUPPORTED"}, {}, {"state": "UNCERTAIN"}, "unsupported_image"),
             ({"status": "GOOD"}, {"status": "VALID"}, {}, {"state": "CONDITION"}, "condition_detected"),
             ({"status": "GOOD"}, {"status": "VALID"}, {}, {"state": "HEALTHY"}, "healthy"),
             ({"status": "GOOD"}, {"status": "VALID_RELEVANT", "relevance_status": "USER_DECLARED_CONTEXT_NOT_AUTOMATICALLY_VERIFIED"}, {}, {"state": "UNCERTAIN"}, "uncertain"),
@@ -227,7 +254,7 @@ class AssessmentStateTests(unittest.TestCase):
 
         for area, image_context, model_id in (
             ("Hair", "scalp", "hair-model-adapter"),
-            ("Nails", "nail_close_up", "nail-model-adapter"),
+            ("Nails", "nail_close_up", "nail-convnexttiny-research"),
         ):
             response = app.test_client().post("/api/assessments", data={
                 "image": (BytesIO(payload.getvalue()), f"clear-{area.lower()}-context.png"),
@@ -237,11 +264,17 @@ class AssessmentStateTests(unittest.TestCase):
             result = response.get_json()
 
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(result["assessment_result"]["status"]["state"], "UNCERTAIN")
-            self.assertEqual(result["assessment_result"]["status"]["code"], "MODEL_UNAVAILABLE")
-            self.assertEqual(result["assessment_result"]["result_state"], "uncertain")
+            if area == "Hair" or not nail_weights_available():
+                self.assertEqual(result["assessment_result"]["status"]["state"], "UNCERTAIN")
+                self.assertEqual(result["assessment_result"]["status"]["code"], "MODEL_UNAVAILABLE")
+                self.assertEqual(result["assessment_result"]["result_state"], "uncertain")
+            else:
+                self.assertTrue(result["research_classifier"]["available"])
+                self.assertEqual(result["assessment_result"]["status"]["code"], "RESEARCH_ONLY")
+                self.assertEqual(len(result["research_classifier"]["raw_logits"]), 10)
+                self.assertEqual(len(result["research_classifier"]["top_predictions"]), 5)
             self.assertEqual(result["model_metadata"]["model_id"], model_id)
-            self.assertEqual(result["input_validation"]["classification_status"], "NO_COMPATIBLE_CLASSIFIER_CONFIGURED")
+            self.assertEqual(result["input_validation"]["classification_status"], "ELIGIBLE_FOR_SCOPED_RESEARCH_CLASSIFIER" if area == "Nails" and nail_weights_available() else "NO_COMPATIBLE_CLASSIFIER_CONFIGURED")
             self.assertEqual(result["recommendations"]["products"], [])
             self.assertIn("No medicine", result["recommendations"]["medicine_policy"])
             consumer = result["assessment_result"]["consumer"]
@@ -256,5 +289,9 @@ class AssessmentStateTests(unittest.TestCase):
             self.assertTrue(consumer["care_sections"])
             self.assertTrue(consumer["routine_sections"])
             self.assertTrue(consumer["treatment_sections"])
-            self.assertTrue(consumer["products"])
-            self.assertTrue(consumer["medication_information"]["common_options"])
+            if area == "Hair" or not nail_weights_available():
+                self.assertTrue(consumer["products"])
+                self.assertTrue(consumer["medication_information"]["common_options"])
+            else:
+                self.assertFalse(consumer["products"])
+                self.assertFalse(consumer["medication_information"]["common_options"])

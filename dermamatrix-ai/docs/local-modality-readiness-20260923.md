@@ -1,5 +1,7 @@
 # Local skin, hair, and nail modality readiness — 2026-09-23
 
+> Historical snapshot. See [local model sourcing and verification](local-model-source-and-validation-20260925.md) for the later ordinary Skin and Nail research adapters and their evidence limits.
+
 ## Decision
 
 The application continues to accept image uploads for Skin, Hair & scalp, and

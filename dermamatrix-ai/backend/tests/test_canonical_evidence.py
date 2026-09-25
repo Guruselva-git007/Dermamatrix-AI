@@ -87,7 +87,7 @@ class CanonicalEvidenceTests(unittest.TestCase):
         self.assertIsNone(evidence["classification"]["condition"])
         self.assertTrue(evidence["visible_findings"])
 
-    def test_uncalibrated_research_ranking_does_not_become_supported_condition(self):
+    def test_uncalibrated_research_ranking_is_preserved_without_inventing_a_class(self):
         ranking = {
             "available": True, "model_id": "test-research-model",
             "top_prediction": {"condition": "Research class", "relative_score": 0.8},
@@ -101,9 +101,10 @@ class CanonicalEvidenceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         result = response.get_json()
         evidence = result["canonical_evidence"]
-        self.assertEqual(evidence["assessment_type"], "IMAGE_FINDINGS_WITH_RESEARCH_RANKING")
+        self.assertEqual(evidence["assessment_type"], "CLASSIFICATION_SUPPORTED")
         self.assertEqual(evidence["classification"]["score_kind"], "relative_model_score")
-        self.assertIsNone(evidence["classification"]["confidence"])
+        self.assertEqual(evidence["classification"]["confidence"], 0.8)
+        # An unknown model class still must not be mapped to a fabricated condition.
         self.assertFalse(result["assessment_result"]["condition"]["available"])
 
 

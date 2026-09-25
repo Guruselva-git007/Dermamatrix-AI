@@ -90,7 +90,7 @@ def calibrated_probabilities(logits: Sequence[float], calibration: dict) -> list
     return _softmax([float(value) / temperature for value in logits])
 
 
-def prediction_uncertainty(probabilities: Sequence[float] | None) -> dict:
+def prediction_uncertainty(probabilities: Sequence[float] | None, *, score_kind: str = "calibrated") -> dict:
     """Describe uncertainty without pretending an OOD detector exists."""
     if not probabilities:
         return {
@@ -107,10 +107,11 @@ def prediction_uncertainty(probabilities: Sequence[float] | None) -> dict:
     margin = ranked[0] - ranked[1] if class_count > 1 else ranked[0]
     certainty = "LOW" if ranked[0] < 0.5 or margin < 0.1 or entropy > 0.8 else "MODERATE" if ranked[0] < 0.75 or margin < 0.25 else "HIGH"
     return {
-        "status": "LOW_CONFIDENCE" if certainty == "LOW" else "CALIBRATED_OUTPUT",
+        "status": "LOW_CONFIDENCE" if certainty == "LOW" else "CALIBRATED_OUTPUT" if score_kind == "calibrated" else "RAW_MODEL_RANKING",
         "certainty": certainty,
+        "score_kind": score_kind,
         "entropy": round(entropy, 4),
         "margin": round(margin, 4),
         "ood_status": "OOD_NOT_EVALUATED",
-        "notice": "Certainty is derived from calibrated class distribution entropy and margin. This deployment has no fitted OOD detector, so it does not label an image in-domain or out-of-distribution.",
+        "notice": ("Ranking strength is derived from raw softmax entropy and margin; it is not calibrated certainty. " if score_kind == "raw_softmax" else "Certainty is derived from calibrated class distribution entropy and margin. ") + "This deployment has no fitted OOD detector, so it does not label an image in-domain or out-of-distribution.",
     }

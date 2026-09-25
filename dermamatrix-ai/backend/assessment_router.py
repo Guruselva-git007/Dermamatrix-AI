@@ -22,7 +22,7 @@ HEALTH_AREA_WORKFLOWS = {
             "dermoscopic_lesion": "Dermatoscopic single lesion",
             "general_photo": "General skin photo (legacy selection)",
         },
-        "model_scope": "Only the dermatoscopic single-lesion context is compatible with the bundled HAM10000 research adapter.",
+        "model_scope": "Declared ordinary skin photos use a separate clinical-photo research model when installed; attested dermoscopy uses the HAM10000 research adapter.",
     },
     "Hair": {
         "input_mode": "image",
@@ -46,7 +46,7 @@ HEALTH_AREA_WORKFLOWS = {
             "nail_close_up": "Nail / surrounding-area close-up",
             "general_photo": "General nail photo (legacy selection)",
         },
-        "model_scope": "No trained nail-disorder classifier is configured in this deployment.",
+        "model_scope": "A locally installed ten-class nail-photo research classifier can rank declared nail close-ups. The model is not clinically validated.",
     },
     "Sweat": {
         "input_mode": "questionnaire",
@@ -103,6 +103,25 @@ def route_image_assessment(*, area: str, image_context: str, dermoscopy_attested
             "classification_status": "NOT_RUN_LOW_QUALITY",
             "notice": "Retake the image before any scoped model output. A low-quality image is not forced into a disease classifier.",
         })
+        return route
+    if area == "Nails":
+        from nail_classifier import weights_available
+        if weights_available():
+            route.update({
+                "workflow": "nail-photo-research",
+                "run_research_classifier": True,
+                "classification_status": "ELIGIBLE_FOR_SCOPED_RESEARCH_CLASSIFIER",
+                "notice": "Eligible for the local ten-class nail research model. The declared anatomy is not automatically verified; model scores are not diagnostic probabilities.",
+            })
+        return route
+    if area == "Skin" and image_context != "dermoscopic_lesion":
+        from clinical_skin_classifier import weights_available
+        if weights_available():
+            route.update({
+                "workflow": "skin-clinical-research", "run_research_classifier": True,
+                "classification_status": "ELIGIBLE_FOR_SCOPED_RESEARCH_CLASSIFIER",
+                "notice": "Eligible for the local five-class clinical skin-photo research model. The declared anatomy is not automatically verified; scores are not diagnostic probabilities.",
+            })
         return route
     if area != "Skin" or image_context != "dermoscopic_lesion":
         return route

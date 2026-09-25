@@ -243,6 +243,26 @@ AREA_CARE_GUIDANCE = {
     },
 }
 
+DERMOSCOPY_DISCUSSION_GUIDANCE = {
+    "common_symptoms": ["A spot that changes in size, shape, or color", "Bleeding, crusting, pain, or persistent itching"],
+    "cause_sections": [{"title": "What an image cannot establish", "items": ["Several benign and concerning lesions can look alike in a photograph.", "A clinician may need examination, dermoscopy, or tissue sampling to determine the cause."]}],
+    "care_sections": [{"title": "Follow-up", "items": ["Record meaningful changes and arrange direct review of a new or changing lesion.", "Seek prompt care for bleeding, rapid change, persistent pain, or other concerning symptoms."]}],
+    "treatment_sections": [{"title": "Treatment decisions", "items": ["Do not choose a medicine or remove a lesion from this research ranking.", "A clinician can recommend treatment after establishing what the lesion is."]}],
+    "routine": {"morning": ["Protect exposed skin from excess sun with shade, clothing, and appropriate sunscreen."], "evening": ["Avoid picking or self-treating an uncertain lesion."], "weekly": ["Note any change in size, shape, color, or symptoms."], "follow_up": ["Arrange a qualified clinician's review for a new or changing lesion."]},
+    "nutrition_sections": [], "lifestyle_sections": [], "medication_topics": [], "product_ids": [],
+    "sources": [{"label": "NCI: skin cancer patient information", "url": "https://www.cancer.gov/types/skin/patient/skin-treatment-pdq"}],
+}
+
+CLINICAL_SKIN_DISCUSSION_GUIDANCE = {
+    **DERMOSCOPY_DISCUSSION_GUIDANCE,
+    "common_symptoms": ["Itching, dryness, redness, or raised patches", "Pain, spreading change, bleeding, or a persistent spot"],
+    "cause_sections": [{"title": "Several patterns can overlap", "items": ["Eczema, hives, folliculitis, psoriasis, and other conditions can share visible features.", "A photo and five broad research classes cannot determine the cause or rule out an unrelated condition."]}],
+    "care_sections": [{"title": "General skin support", "items": ["Avoid harsh scrubbing and stop products that sting or worsen a reaction.", "Arrange a clinician review for a persistent, spreading, painful, or changing concern."]}],
+    "treatment_sections": [{"title": "Treatment decisions", "items": ["A clinician or pharmacist can help select treatment after assessing the actual pattern and symptoms.", "Do not choose a medicine from a raw research-model ranking."]}],
+    "routine": {"morning": ["Cleanse gently if needed and use only products your skin tolerates."], "evening": ["Avoid harsh scrubbing or adding several new products at once."], "weekly": ["Record meaningful changes in symptoms and appearance."], "follow_up": ["Seek direct review when the concern persists, spreads, hurts, bleeds, or changes."]},
+    "sources": [{"label": "AAD: simple skin care", "url": "https://www.aad.org/public/everyday-care/skin-care-basics/care/skin-care-budget"}],
+}
+
 PRODUCT_CATALOG = [
     {"id": "barrier-moisturiser", "name": "Fragrance-free barrier moisturiser", "domain": "Skin", "category": "Skin care", "key_property": "Fragrance-conscious emollient", "purpose": "Supportive moisturising care for a gentle skin routine.", "precautions": "Check allergies and stop if irritation occurs.", "search_terms": "fragrance free barrier moisturiser", "tags": ["dry skin", "irritation", "barrier", "eczema"], "affiliate_env": "AFFILIATE_MOISTURISER_URL", "product_url_env": "PRODUCT_MOISTURISER_URL"},
     {"id": "sun-protection", "name": "Broad-spectrum sun protection", "domain": "Skin", "category": "Skin care", "key_property": "Broad-spectrum labelled protection", "purpose": "Everyday sun-protection product discovery for a routine discussion.", "precautions": "Not a treatment; choose a labelled product from a licensed seller.", "search_terms": "broad spectrum sunscreen", "tags": ["sun protection", "pigmentation", "hyperpigmentation", "melasma", "acne"], "affiliate_env": "AFFILIATE_SUNSCREEN_URL", "product_url_env": "PRODUCT_SUNSCREEN_URL"},
@@ -348,9 +368,12 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         product_guidance = "DEFER_PRODUCT_DECISIONS"
     elif assessment_state == "HEALTHY":
         product_guidance = "HEALTHY_MAINTENANCE_ONLY"
+    if research_classifier and research_classifier.get("available") and assessment_state != "HEALTHY":
+        product_guidance = "DEFER_PRODUCT_DECISIONS"
     if product_guidance in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"}:
         products = catalog_for_area(area)
-    guidance = AREA_CARE_GUIDANCE.get(area)
+    guidance = (DERMOSCOPY_DISCUSSION_GUIDANCE if research_classifier.get("model_id") == "ham10000-resnet34-research" else
+                CLINICAL_SKIN_DISCUSSION_GUIDANCE) if area == "Skin" and research_classifier and research_classifier.get("available") else AREA_CARE_GUIDANCE.get(area)
     cause_sections = guidance["cause_sections"] if guidance else []
     care_sections = guidance["care_sections"] if guidance else []
     treatment_sections = guidance["treatment_sections"] if guidance else []
@@ -362,7 +385,7 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
     # Educational categories are selected by the upload area alone. Urgent
     # symptoms still get an urgent alert; that does not erase basic care content.
     educational_products = [materialize_product(item) for item in PRODUCT_DISCOVERY_CATALOG
-                            if guidance and item["id"] in guidance["product_ids"]]
+                            if guidance and item["id"] in guidance["product_ids"] and not (research_classifier and research_classifier.get("available") and assessment_state != "HEALTHY")]
     healthy = assessment_state == "HEALTHY"
     return {
         "scope": "Healthy-appearance maintenance education" if healthy else "General wellbeing and personal-care education",
@@ -376,7 +399,7 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
             "available": False,
             "status": "NO_MEDICATION_RECOMMENDATION",
             "notice": "Common treatment options depend on the symptom and its cause. This image does not establish which, if any, is suitable for you.",
-            "common_options": guidance["medication_topics"] if guidance else [],
+            "common_options": [] if research_classifier and research_classifier.get("available") else guidance["medication_topics"] if guidance else [],
             "consultation_notice": "Check suitability, interactions, and local availability with a qualified doctor or pharmacist; do not change a prescribed medicine based on this result.",
         },
         "affiliate_disclosure": "Affiliate disclosure appears only when an approved partner URL is configured. It never changes analysis, medical suitability, or product ordering.",
