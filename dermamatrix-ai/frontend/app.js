@@ -930,6 +930,8 @@ function renderAnalysisDashboard(data) {
       ['Source', imageFindings.source],
       ['Method version', imageFindings.method_version],
       ['Measured observations', imageFindings.observations?.length],
+      ['Frame measurements', Object.entries(imageFindings.measurements || {}).map(([key, value]) => `${key}: ${value}`).join(' · ') || undefined],
+      ['Raw measured observations', (imageFindings.observations || []).map(item => `${item.finding}: ${item.visible_evidence}`).join(' · ') || undefined],
       ['Completeness', data.assessment_completeness?.status || data.assessment_result?.assessment_completeness?.status],
     ]),
     technicalEvidenceSection('Segmentation and region', [
@@ -1097,15 +1099,10 @@ function legacyConsumerResult(data = {}) {
 
 function renderUnifiedConsumerResult(data) {
   const result = data.assessment_result || {};
-  const consumer = result.consumer;
-  const requiredContent = ['common_symptoms', 'cause_sections', 'care_sections', 'treatment_sections',
-    'routine_sections', 'nutrition_sections', 'lifestyle_sections', 'products'];
-  if (!consumer || !consumer.primary_result?.title || !consumer.state ||
-      result.content_quality?.status === 'incomplete' ||
-      requiredContent.some(key => !Array.isArray(consumer[key]) || !consumer[key].length)) return false;
+  const consumer = result.consumer || legacyConsumerResult(data);
+  if (!consumer?.primary_result?.title) return false;
   const primary = consumer.primary_result;
   const carePlan = result.guidance?.care_plan || data.care_plan || {};
-  const followUp = result.guidance?.follow_up || data.condition_intelligence?.follow_up || {};
   const doctor = consumer.professional_support || {};
   const qualityLimited = consumer.state === 'quality_limited';
   const retakeSuggested = qualityLimited || (consumer.image_quality?.retake_guidance || []).length > 0;
@@ -1113,30 +1110,33 @@ function renderUnifiedConsumerResult(data) {
   const label = value => value && value !== 'NOT_ASSESSED' ? readableStatus(value) : 'Not clearly established';
   const metric = (name, value, note) => `<div><small>${escapeHTML(name)}</small><strong>${escapeHTML(value)}</strong><p>${escapeHTML(note)}</p></div>`;
   const metrics = [
-    metric('PIRS', score(consumer.pirs?.score), 'Assessment priority from available information.'),
-    metric('CONCERN', label(consumer.concern?.label), consumer.concern?.urgency || 'Care priority based on the information shared.'),
-    metric('SEVERITY', label(consumer.severity?.label), 'Based on symptoms you reported, when available.'),
-    primary.confidence !== null && Number.isFinite(primary.confidence)
-      ? metric('MODEL SCORE', `${primary.confidence}%`, primary.confidence_kind === 'raw_softmax' ? 'Raw softmax ranking; not a diagnostic probability.' : 'Calibrated estimate; not a diagnosis.')
-      : metric('EVIDENCE STRENGTH', primary.evidence_strength || 'Limited', 'Scope of the available image and context evidence.'),
+    metric('PIRS', score(consumer.pirs?.score), 'Prototype intake priority; separate from image concern.'),
+    metric('CONCERN', label(consumer.concern?.label), `${consumer.concern?.urgency || 'Care priority from available evidence.'} Not a disease-risk score.`),
+    metric('SEVERITY', label(consumer.severity?.label), 'Reported symptom level; a photo cannot measure symptoms.'),
+    primary.confidence_kind === 'calibrated_probability' && Number.isFinite(primary.confidence)
+      ? metric('CONFIDENCE', `${primary.confidence}%`, 'Calibrated research estimate; not a diagnosis.')
+      : metric('CONFIDENCE / EVIDENCE', primary.evidence_strength || 'Limited', 'Raw research scores and evidence scope are in Technical Details.'),
   ].join('');
   const segmentationOverlay = data.segmentation?.available ? data.segmentation.overlay : null;
   const attentionImage = data.research_classifier?.available ? data.research_classifier.attention_map?.image : null;
   const visualExplanation = segmentationOverlay || attentionImage
     ? `<details class="patient-visual-details" data-deferred-visual><summary>View model visual explanation</summary>${segmentationOverlay ? `<figure><img data-patient-src="${escapeHTML(segmentationOverlay)}" alt="Model segmentation overlay" /><figcaption>Model segmentation</figcaption></figure>` : ''}${attentionImage ? `<figure><img data-patient-src="${escapeHTML(attentionImage)}" alt="Model attention map" /><figcaption>Model attention map</figcaption></figure>` : ''}</details>` : '';
   const image = state.imageUrl
-    ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>${visualExplanation}`
+    ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>`
     : '<div class="patient-visual-empty"><strong>Image not retained</strong><p>Saved assessments keep their result and measurements, but not the original photo.</p></div>';
-  const products = (consumer.products || []).map(product => `<article class="patient-product"><div class="patient-product-top">${productPreviewMarkup(product, 'patient-product-preview')}<div><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || '')}</p></div></div><small>${escapeHTML(product.precautions || '')}</small>${commerceDestinationMarkup(product, 'patient-product-destination')}</article>`).join('');
+  const products = (consumer.products || []).map(product => `<article class="patient-product"><div class="patient-product-top">${productPreviewMarkup(product, 'patient-product-preview')}<div><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || '')}</p></div></div><small>${escapeHTML(product.key_property || '')}</small><small>${escapeHTML(product.precautions || '')}</small>${commerceDestinationMarkup(product, 'patient-product-destination')}</article>`).join('');
   const findings = (consumer.visible_findings || []).map(item => `<li><strong>${escapeHTML(item.name || 'Measured detail')}</strong><span>${escapeHTML(item.detail || '')}</span></li>`).join('');
-  const alternatives = (consumer.possible_conditions || []).map(item => `<li><strong>${escapeHTML(item.name || '')}</strong>${Number.isFinite(item.score) ? `<span>${item.score}% model score</span>` : ''}</li>`).join('');
+  const alternatives = (consumer.possible_conditions || []).map(item => `<li><strong>${escapeHTML(item.name || '')}</strong><span>${escapeHTML(item.explanation || (item.basis === 'research_model_ranking' ? 'Research model alternative; an examination is needed to distinguish it.' : 'An examination can help distinguish this pattern.'))}</span></li>`).join('');
   const topic = consumer.condition_information || {};
   const monitoring = consumer.monitoring || {};
   const medication = consumer.medication_information || {};
-  const treatment = consumer.treatment_options || [];
   const routine = consumer.routine || {};
   const area = data.area || result.area || 'Skin';
-  const commonTopics = (consumer.common_symptoms || []).length || (consumer.possible_causes || []).length;
+  const supportGuidance = doctor.urgent
+    ? 'Seek prompt professional evaluation for the reported warning signs.'
+    : doctor.recommended
+      ? 'Arrange a professional review for this level of concern.'
+      : 'Consider a review if the concern persists, changes, becomes painful, or worries you.';
   const medicationTopics = (medication.common_options || []).map(option => `<li><strong>${escapeHTML(option.name || '')}</strong><span>${escapeHTML(option.used_for || '')}</span></li>`).join('');
   const guidanceGroups = sections => (sections || []).map(section => `<article class="consumer-guidance-group"><h4>${escapeHTML(section.title || '')}</h4>${patientList(section.items, '')}</article>`).join('');
   const causes = guidanceGroups(consumer.cause_sections);
@@ -1158,27 +1158,40 @@ function renderUnifiedConsumerResult(data) {
     $('.disclaimer-details').insertAdjacentElement('afterend', root);
   }
   root.className = 'patient-result-content consumer-result';
-  root.innerHTML = `<section class="consumer-hero"><div class="consumer-hero-copy"><p class="eyebrow">${escapeHTML(String(data.area || result.area || 'Image').toUpperCase())} ASSESSMENT</p><h3>${escapeHTML(primary.title)}</h3><p>${escapeHTML(primary.summary || '')}</p>${retakeSuggested ? `<button type="button" class="button primary" data-result-action="reassess">Use a clearer photo <span>→</span></button>` : ''}</div><div class="consumer-hero-image">${image}</div></section>
+  root.innerHTML = `<section class="consumer-hero"><div class="consumer-hero-copy">
+      <p class="eyebrow">DERMAMATRIX AI · ${escapeHTML(String(area).toUpperCase())} ASSESSMENT</p>
+      <span class="consumer-match-label">${escapeHTML(primary.source === 'exact_reference_file' ? 'Supplied reference pattern' : primary.confidence_kind === 'raw_softmax' ? 'Best research model match' : primary.source === 'local_image_measurements' ? 'Limited visual evidence' : primary.evidence_strength || 'Assessment summary')}</span>
+      <h3>${escapeHTML(primary.title)}</h3><p>${escapeHTML(primary.summary || '')}</p>
+      ${alternatives ? `<p class="consumer-hero-alternatives"><strong>Other possibilities</strong> ${escapeHTML((consumer.possible_conditions || []).slice(0, 3).map(item => item.name).join(' · '))}</p>` : ''}
+      <div class="consumer-actions"><button type="button" class="button quiet" data-result-action="save">Save result</button><button type="button" class="button primary" data-result-action="progress">Continue Journey <span>→</span></button></div>
+      ${retakeSuggested ? '<button type="button" class="patient-text-link" data-result-action="reassess">Use a clearer photo →</button>' : ''}
+    </div><div class="consumer-hero-image">${image}</div></section>
     <section class="patient-quick-summary patient-metric-row consumer-metrics" aria-label="Assessment metrics">${metrics}</section>
     ${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}
-    <section class="consumer-panel consumer-wide"><p class="eyebrow">WHY THIS RESULT?</p>${patientList(consumer.why_this_result, 'Only the available image quality and your reported information could be reviewed.')}${retakeSuggested ? `<div class="consumer-retake"><strong>For a better photo</strong>${patientList(consumer.image_quality?.retake_guidance, '')}</div>` : ''}</section>
-    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">VISIBLE IMAGE FINDINGS</p>${findings ? `<ul class="consumer-findings">${findings}</ul><small>Frame measurements do not establish a cause.</small>` : '<p>No specific visual feature was established from this photo; use the image-quality guidance and reported context.</p>'}</article><article class="consumer-panel"><p class="eyebrow">POSSIBLE CONDITIONS</p><p class="consumer-scope">${escapeHTML(consumer.differential_status || '')}</p>${alternatives ? `<ul class="consumer-findings">${alternatives}</ul>` : '<p>No reliable alternative condition can be ranked from the available evidence.</p>'}</article></section>
-    ${topic.description ? `<section class="consumer-panel"><p class="eyebrow">PATTERN INFORMATION</p><h3>${escapeHTML(topic.name || 'Relevant pattern')}</h3><p>${escapeHTML(topic.description)}</p><small>${escapeHTML(topic.source === 'exact_reference_file' ? 'Educational reference from the exact supplied presentation file; not image inference.' : topic.source === 'reported_symptom_pattern' ? 'Based on symptoms you reported; not an image finding.' : 'Context for the model’s research ranking; not a confirmed diagnosis.')}</small></section>` : ''}
-    ${commonTopics ? `<section class="consumer-panel" aria-label="General ${escapeHTML(area.toLowerCase())} information"><p class="eyebrow">COMMON ${escapeHTML(area.toUpperCase())} SYMPTOMS</p><p class="consumer-scope">Examples to watch for; these were not detected from your photo.</p><div class="consumer-symptoms">${patientList(consumer.common_symptoms, '')}</div></section><section class="consumer-panel"><p class="eyebrow">POSSIBLE CAUSES</p><h3>What could explain a change?</h3><p class="consumer-scope">These are general possibilities for ${escapeHTML(area.toLowerCase())}; your photo does not establish a cause.</p>${causes ? `<div class="consumer-guidance-groups">${causes}</div>` : patientList(consumer.possible_causes, '')}</section>` : ''}
-    <section class="consumer-panel"><p class="eyebrow">${escapeHTML(area.toUpperCase())} CARE STEPS</p><h3>Practical care ideas</h3><p class="consumer-scope">${escapeHTML(carePlan.next_step || result.guidance?.next_step || 'Track changes and seek professional advice for persistent or worrying symptoms.')}</p>${care ? `<div class="consumer-guidance-groups">${care}</div>` : patientList(consumer.care_steps?.length ? consumer.care_steps : treatment, 'Keep care gentle and monitor changes.')}${treatment.length ? `<div class="patient-medication-note"><strong>Model-supported treatment topics</strong>${patientList(treatment, '')}</div>` : ''}</section>
-    <section class="consumer-panel"><p class="eyebrow">YOUR ${escapeHTML(area.toUpperCase())} ROUTINE</p><h3>Morning, evening, and follow-up</h3>${routineCards ? `<div class="consumer-guidance-groups">${routineCards}</div>` : `<div class="patient-routine-columns"><div><strong>Morning</strong>${patientList(routine.morning, 'Keep care gentle and simple.')}</div><div><strong>Evening</strong>${patientList(routine.evening, 'Avoid irritating products.')}</div></div>${followUp.guidance ? `<div class="patient-weekly"><strong>Follow-up</strong><p>${escapeHTML(followUp.guidance)}</p></div>` : ''}`}</section>
-    <section class="consumer-panel"><p class="eyebrow">DIET &amp; NUTRITION</p><h3>Food ideas for everyday health</h3><p class="consumer-scope">Practical choices for a varied diet. Adjust them to your preferences, allergies, and health needs.</p>${nutrition ? `<div class="consumer-guidance-groups">${nutrition}</div>` : patientList(consumer.diet, 'Eat a varied, balanced diet.')}</section>
-    <section class="consumer-panel"><p class="eyebrow">LIFESTYLE</p><h3>Habits that support your routine</h3>${lifestyle ? `<div class="consumer-guidance-groups">${lifestyle}</div>` : patientList(consumer.lifestyle, 'Keep a simple routine and record meaningful changes.')}</section>
-    ${treatmentGuidance ? `<section class="consumer-panel"><p class="eyebrow">TREATMENT PATHS TO DISCUSS</p><h3>Options depend on the actual concern</h3><div class="consumer-guidance-groups">${treatmentGuidance}</div></section>` : ''}
-    <section class="consumer-panel"><p class="eyebrow">MEDICINAL &amp; ACTIVE OPTIONS</p><p class="consumer-scope">Educational options for the possible pattern; suitability needs clinical context.</p>${medicationTopics ? `<ul class="consumer-topic-list">${medicationTopics}</ul>` : '<p>No medicinal option is indicated by this assessment. Focus on supportive care and monitoring.</p>'}<small>${escapeHTML(medication.consultation_notice || '')}</small></section>
-    <section class="consumer-panel consumer-wide"><p class="eyebrow">${escapeHTML(area.toUpperCase())} PRODUCTS TO EXPLORE</p><p class="consumer-scope">${escapeHTML(result.guidance?.recommendations?.general_care_notice || 'Check the label and suitability before buying.')}</p>${products ? `<div class="patient-products">${products}</div>` : '<p>Explore basic care products for this area with a pharmacist or clinician.</p>'}</section>
+    <p class="consumer-section-heading">ASSESSMENT</p>
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">VISIBLE FINDINGS</p>${findings ? `<ul class="consumer-findings">${findings}</ul><small>These frame measurements do not establish a condition or cause.</small>` : '<p>No specific feature could be established from this photo. Reported context and image quality still inform the result.</p>'}<div class="consumer-basis"><strong>Why this result</strong>${patientList(consumer.why_this_result, 'Available image and reported context were reviewed.')}</div>${retakeSuggested ? `<div class="consumer-retake"><strong>For a better photo</strong>${patientList(consumer.image_quality?.retake_guidance, '')}</div>` : ''}</article>
+      <article class="consumer-panel"><p class="eyebrow">POSSIBLE CONDITIONS</p><p class="consumer-scope">${escapeHTML(consumer.differential_status || '')}</p>${alternatives ? `<ul class="consumer-possibilities">${alternatives}</ul>` : '<p>Specific alternatives cannot be ranked from the available evidence. An examination can distinguish persistent or changing concerns.</p>'}</article></section>
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">COMMON ASSOCIATED SYMPTOMS</p><p class="consumer-scope">These can occur with this pattern; the photo cannot tell whether you have them.</p>${patientList(consumer.common_symptoms, 'No symptom list is available for this assessment.')}</article>
+      <article class="consumer-panel"><p class="eyebrow">CAUSES &amp; TRIGGERS</p>${causes ? `<div class="consumer-guidance-groups">${causes}</div>` : patientList(consumer.possible_causes, 'The cause cannot be determined from this photo.')}</article></section>
+    <p class="consumer-section-heading">WHAT YOU CAN DO</p>
+    <section class="consumer-panel consumer-wide consumer-treatment"><p class="eyebrow">TREATMENT PLAN</p>${topic.description ? `<p class="consumer-topic-intro"><strong>${escapeHTML(topic.name || 'Pattern context')}</strong> · ${escapeHTML(topic.description)}</p>` : ''}<div class="consumer-guidance-groups">${treatmentGuidance || patientList(consumer.care_steps, 'Keep care gentle and monitor meaningful changes.')}</div><div class="consumer-escalate"><strong>When to seek support</strong><p>${escapeHTML(carePlan.next_step || doctor.appointment || 'Arrange a review for persistent, changing, painful, or worrying concerns.')}</p></div></section>
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">ACTIVE &amp; MEDICINAL OPTIONS</p><p class="consumer-scope">Educational options only; suitability depends on the actual cause and your health context.</p>${medicationTopics ? `<ul class="consumer-topic-list">${medicationTopics}</ul>` : '<p>No medicine is indicated by this assessment. Focus on appropriate supportive care and monitoring.</p>'}<small>${escapeHTML(medication.consultation_notice || '')}</small></article>
+      <article class="consumer-panel"><p class="eyebrow">${escapeHTML(String(area).toUpperCase())} CARE</p>${care ? `<div class="consumer-guidance-groups">${care}</div>` : patientList(consumer.care_steps, 'Use a gentle category-appropriate routine.')}</article></section>
+    <section class="consumer-panel consumer-wide"><p class="eyebrow">DAILY ROUTINE</p><h3>${escapeHTML(String(area))} care through the week</h3>${routineCards ? `<div class="consumer-guidance-groups">${routineCards}</div>` : `<div class="patient-routine-columns"><div><strong>Morning or wash day</strong>${patientList(routine.morning, '')}</div><div><strong>Evening or non-wash day</strong>${patientList(routine.evening, '')}</div></div>`}</section>
+    <p class="consumer-section-heading">SUPPORTING RECOVERY &amp; MAINTENANCE</p>
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">DIET &amp; NUTRITION</p>${nutrition ? `<div class="consumer-guidance-groups">${nutrition}</div>` : patientList(consumer.diet, 'No specific diet intervention was identified.')}</article>
+      <article class="consumer-panel"><p class="eyebrow">LIFESTYLE</p>${lifestyle ? `<div class="consumer-guidance-groups">${lifestyle}</div>` : patientList(consumer.lifestyle, 'Track meaningful changes and avoid known irritants.')}</article></section>
+    <section class="consumer-panel consumer-wide"><p class="eyebrow">RECOMMENDED CARE CATEGORIES</p><p class="consumer-scope">${escapeHTML(result.guidance?.recommendations?.general_care_notice || 'Check each product’s suitability before buying.')}</p>${products ? `<div class="patient-products">${products}</div>` : '<p>Product suggestions are unavailable for this result.</p>'}</section>
+    <p class="consumer-section-heading">NEXT STEPS</p>
+    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">PROFESSIONAL SUPPORT</p><h3>${escapeHTML(doctor.specialty || 'Dermatologist')}</h3><p>${escapeHTML(supportGuidance)}</p><small>${escapeHTML(doctor.appointment || 'Confirm current listings and availability directly with the clinic.')}</small><button type="button" class="button quiet" data-result-action="doctor">Find nearby doctors <span>→</span></button></article>
+      <article class="consumer-panel"><p class="eyebrow">MY JOURNEY &amp; MONITORING</p>${patientList(monitoring.what_to_track, 'Compare future photos in similar lighting and record symptoms.')}${monitoring.red_flags?.length ? `<div class="consumer-escalate"><strong>Changes needing attention</strong>${patientList(monitoring.red_flags, '')}</div>` : ''}<p>${escapeHTML(monitoring.expected_course || '')}</p><div class="consumer-actions"><button type="button" class="button primary" data-result-action="progress">Continue Journey <span>→</span></button><button type="button" class="button quiet" data-result-action="report">Download report</button></div></article></section>
     ${sources ? `<section class="consumer-panel consumer-sources"><p class="eyebrow">CARE INFORMATION SOURCES</p>${sources}</section>` : ''}
-    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">PROFESSIONAL SUPPORT</p><h3>${doctor.recommended ? 'A professional review is recommended' : 'Get help when you need it'}</h3><p>${escapeHTML(doctor.appointment || 'A dermatologist can review persistent, changing, painful, or worrying concerns.')}</p><button type="button" class="button quiet" data-result-action="doctor">Find a doctor <span>→</span></button></article><article class="consumer-panel"><p class="eyebrow">MONITOR PROGRESS</p><h3>${state.profile?.patient_id ? 'Continue your care journey' : 'Save future check-ins'}</h3>${patientList(monitoring.what_to_track, 'Record meaningful changes in appearance and symptoms.')}<p>${escapeHTML(monitoring.expected_course || '')}</p><button type="button" class="button primary" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Create account to track'} <span>→</span></button></article></section>
     <section class="patient-technical" id="patientTechnicalSlot"></section>`;
   if (data.presentation_case?.status === 'NO_EXACT_MATCH') {
     root.querySelector('.consumer-hero')?.insertAdjacentHTML('afterend', `<section class="patient-presentation-notice"><p class="eyebrow">PRESENTATION MODE</p><strong>No teaching-case match</strong><p>${escapeHTML(data.presentation_case.notice || '')}</p></section>`);
   }
   if (technicalEvidence) $('#patientTechnicalSlot').append(technicalEvidence);
+  if (visualExplanation) $('#patientTechnicalSlot .technical-details-content')?.insertAdjacentHTML('beforeend', visualExplanation);
   root.querySelectorAll('details[data-deferred-visual]').forEach(details => {
     details.addEventListener('toggle', () => {
       if (!details.open) return;
@@ -1192,6 +1205,12 @@ function renderUnifiedConsumerResult(data) {
     button.onclick = () => {
       const action = button.dataset.resultAction;
       if (action === 'doctor') { closeResult(); showPage('support'); }
+      if (action === 'save') saveProgress();
+      if (action === 'report') {
+        if (!state.profile?.patient_id) { showAuthGate('register'); toast('Create an account to save and download reports.'); return; }
+        downloadSavedReport(state.assessmentId);
+      }
+      if (action === 'products') { closeResult(); showPage('products'); }
       if (action === 'progress') {
         if (!state.profile?.patient_id) { showAuthGate('register'); toast('Create an account to save assessments and check-ins.'); return; }
         closeResult(); showPage('progress');

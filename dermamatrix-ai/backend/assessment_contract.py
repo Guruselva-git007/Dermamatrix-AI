@@ -260,12 +260,12 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         state = "image_observation"
         title = {"Skin": "Visible variation in the skin photo", "Hair": "Light and dark areas in the hair photo",
                  "Nails": "Color and detail variation in the nail photo"}.get(area, "Image review")
-        summary = findings.get("summary") or "The photo was measured locally. Its cause cannot be determined from these measurements."
+        summary = "This photo has measurable visual variation. The current local measurements cannot establish an anatomical feature or its cause."
     else:
         state, title = "insufficient_evidence", "Image review is limited"
         summary = "The available photo and information do not support a specific visual finding."
 
-    why = [] if quality_limited else ([findings["summary"]] if findings.get("summary") else [])
+    why = [] if quality_limited else (["Local photo measurements found visual variation, but cannot identify its anatomical cause."] if findings.get("summary") else [])
     if quality.get("issues"):
         why.extend(f"Photo quality: {issue}" for issue in quality["issues"][:2])
     else:
@@ -274,10 +274,9 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         why.append("Reported concerns: " + ", ".join(str(value) for value in reported["symptoms"][:3]))
     if reported.get("urgent_concern"):
         why.append("You selected a prompt-care concern; this affects care priority independently of the photo.")
-    if model_supported:
+    if model_supported and not classifier.get("non_condition_top_class"):
         why.insert(0, f"The local {classifier.get('model', 'image model')} ranked {model_title} highest among its trained classes.")
-        if isinstance(margin, (int, float)):
-            why.insert(1, f"Its lead over the next trained class was {round(margin * 100)} percentage points in model score.")
+    if model_supported:
         if uncertainty.get("ood_status") == "OUT_OF_DISTRIBUTION":
             why.append("Domain evidence is weak, so treat this ranking as low evidence.")
 
@@ -290,6 +289,18 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         pirs_score = None
     recommendations = response.get("recommendations") or {}
     topic = recommendations.get("knowledge_topic") or {}
+    # A broad research review class is evidence, not a consumer condition.
+    # An exact reference can provide a named educational pattern, with its
+    # provenance made explicit; otherwise retain a cautious visual heading.
+    broad_review_class = bool(area == "Skin" and classifier.get("non_condition_top_class") and
+                              "lesion" in str(model_title or "").casefold())
+    if model_supported and broad_review_class:
+        if topic.get("source") == "exact_reference_file" and topic.get("name") and not quality_limited:
+            state, title = "reference_pattern", f"{topic['name']} — supplied reference pattern"
+            summary = "This exact file has an educational reference label. The local model also ran, but its broad review class did not independently confirm the pattern."
+        else:
+            state, title = "research_model_ranking", "Skin spot needing closer review"
+            summary = "The local model flagged a broad review category for this photo. It cannot identify the type of spot; an examination is needed if it is new, changing, or concerning."
     if not model_supported and topic.get("source") == "exact_reference_file" and not quality_limited:
         state = "reference_pattern"
         title = f"{topic['name']} — supplied reference pattern"
@@ -298,15 +309,15 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         state = "reported_pattern"
         title = "Reported scalp flaking" if topic.get("id") == "seborrheic-dermatitis" else "Reported hair thinning"
         summary = "This pattern comes from the symptoms you selected. The photograph has not established its cause."
-    elif model_supported and topic.get("source") == "exact_reference_file" and topic.get("name", "").casefold() not in str(model_title or "").casefold():
+    elif model_supported and not broad_review_class and topic.get("source") == "exact_reference_file" and topic.get("name", "").casefold() not in str(model_title or "").casefold():
         why.append("The exact supplied reference topic differs from the model's closest research match; neither establishes a diagnosis.")
-    ranked_alternatives = [{"name": item.get("label"), "score": round(item["calibrated_probability"] * 100) if calibrated and isinstance(item.get("calibrated_probability"), (int, float)) else round(item["relative_score"] * 100) if isinstance(item.get("relative_score"), (int, float)) else None,
-                            "basis": "research_model_ranking"}
-                           for item in (classifier.get("top_predictions") or [])[1:4]] if model_supported else []
-    knowledge_alternatives = [{"name": name, "score": None, "basis": "educational_differential"}
+    # Alternative research logits remain in technical details. They are not a
+    # clinical differential merely because they ranked second or third.
+    knowledge_alternatives = [{"name": name, "score": None, "basis": "educational_differential",
+                               "explanation": "A related pattern to distinguish through symptoms, history, and examination."}
                               for name in topic.get("differentials") or []]
-    alternatives = ranked_alternatives[:3]
-    seen = {str(item.get("name") or "").casefold() for item in alternatives}
+    alternatives = []
+    seen = set()
     seen.add(str(title).casefold())
     for item in knowledge_alternatives:
         if len(alternatives) >= 4:
@@ -318,10 +329,10 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
     return {
         "state": state,
         "primary_result": {"title": title, "summary": summary,
-                           "source": "calibrated_model" if model_supported and calibrated else "raw_model_ranking" if model_supported else "local_image_measurements" if state == "image_observation" else "available_context",
-                           "confidence": round(display_score * 100) if model_supported else None,
-                           "confidence_kind": "calibrated_probability" if model_supported and calibrated else "raw_softmax" if model_supported else None,
-                           "evidence_strength": evidence if model_supported else None if quality_limited else "Low"},
+                           "source": "exact_reference_file" if state == "reference_pattern" else "calibrated_model" if model_supported and calibrated else "raw_model_ranking" if model_supported else "local_image_measurements" if state == "image_observation" else "available_context",
+                           "confidence": round(display_score * 100) if model_supported and state != "reference_pattern" else None,
+                           "confidence_kind": "calibrated_probability" if model_supported and calibrated and state != "reference_pattern" else "raw_softmax" if model_supported and state != "reference_pattern" else None,
+                           "evidence_strength": "Limited" if state == "reference_pattern" else evidence if model_supported else None if quality_limited else "Low"},
         "image_quality": {"usable": not quality_limited, "label": quality.get("label") or "Not assessed",
                           "issues": quality.get("issues") or [],
                           "retake_guidance": ["Use bright indirect light and avoid flash glare.",
@@ -332,10 +343,11 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "severity": {"label": severity.get("level") if severity.get("level") not in (None, "NOT_ASSESSED") else None,
                      "source": "reported_symptoms"},
         "why_this_result": why,
-        "visible_findings": [] if quality_limited else [{"name": item.get("finding"), "detail": item.get("visible_evidence")}
-                                                       for item in observations[:4]],
+        "visible_findings": [] if quality_limited else [{"name": item.get("finding"),
+                                                         "detail": "Measured in this photo; this does not identify an anatomical feature or its cause."}
+                                                        for item in observations[:3]],
         "possible_conditions": alternatives,
-        "differential_status": "Research model rankings and educational alternatives; neither confirms a diagnosis" if ranked_alternatives and knowledge_alternatives else "Ranked model alternatives" if ranked_alternatives else "Educational alternatives to distinguish" if topic else "No condition differential is supported by this image; record symptoms and seek an examination if concerned.",
+        "differential_status": "Educational alternatives to distinguish" if topic else "No condition differential is supported by this image; record symptoms and seek an examination if concerned.",
         "condition_information": topic,
         "common_symptoms": recommendations.get("common_symptoms") or [],
         "possible_causes": recommendations.get("possible_causes") or [],
@@ -365,6 +377,8 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
                               "top_k": classifier.get("top_predictions") if model_supported else [],
                               "prediction_margin": margin if model_supported else None,
                               "preprocessing": classifier.get("preprocessing") if model_supported else None,
+                              "image_measurements": measurements,
+                              "image_observations": observations,
                               "classifier_withheld": bool(classifier.get("available") and not model_supported)},
     }
 

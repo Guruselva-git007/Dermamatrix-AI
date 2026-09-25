@@ -19,3 +19,51 @@ body[data-theme="dark"] .consumer-hero{background:linear-gradient(135deg,#103653
 
 /* Research dermoscopy is a compact model demonstration with explicit limits. */
 .dermoscopy-result .consumer-hero{background:linear-gradient(135deg,rgba(224,242,252,.94),rgba(255,255,255,.96))}.research-ranking{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0;padding:0;list-style:none}.research-ranking li{padding:14px;border:1px solid var(--dm-line);border-radius:11px;background:rgba(87,156,207,.08)}.research-ranking span,.research-ranking strong{display:block}.research-ranking span{margin-bottom:5px;color:var(--dm-muted);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.research-ranking strong{color:var(--dm-ink);font-size:14px}.dermoscopy-result .patient-visual-details figure{margin:12px 0 0}.dermoscopy-result .patient-visual-details img{display:block;max-width:100%;max-height:340px;object-fit:contain}.dermoscopy-result .patient-visual-details figcaption{margin-top:7px;color:var(--dm-muted);font-size:12px}body[data-theme="dark"] .dermoscopy-result .consumer-hero{background:linear-gradient(135deg,#103653,#0d263f)}body[data-theme="dark"] .research-ranking li{background:rgba(105,185,238,.1)}@media(max-width:760px){.research-ranking{grid-template-columns:1fr}}
+
+/* The result keeps the older spacious two-column dashboard, with natural card heights. */
+#resultModal.has-patient-result .modal-card{width:min(1320px,100%)}
+#resultModal.has-patient-result .modal-card>.eyebrow,#resultModal.has-patient-result #resultTitle{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+#resultModal.has-patient-result .modal-disclaimer{margin:0 0 6px}
+.consumer-result{gap:18px;margin-top:20px}
+.consumer-result>.consumer-section-heading{grid-column:1/-1;margin:6px 0 -5px;color:var(--dm-blue);font:700 11px var(--dm-mono);letter-spacing:.14em}
+.consumer-hero{grid-template-columns:minmax(0,1.3fr) minmax(260px,.7fr);padding:28px;gap:26px;align-items:stretch}
+.consumer-hero-copy{align-self:center}
+.consumer-hero h3{font-size:clamp(30px,3.5vw,43px);letter-spacing:-.045em}
+.consumer-hero-image,.consumer-hero-image .patient-image-frame,.consumer-hero-image .patient-visual-empty{height:auto;min-height:260px}
+.consumer-hero-image .patient-image-frame{height:100%}
+.consumer-hero-image .patient-image-frame img{width:100%;height:100%;min-height:260px;max-height:340px;object-fit:contain}
+.consumer-match-label{display:inline-block;margin:3px 0 10px;padding:6px 10px;border-radius:999px;background:rgba(58,134,195,.13);color:var(--dm-blue-strong);font-size:12px;font-weight:700}
+.consumer-hero-alternatives{padding-top:10px;border-top:1px solid var(--dm-line)}
+.consumer-hero-alternatives strong{margin-right:7px;color:var(--dm-ink)}
+.consumer-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
+.consumer-panel{padding:23px 24px}
+.consumer-panel .eyebrow{margin:0 0 13px;font-size:10px}
+.consumer-panel h3{font-size:20px}
+.consumer-panel p,.consumer-panel .patient-result-list li{font-size:13px;line-height:1.6}
+.consumer-grid{align-items:start;gap:18px}
+.consumer-guidance-groups{grid-template-columns:1fr;gap:10px}
+.consumer-wide .consumer-guidance-groups{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.consumer-guidance-group{padding:16px}
+.consumer-guidance-group .patient-result-list li{font-size:12px;line-height:1.55}
+.consumer-findings{grid-template-columns:1fr 1fr}
+.consumer-basis,.consumer-escalate{margin-top:16px;padding-top:13px;border-top:1px solid var(--dm-line)}
+.consumer-basis>strong,.consumer-escalate>strong{color:var(--dm-ink);font-size:13px}
+.consumer-topic-intro{max-width:920px}
+.consumer-topic-intro strong{color:var(--dm-ink)}
+.consumer-possibilities{display:grid;gap:9px;margin:0;padding:0;list-style:none}
+.consumer-possibilities li{padding:12px 14px;border-radius:10px;background:rgba(87,156,207,.08)}
+.consumer-possibilities strong,.consumer-possibilities span{display:block}
+.consumer-possibilities strong{color:var(--dm-ink);font-size:13px}
+.consumer-possibilities span{margin-top:4px;color:var(--dm-muted);font-size:12px;line-height:1.45}
+.consumer-metrics p{min-height:0}
+.consumer-wide .patient-products{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.consumer-wide .patient-product{min-width:0;padding:14px;border:1px solid var(--dm-line);border-radius:11px}
+.consumer-wide .patient-product:first-child{padding-top:14px}
+.consumer-wide .patient-product:last-child{border-bottom:1px solid var(--dm-line)}
+.consumer-wide .patient-product-top{display:block}
+.consumer-wide .patient-product-preview{margin-bottom:12px}
+.consumer-sources{grid-column:1/-1}
+body[data-theme="dark"] .consumer-possibilities li{background:rgba(105,185,238,.1)}
+@media(max-width:1050px){.consumer-wide .patient-products{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.consumer-hero{grid-template-columns:1fr;padding:18px}.consumer-hero-image{order:-1}.consumer-grid,.consumer-findings{grid-template-columns:1fr}.consumer-panel{padding:18px}.consumer-result{gap:14px}.consumer-wide .consumer-guidance-groups{grid-template-columns:1fr}}
+@media(max-width:520px){.consumer-wide .patient-products{grid-template-columns:1fr}.consumer-hero-image,.consumer-hero-image .patient-image-frame,.consumer-hero-image .patient-visual-empty{min-height:200px}.consumer-hero-image .patient-image-frame img{min-height:200px}}

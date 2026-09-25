@@ -121,8 +121,9 @@ class AssessmentStateTests(unittest.TestCase):
         self.assertEqual(result["concern"]["score"], 68)
         self.assertEqual(result["severity"]["label"], "MILD")
         self.assertEqual(result["possible_conditions"], [])
-        self.assertIn("Measured tone variation", result["why_this_result"][0])
-        self.assertIn("Brightness spans", result["visible_findings"][0]["detail"])
+        self.assertIn("visual variation", result["why_this_result"][0])
+        self.assertNotIn("Brightness spans", result["visible_findings"][0]["detail"])
+        self.assertIn("Brightness spans", result["technical_details"]["image_observations"][0]["visible_evidence"])
 
         response["quality"] = {"status": "LOW_QUALITY", "label": "Retake", "issues": ["Too blurry"]}
         limited = build_assessment_result(response)["consumer"]

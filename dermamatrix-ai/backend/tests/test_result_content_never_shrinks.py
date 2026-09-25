@@ -124,6 +124,54 @@ class ResultContentNeverShrinks(unittest.TestCase):
         self.assertIn("routine", quality["missing"])
         self.assertIn("products", quality["missing"])
 
+    def test_single_line_cards_are_a_content_regression(self):
+        result = build_assessment_result(fixture("Nails", label="Pitting"))
+        result["consumer"]["treatment_sections"] = [{"title": "First steps", "items": ["See a clinician."]}]
+        result["consumer"]["nutrition_sections"] = [{"title": "Diet", "items": ["Eat well."]}]
+        missing = validate_result_content(result)["missing"]
+        self.assertIn("treatment", missing)
+        self.assertIn("diet_nutrition", missing)
+
+    def test_broad_local_class_remains_evidence_but_not_the_condition_heading(self):
+        raw = "Lesion — dermoscopic review recommended"
+        response = fixture("Skin", label=raw, reference_topic="hyperpigmentation")
+        classifier = response["research_classifier"]
+        classifier["model_id"] = "clinical-skin-efficientnet-research"
+        classifier["non_condition_top_class"] = True
+        response["recommendations"] = build_recommendations(
+            "Skin", classifier, assessment_state="UNCERTAIN",
+            canonical_evidence=response["canonical_evidence"], presentation_case=response["presentation_case"],
+        )
+        result = build_assessment_result(response)
+        consumer = result["consumer"]
+        self.assertIn("hyperpigmentation", consumer["primary_result"]["title"].casefold())
+        self.assertEqual(consumer["primary_result"]["source"], "exact_reference_file")
+        self.assertNotIn("Lesion", consumer["primary_result"]["title"])
+        self.assertEqual(consumer["condition_information"]["id"], "hyperpigmentation")
+        self.assertEqual(consumer["technical_details"]["top_k"][0]["label"], raw)
+        self.assertEqual(result["content_quality"]["status"], "complete")
+
+        response["presentation_case"] = {}
+        response["recommendations"] = build_recommendations(
+            "Skin", classifier, assessment_state="UNCERTAIN",
+            canonical_evidence=response["canonical_evidence"], presentation_case={},
+        )
+        ordinary = build_assessment_result(response)["consumer"]
+        self.assertEqual(ordinary["primary_result"]["title"], "Skin spot needing closer review")
+        self.assertFalse(ordinary["possible_conditions"])
+        self.assertFalse(any(raw in sentence for sentence in ordinary["why_this_result"]))
+
+    def test_conflicting_reference_does_not_drive_care_for_a_specific_model_class(self):
+        response = fixture("Skin", label="Eczema / dermatitis", reference_topic="acne")
+        response["recommendations"] = build_recommendations(
+            "Skin", response["research_classifier"], assessment_state="CONDITION",
+            canonical_evidence=response["canonical_evidence"], presentation_case=response["presentation_case"],
+        )
+        consumer = build_assessment_result(response)["consumer"]
+        self.assertEqual(consumer["condition_information"]["id"], "atopic-dermatitis")
+        self.assertEqual(consumer["primary_result"]["title"], "Eczema / dermatitis")
+        self.assertTrue(all(product["domain"] == "Skin" for product in consumer["products"]))
+
     def test_history_summary_keeps_the_same_consumer_contract(self):
         from app import stored_analysis_summary
 

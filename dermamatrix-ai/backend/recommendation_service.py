@@ -68,11 +68,11 @@ def _education_topic(area: str, classifier: dict, evidence: dict, reference: dic
     label = (classifier.get("top_prediction") or {}).get("condition")
     topic_id = None
     source = ""
-    if reference and reference.get("matched"):
+    if classifier.get("available") and not classifier.get("non_condition_top_class"):
+        topic_id, source = MODEL_TOPICS.get(label), "research_model_ranking"
+    elif reference and reference.get("matched"):
         topic_id = "scalp-psoriasis" if area == "Hair" and reference.get("topic_id") == "psoriasis" else reference.get("topic_id")
         source = "exact_reference_file"
-    if not topic_id and classifier.get("available") and not classifier.get("non_condition_top_class"):
-        topic_id, source = MODEL_TOPICS.get(label), "research_model_ranking"
     if not topic_id and area == "Hair":
         symptoms = set(((evidence.get("reported_context") or {}).get("symptoms") or []))
         if "scalp_scaling" in symptoms or "scalp_itching" in symptoms:
@@ -458,8 +458,8 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
     routine_sections = ([{"title": title, "items": guidance["routine"][key]} for title, key in
                          (("Morning", "morning"), ("Evening", "evening"), ("Weekly check", "weekly"), ("Follow-up", "follow_up"))]
                         if guidance else [])
-    nutrition_sections = [*EVERYDAY_NUTRITION, *guidance["nutrition_sections"]] if guidance else []
-    lifestyle_sections = [*EVERYDAY_LIFESTYLE, *guidance["lifestyle_sections"]] if guidance else []
+    nutrition_sections = [*EVERYDAY_NUTRITION, *(guidance["nutrition_sections"] or AREA_CARE_GUIDANCE[area]["nutrition_sections"])] if guidance else []
+    lifestyle_sections = [*EVERYDAY_LIFESTYLE, *(guidance["lifestyle_sections"] or AREA_CARE_GUIDANCE[area]["lifestyle_sections"])] if guidance else []
     # Educational categories follow the supported topic, or the selected area
     # when no topic is supported. Urgent concerns do not erase basic care.
     selected_ids = (TOPIC_PRODUCTS.get(topic["id"]) if topic else None) or (
@@ -473,16 +473,18 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
                             if item["id"] in selected_ids]
     if topic:
         cause_sections = [{"title": f"Possible contributors to {topic['name'].lower()}", "items": topic["common_contributors"]}]
-        care_sections = [{"title": f"Care to discuss for {topic['name'].lower()}", "items": topic["care_options"]}]
+        care_sections = [section for section in guidance["care_sections"]
+                         if area != "Skin" or topic["id"] == "acne" or section["title"] != "Adapt to what you notice"]
         treatment_sections = [{"title": "First steps", "items": topic["care_options"]},
                               {"title": "Clinical options", "items": [f"{item['name']}: {item['note']}" for item in topic["medication_topics"]] or ["No medicine is indicated from this image alone; a clinician can assess persistent changes."]}]
         routine_sections = [{"title": "Daily care", "items": topic["daily_routine"]},
                             {"title": "Monitoring", "items": [topic["follow_up_timeline"]]}]
-        nutrition_sections = [*EVERYDAY_NUTRITION, {"title": f"Nutrition and {topic['name'].lower()}",
+        nutrition_sections = [*(nutrition_sections[2:] if topic["id"] in {"acne", "pattern-hair-loss", "nail-change-deficiency"} else []),
+                              {"title": f"Nutrition and {topic['name'].lower()}",
                             "items": [TOPIC_NUTRITION_CONTEXT.get(topic["id"],
                                       "Diet is supportive context and cannot establish or treat this pattern from a photograph."),
                                       "A photograph cannot establish a nutrient deficiency or a need for supplements."]}]
-        lifestyle_sections = [*EVERYDAY_LIFESTYLE, {"title": f"Habits relevant to {topic['name'].lower()}", "items": topic["diet_lifestyle"]}]
+        lifestyle_sections = [{"title": f"Habits relevant to {topic['name'].lower()}", "items": topic["diet_lifestyle"]}]
     healthy = assessment_state == "HEALTHY"
     return {
         "scope": "Healthy-appearance maintenance education" if healthy else "General wellbeing and personal-care education",
@@ -523,6 +525,6 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         "lifestyle_sections": lifestyle_sections,
         "diet": [item for section in nutrition_sections for item in section["items"]] if guidance else GENERAL_WELLBEING["diet"],
         "lifestyle": [item for section in lifestyle_sections for item in section["items"]] if guidance else GENERAL_WELLBEING["lifestyle"],
-        "sources": ([{"label": item["title"], "url": item["url"]} for item in topic["evidence_references"]] if topic else guidance["sources"] if guidance else []) + EVERYDAY_CARE_SOURCES,
+        "sources": ([{"label": item["title"], "url": item["url"]} for item in topic["evidence_references"]] if topic else guidance["sources"] if guidance else []),
         "products": products,
     }

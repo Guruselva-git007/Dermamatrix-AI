@@ -169,7 +169,8 @@ class MlContractTests(unittest.TestCase):
         self.assertTrue(uncertain["condition"]["available"])
         self.assertEqual(ood["consumer"]["primary_result"]["evidence_strength"], "Low")
         self.assertEqual(uncertain["consumer"]["primary_result"]["confidence"], 41)
-        self.assertEqual(uncertain["consumer"]["possible_conditions"][0]["name"], "Melanocytic nevus")
+        self.assertFalse(uncertain["consumer"]["possible_conditions"])
+        self.assertEqual(uncertain["consumer"]["technical_details"]["top_k"][1]["label"], "Melanocytic nevus")
 
     def test_logout_clears_the_signed_browser_session(self):
         """A later guest/login view cannot recover a signed-out Flask session."""
