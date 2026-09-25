@@ -1656,6 +1656,11 @@ def create_assessment():
             "status": "NO_EXACT_MATCH",
             "notice": "This file did not match a supplied teaching case exactly. The standard image assessment was used; no teaching-case label was assigned.",
         }
+    if presentation_case:
+        response["recommendations"] = build_recommendations(
+            area, research_classifier, cdss=cdss, assessment_state=assessment_state,
+            canonical_evidence=canonical_evidence, presentation_case=presentation_case,
+        )
     response["model_pipeline"]["native_image_findings"] = response["image_findings"].get("method_version", "unavailable")
     response["assessment_completeness"] = validate_assessment_completeness(response)
     # Guests get an ephemeral result. Authenticated requests persist under the
@@ -1680,7 +1685,7 @@ def create_assessment():
             previous_count = int(cursor.fetchone()["count"])
         response["patient_context"] = patient_context_snapshot(area=area, symptoms=manual_symptoms, previous_treatment=previous_treatment, history=history, previous_assessment_count=previous_count)
         response["clinical_decision_support"] = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=response["patient_context"], urgent_selected=urgent_concern, assessment_risk=response["assessment_risk"], assessment_state=assessment_state)
-        response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"], assessment_state=assessment_state, canonical_evidence=canonical_evidence)
+        response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"], assessment_state=assessment_state, canonical_evidence=canonical_evidence, presentation_case=presentation_case)
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only"
         attach_condition_intelligence(response)
         response["progress_comparison"] = versioned_progress_summary(connection, user_id, area, response)

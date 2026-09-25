@@ -7,6 +7,80 @@ hard-coded in the browser. It must not be used as a disease treatment plan.
 from __future__ import annotations
 
 from commerce_service import materialize_product
+from condition_knowledge import COMMON_CONDITION_KNOWLEDGE
+
+
+# These are education-topic matches to an already emitted model class or an
+# explicitly reported/reference pattern. They do not create an image finding.
+MODEL_TOPICS = {
+    "Eczema / dermatitis": "atopic-dermatitis",
+    "Folliculitis / acne-like": "acne",
+    "Psoriasis / papulosquamous": "psoriasis",
+    "Pitting": "nail-psoriasis",
+    "Koilonychia": "nail-change-deficiency",
+    "Blue Nail": "blue-nails",
+    "Onychogryphosis": "onychogryphosis",
+    "Melanonychia": "melanonychia",
+}
+
+TOPIC_PRODUCTS = {
+    "acne": ("gentle-cleanser", "barrier-moisturiser", "sun-protection", "salicylic-acid", "benzoyl-peroxide", "azelaic-acid"),
+    "atopic-dermatitis": ("gentle-cleanser", "barrier-moisturiser", "sun-protection"),
+    "psoriasis": ("gentle-cleanser", "barrier-moisturiser", "psoriasis-emollient"),
+    "hyperpigmentation": ("gentle-cleanser", "barrier-moisturiser", "sun-protection", "azelaic-acid"),
+    "tinea": ("gentle-cleanser", "topical-antifungal"),
+    "seborrheic-keratosis": ("gentle-cleanser", "sun-protection"),
+    "seborrheic-dermatitis": ("scalp-cleanser", "gentle-conditioner", "ketoconazole-shampoo", "selenium-sulfide-shampoo"),
+    "pattern-hair-loss": ("scalp-cleanser", "gentle-conditioner", "minoxidil-category"),
+    "alopecia-areata": ("scalp-cleanser", "gentle-conditioner"),
+    "scalp-psoriasis": ("scalp-cleanser", "gentle-conditioner"),
+    "onychomycosis": ("nail-clippers", "breathable-socks", "nail-antifungal"),
+    "onychogryphosis": ("nail-clippers", "breathable-socks"),
+    "melanonychia": ("nail-clippers", "nail-emollient"),
+    "nail-psoriasis": ("nail-emollient", "protective-gloves", "nail-clippers"),
+    "nail-change-deficiency": ("nail-emollient", "protective-gloves", "nail-clippers"),
+    "blue-nails": ("nail-emollient", "nail-clippers"),
+}
+
+# A topic changes the nutrition discussion only where there is a useful,
+# source-linked distinction. None of these statements diagnoses a deficiency.
+TOPIC_NUTRITION_CONTEXT = {
+    "acne": "If breakouts are the concern, lower-glycemic food choices may help some people; diet alone is not an acne treatment.",
+    "atopic-dermatitis": "Avoid blanket food elimination for eczema unless a clinician identifies a specific reason.",
+    "psoriasis": "No single diet cures psoriasis; focus on a sustainable balanced eating pattern.",
+    "hyperpigmentation": "No supplement or restrictive diet is a proven universal treatment for dark marks.",
+    "tinea": "Food or supplements do not replace assessment and appropriate antifungal care for a suspected skin infection.",
+    "seborrheic-keratosis": "Diet or supplements do not remove a skin growth; changing lesions need examination.",
+    "seborrheic-dermatitis": "No specific supplement is established as a cure for scalp flaking.",
+    "pattern-hair-loss": "Adequate protein matters for general hair health; discuss iron or other testing only when history suggests a deficiency.",
+    "alopecia-areata": "A balanced diet supports general health, but supplements are not an established treatment for immune-mediated patchy loss.",
+    "scalp-psoriasis": "No food or supplement can confirm or treat the cause of scalp scale from a photograph.",
+    "onychomycosis": "Diet or supplements do not replace diagnosis and treatment of a suspected fungal nail infection.",
+    "onychogryphosis": "A thick curved nail calls for pressure relief and safe nail care; nutrition cannot determine or remove its cause.",
+    "melanonychia": "A new or changing dark nail streak needs examination, not a supplement or diet change.",
+    "nail-psoriasis": "No supplement can establish or treat nail psoriasis from nail appearance alone.",
+    "nail-change-deficiency": "Nail shape alone cannot establish low iron or another nutrient deficiency; discuss testing before supplements.",
+    "blue-nails": "Blue nail color is not evidence of a vitamin deficiency; urgent symptoms need prompt medical assessment.",
+}
+
+
+def _education_topic(area: str, classifier: dict, evidence: dict, reference: dict | None) -> tuple[dict | None, str]:
+    label = (classifier.get("top_prediction") or {}).get("condition")
+    topic_id = None
+    source = ""
+    if reference and reference.get("matched"):
+        topic_id = "scalp-psoriasis" if area == "Hair" and reference.get("topic_id") == "psoriasis" else reference.get("topic_id")
+        source = "exact_reference_file"
+    if not topic_id and classifier.get("available") and not classifier.get("non_condition_top_class"):
+        topic_id, source = MODEL_TOPICS.get(label), "research_model_ranking"
+    if not topic_id and area == "Hair":
+        symptoms = set(((evidence.get("reported_context") or {}).get("symptoms") or []))
+        if "scalp_scaling" in symptoms or "scalp_itching" in symptoms:
+            topic_id, source = "seborrheic-dermatitis", "reported_symptom_pattern"
+        elif "hair_loss" in symptoms:
+            topic_id, source = "pattern-hair-loss", "reported_symptom_pattern"
+    topic = COMMON_CONDITION_KNOWLEDGE.get(topic_id)
+    return (topic, source) if topic and topic["health_area"] == area else (None, "")
 
 
 GENERAL_WELLBEING = {
@@ -273,15 +347,16 @@ PRODUCT_CATALOG = [
 ]
 
 
-# Product discovery is separate from an assessment recommendation.  These are
-# user-initiated search categories based on the source-linked knowledge layer;
-# they are never selected from a photo, model label, risk score, or diagnosis.
+# Product discovery is separate from an assessment recommendation. The
+# assessment can surface relevant categories as optional education, while the
+# catalogue search itself remains user-initiated and never establishes need.
 PRODUCT_DISCOVERY_CATALOG = [
     *PRODUCT_CATALOG,
+    {"id": "psoriasis-emollient", "name": "Rich fragrance-free emollient", "domain": "Skin", "category": "Skin care", "key_property": "Comfort for dry scaly skin", "purpose": "Support the skin barrier as part of a clinician-guided scaly-plaque care plan.", "precautions": "This does not replace prescribed anti-inflammatory treatment.", "search_terms": "rich fragrance free emollient ointment", "tags": ["psoriasis", "scaly skin", "emollient"]},
     {"id": "gentle-cleanser", "name": "Gentle facial cleanser", "domain": "Skin", "category": "Skin care", "key_property": "Low-irritation cleansing category", "purpose": "Browse cleanser options as part of a simple routine discussion.", "precautions": "Stop if it burns or worsens irritation; this is not a treatment recommendation.", "search_terms": "gentle facial cleanser", "tags": ["acne", "blackheads", "sensitive skin", "cleanser"]},
-    {"id": "salicylic-acid", "name": "Salicylic acid product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "An option to explore when blackheads or clogged pores are the concern.", "precautions": "Not selected from a photo. Confirm suitability and avoid combining actives without professional advice.", "search_terms": "salicylic acid skin care product", "tags": ["acne", "blackheads", "open comedones", "oil"]},
-    {"id": "benzoyl-peroxide", "name": "Benzoyl peroxide product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "A common option to explore for mild acne-type pimples.", "precautions": "Not selected from a photo. Check labels; it may irritate skin or bleach fabric.", "search_terms": "benzoyl peroxide skin care product", "tags": ["acne", "pimples", "breakouts"]},
-    {"id": "azelaic-acid", "name": "Azelaic acid product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Acne and post-breakout marks discussion", "purpose": "Browse azelaic-acid skin products when acne or post-breakout marks are the concern.", "precautions": "Not selected from a photo. Check local availability and suitability; stop if significant irritation occurs.", "search_terms": "azelaic acid skin care product", "tags": ["acne", "post acne marks", "azelaic acid"]},
+    {"id": "salicylic-acid", "name": "Salicylic acid product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "An option to explore when blackheads or clogged pores are the concern.", "precautions": "This is not a personal recommendation from a photo. Confirm suitability and avoid combining actives without professional advice.", "search_terms": "salicylic acid skin care product", "tags": ["acne", "blackheads", "open comedones", "oil"]},
+    {"id": "benzoyl-peroxide", "name": "Benzoyl peroxide product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Over-the-counter active-ingredient category", "purpose": "A common option to explore for mild acne-type pimples.", "precautions": "This is not a personal recommendation from a photo. Check labels; it may irritate skin or bleach fabric.", "search_terms": "benzoyl peroxide skin care product", "tags": ["acne", "pimples", "breakouts"]},
+    {"id": "azelaic-acid", "name": "Azelaic acid product category", "domain": "Skin", "category": "Ingredient discovery", "key_property": "Acne and post-breakout marks discussion", "purpose": "Browse azelaic-acid skin products when acne or post-breakout marks are the concern.", "precautions": "This is not a personal recommendation from a photo. Check local availability and suitability; stop if significant irritation occurs.", "search_terms": "azelaic acid skin care product", "tags": ["acne", "post acne marks", "azelaic acid"]},
     {"id": "ketoconazole-shampoo", "name": "Ketoconazole shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "A labelled medicated shampoo category to explore for persistent dandruff-type flakes.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "ketoconazole shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
     {"id": "selenium-sulfide-shampoo", "name": "Selenium sulfide shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "Another dandruff-shampoo category to compare if flaking is the concern.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "selenium sulfide shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
     {"id": "zinc-pyrithione-shampoo", "name": "Zinc pyrithione shampoo", "domain": "Hair", "category": "Scalp care", "key_property": "Medicated-shampoo category", "purpose": "User-led product discovery for a zinc-pyrithione shampoo category.", "precautions": "Scalp flaking has multiple causes. Confirm the cause and suitability with a clinician or pharmacist before use.", "search_terms": "zinc pyrithione shampoo", "tags": ["dandruff", "seborrheic dermatitis", "scalp flakes"]},
@@ -355,25 +430,28 @@ def search_product_discovery(query: str) -> list[dict]:
 
 
 def build_recommendations(area: str, research_classifier: dict | None, *, cdss: dict | None = None,
-                          assessment_state: str | None = None, canonical_evidence: dict | None = None) -> dict:
+                          assessment_state: str | None = None, canonical_evidence: dict | None = None,
+                          presentation_case: dict | None = None) -> dict:
     """Return state-aware education without turning an image into a prescription."""
     research_note = "No condition classification was run for this image type."
     if area == "Sweat":
         research_note = "Sweat guidance is based on questionnaire inputs only. A tabular ML model is not configured in this deployment."
     if research_classifier and research_classifier.get("available"):
-        research_note = "The research classifier output is shown for clinician discussion only; products and routine are not selected from its label."
+        research_note = "The research classifier ranking may guide an educational topic and care categories; it does not confirm a condition or select a personal treatment."
     products = []
     product_guidance = (cdss or {}).get("product_guidance", "GENERAL_SELF_CARE_ONLY")
     if assessment_state == "UNCERTAIN":
         product_guidance = "DEFER_PRODUCT_DECISIONS"
     elif assessment_state == "HEALTHY":
         product_guidance = "HEALTHY_MAINTENANCE_ONLY"
-    if research_classifier and research_classifier.get("available") and assessment_state != "HEALTHY":
-        product_guidance = "DEFER_PRODUCT_DECISIONS"
+    research_classifier = research_classifier or {}
+    topic, topic_source = _education_topic(area, research_classifier, canonical_evidence or {}, presentation_case)
+    if assessment_state == "HEALTHY":
+        topic, topic_source = None, ""
     if product_guidance in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"}:
         products = catalog_for_area(area)
     guidance = (DERMOSCOPY_DISCUSSION_GUIDANCE if research_classifier.get("model_id") == "ham10000-resnet34-research" else
-                CLINICAL_SKIN_DISCUSSION_GUIDANCE) if area == "Skin" and research_classifier and research_classifier.get("available") else AREA_CARE_GUIDANCE.get(area)
+                CLINICAL_SKIN_DISCUSSION_GUIDANCE) if area == "Skin" and research_classifier.get("available") and not topic else AREA_CARE_GUIDANCE.get(area)
     cause_sections = guidance["cause_sections"] if guidance else []
     care_sections = guidance["care_sections"] if guidance else []
     treatment_sections = guidance["treatment_sections"] if guidance else []
@@ -382,33 +460,59 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
                         if guidance else [])
     nutrition_sections = [*EVERYDAY_NUTRITION, *guidance["nutrition_sections"]] if guidance else []
     lifestyle_sections = [*EVERYDAY_LIFESTYLE, *guidance["lifestyle_sections"]] if guidance else []
-    # Educational categories are selected by the upload area alone. Urgent
-    # symptoms still get an urgent alert; that does not erase basic care content.
+    # Educational categories follow the supported topic, or the selected area
+    # when no topic is supported. Urgent concerns do not erase basic care.
+    selected_ids = (TOPIC_PRODUCTS.get(topic["id"]) if topic else None) or (
+        ("gentle-cleanser", "barrier-moisturiser", "sun-protection") if area == "Skin" and assessment_state == "HEALTHY" else
+        ("scalp-cleanser", "gentle-conditioner") if area == "Hair" and assessment_state == "HEALTHY" else
+        ("nail-emollient", "nail-clippers") if area == "Nails" and assessment_state == "HEALTHY" else
+        ("gentle-cleanser", "barrier-moisturiser", "sun-protection") if area == "Skin" else
+        ("scalp-cleanser", "gentle-conditioner") if area == "Hair" else
+        ("nail-emollient", "protective-gloves", "nail-clippers") if area == "Nails" else ())
     educational_products = [materialize_product(item) for item in PRODUCT_DISCOVERY_CATALOG
-                            if guidance and item["id"] in guidance["product_ids"] and not (research_classifier and research_classifier.get("available") and assessment_state != "HEALTHY")]
+                            if item["id"] in selected_ids]
+    if topic:
+        cause_sections = [{"title": f"Possible contributors to {topic['name'].lower()}", "items": topic["common_contributors"]}]
+        care_sections = [{"title": f"Care to discuss for {topic['name'].lower()}", "items": topic["care_options"]}]
+        treatment_sections = [{"title": "First steps", "items": topic["care_options"]},
+                              {"title": "Clinical options", "items": [f"{item['name']}: {item['note']}" for item in topic["medication_topics"]] or ["No medicine is indicated from this image alone; a clinician can assess persistent changes."]}]
+        routine_sections = [{"title": "Daily care", "items": topic["daily_routine"]},
+                            {"title": "Monitoring", "items": [topic["follow_up_timeline"]]}]
+        nutrition_sections = [*EVERYDAY_NUTRITION, {"title": f"Nutrition and {topic['name'].lower()}",
+                            "items": [TOPIC_NUTRITION_CONTEXT.get(topic["id"],
+                                      "Diet is supportive context and cannot establish or treat this pattern from a photograph."),
+                                      "A photograph cannot establish a nutrient deficiency or a need for supplements."]}]
+        lifestyle_sections = [*EVERYDAY_LIFESTYLE, {"title": f"Habits relevant to {topic['name'].lower()}", "items": topic["diet_lifestyle"]}]
     healthy = assessment_state == "HEALTHY"
     return {
         "scope": "Healthy-appearance maintenance education" if healthy else "General wellbeing and personal-care education",
         "research_note": research_note,
-        "medicine_policy": "No treatment or medicine is needed based on this assessment. This does not replace care for symptoms, a changing concern, or a clinician recommendation." if healthy else "No medicine, prescription treatment, dose, or diagnosis-specific product is suggested from an uploaded image. A normal-looking or usable image is not interpreted as a treatment decision.",
+        "medicine_policy": "No treatment or medicine is needed based on this assessment. This does not replace care for symptoms, a changing concern, or a clinician recommendation." if healthy else "No medicine, dose, or personal treatment is selected from this image. Common options below are for discussion after the cause and suitability are assessed.",
         "product_guidance": product_guidance,
-        "product_notice": "These are area-based care and product ideas. They are not selected from the photo or a diagnosis; check suitability before use.",
+        "product_notice": "These are optional care categories for the selected area or educational topic, not a personal product recommendation; check suitability before use.",
         "general_care_categories": educational_products,
-        "general_care_notice": "These optional everyday-care categories match only the area you selected. The photo did not establish a condition or a product need; check suitability before use." if educational_products else "No area-based product categories are available.",
+        "general_care_notice": (f"These categories fit an educational discussion of {topic['name'].lower()}; the {topic_source.replace('_', ' ')} does not establish a diagnosis or personal product need." if topic else "These optional everyday-care categories match only the area you selected. The photo did not establish a condition or a product need; check suitability before use.") if educational_products else "No area-based product categories are available.",
         "medication_information": {
             "available": False,
             "status": "NO_MEDICATION_RECOMMENDATION",
             "notice": "Common treatment options depend on the symptom and its cause. This image does not establish which, if any, is suitable for you.",
-            "common_options": [] if research_classifier and research_classifier.get("available") else guidance["medication_topics"] if guidance else [],
+            "common_options": [] if healthy else ([{"name": item["name"], "used_for": item["note"]} for item in topic["medication_topics"]] if topic else guidance["medication_topics"] if guidance and not research_classifier.get("available") else []),
             "consultation_notice": "Check suitability, interactions, and local availability with a qualified doctor or pharmacist; do not change a prescribed medicine based on this result.",
         },
         "affiliate_disclosure": "Affiliate disclosure appears only when an approved partner URL is configured. It never changes analysis, medical suitability, or product ordering.",
         **GENERAL_WELLBEING,
-        "routine": guidance["routine"] if guidance else {
+        "routine": ({"morning": topic["daily_routine"][:2],
+                     "evening": topic["daily_routine"][2:] or topic["daily_routine"][:1],
+                     "weekly": [topic["follow_up_timeline"]],
+                     "follow_up": [topic["follow_up_timeline"]]} if topic else guidance["routine"] if guidance else {
             **GENERAL_WELLBEING["routine"],
             "morning": [AREA_MORNING_CARE.get(area, GENERAL_WELLBEING["routine"]["morning"][0]), *GENERAL_WELLBEING["routine"]["morning"][1:]],
-        },
-        "common_symptoms": guidance["common_symptoms"] if guidance else [],
+        }),
+        "common_symptoms": topic["common_symptoms"] if topic else guidance["common_symptoms"] if guidance else [],
+        "knowledge_topic": {"id": topic["id"], "name": topic["name"], "description": topic["description"],
+                            "differentials": topic["differential_diagnoses"], "visual_features": topic["visual_features"],
+                            "red_flags": topic["red_flags"], "source": topic_source,
+                            "follow_up": topic["follow_up_timeline"], "references": topic["evidence_references"]} if topic else None,
         "cause_sections": cause_sections,
         "care_sections": care_sections,
         "treatment_sections": treatment_sections,
@@ -419,6 +523,6 @@ def build_recommendations(area: str, research_classifier: dict | None, *, cdss: 
         "lifestyle_sections": lifestyle_sections,
         "diet": [item for section in nutrition_sections for item in section["items"]] if guidance else GENERAL_WELLBEING["diet"],
         "lifestyle": [item for section in lifestyle_sections for item in section["items"]] if guidance else GENERAL_WELLBEING["lifestyle"],
-        "sources": [*guidance["sources"], *EVERYDAY_CARE_SOURCES] if guidance else [],
+        "sources": ([{"label": item["title"], "url": item["url"]} for item in topic["evidence_references"]] if topic else guidance["sources"] if guidance else []) + EVERYDAY_CARE_SOURCES,
         "products": products,
     }

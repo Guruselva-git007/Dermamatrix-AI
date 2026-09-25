@@ -11,7 +11,7 @@ explainability artifact when an underlying service did not produce one.
 from __future__ import annotations
 
 
-ASSESSMENT_RESULT_VERSION = "assessment-result-v1.6"
+ASSESSMENT_RESULT_VERSION = "assessment-result-v1.7"
 ASSESSMENT_STATES = frozenset({"HEALTHY", "CONDITION", "UNCERTAIN"})
 # This is intentionally a small, closed vocabulary.  It is the terminal
 # outcome for an image attempt, not a diagnosis, image-category model score,
@@ -289,6 +289,32 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
     if not isinstance(pirs_score, (int, float)) or not 0 <= pirs_score <= 100:
         pirs_score = None
     recommendations = response.get("recommendations") or {}
+    topic = recommendations.get("knowledge_topic") or {}
+    if not model_supported and topic.get("source") == "exact_reference_file" and not quality_limited:
+        state = "reference_pattern"
+        title = f"{topic['name']} — supplied reference pattern"
+        summary = "This exact file has an educational reference label; the image analysis did not independently confirm that pattern."
+    elif not model_supported and topic.get("source") == "reported_symptom_pattern" and not quality_limited:
+        state = "reported_pattern"
+        title = "Reported scalp flaking" if topic.get("id") == "seborrheic-dermatitis" else "Reported hair thinning"
+        summary = "This pattern comes from the symptoms you selected. The photograph has not established its cause."
+    elif model_supported and topic.get("source") == "exact_reference_file" and topic.get("name", "").casefold() not in str(model_title or "").casefold():
+        why.append("The exact supplied reference topic differs from the model's closest research match; neither establishes a diagnosis.")
+    ranked_alternatives = [{"name": item.get("label"), "score": round(item["calibrated_probability"] * 100) if calibrated and isinstance(item.get("calibrated_probability"), (int, float)) else round(item["relative_score"] * 100) if isinstance(item.get("relative_score"), (int, float)) else None,
+                            "basis": "research_model_ranking"}
+                           for item in (classifier.get("top_predictions") or [])[1:4]] if model_supported else []
+    knowledge_alternatives = [{"name": name, "score": None, "basis": "educational_differential"}
+                              for name in topic.get("differentials") or []]
+    alternatives = ranked_alternatives[:3]
+    seen = {str(item.get("name") or "").casefold() for item in alternatives}
+    seen.add(str(title).casefold())
+    for item in knowledge_alternatives:
+        if len(alternatives) >= 4:
+            break
+        key = str(item.get("name") or "").casefold()
+        if key and key not in seen:
+            alternatives.append(item)
+            seen.add(key)
     return {
         "state": state,
         "primary_result": {"title": title, "summary": summary,
@@ -308,8 +334,9 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "why_this_result": why,
         "visible_findings": [] if quality_limited else [{"name": item.get("finding"), "detail": item.get("visible_evidence")}
                                                        for item in observations[:4]],
-        "possible_conditions": [{"name": item.get("label"), "score": round(item["calibrated_probability"] * 100) if calibrated and isinstance(item.get("calibrated_probability"), (int, float)) else round(item["relative_score"] * 100) if isinstance(item.get("relative_score"), (int, float)) else None}
-                                for item in (classifier.get("top_predictions") or [])[1:3]] if model_supported else [],
+        "possible_conditions": alternatives,
+        "differential_status": "Research model rankings and educational alternatives; neither confirms a diagnosis" if ranked_alternatives and knowledge_alternatives else "Ranked model alternatives" if ranked_alternatives else "Educational alternatives to distinguish" if topic else "No condition differential is supported by this image; record symptoms and seek an examination if concerned.",
+        "condition_information": topic,
         "common_symptoms": recommendations.get("common_symptoms") or [],
         "possible_causes": recommendations.get("possible_causes") or [],
         "care_steps": recommendations.get("care_steps") or [],
@@ -317,7 +344,7 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "care_sections": recommendations.get("care_sections") or [],
         "routine_sections": recommendations.get("routine_sections") or [],
         "treatment_sections": recommendations.get("treatment_sections") or [],
-        "treatment_options": [] if not model_supported else (recommendations.get("treatment_options") or []),
+        "treatment_options": recommendations.get("treatment_options") or [],
         "medication_information": recommendations.get("medication_information") or {},
         "routine": recommendations.get("routine") or {},
         "diet": recommendations.get("diet") or [],
@@ -326,8 +353,13 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "lifestyle_sections": recommendations.get("lifestyle_sections") or [],
         "products": recommendations.get("general_care_categories") or recommendations.get("products") or [],
         "sources": recommendations.get("sources") or [],
-        "professional_support": (response.get("condition_intelligence") or {}).get("doctor") or {},
+        "professional_support": (response.get("condition_intelligence") or {}).get("doctor") or {"specialty": "Dermatologist" if area in {"Skin", "Hair", "Nails"} else "Qualified clinician", "appointment": "Arrange a review for a persistent, changing, painful, or worrying concern."},
+        "monitoring": {"what_to_track": (recommendations.get("routine") or {}).get("follow_up") or ["Record meaningful changes in appearance and symptoms."],
+                       "expected_course": topic.get("follow_up") or "Compare future checks in similar lighting and seek care if the concern changes.",
+                       "red_flags": topic.get("red_flags") or [], "journey_action": "Continue Journey"},
         "technical_details": {"reference_case": bool((response.get("presentation_case") or {}).get("matched")),
+                              "component_status": (response.get("canonical_evidence") or {}).get("component_status") or {},
+                              "failures": [name for name, status in ((response.get("canonical_evidence") or {}).get("component_status") or {}).items() if status == "failed"],
                               "raw_logits": classifier.get("raw_logits") if model_supported else None,
                               "class_order": classifier.get("class_order") if model_supported else None,
                               "top_k": classifier.get("top_predictions") if model_supported else [],
@@ -438,8 +470,16 @@ def build_assessment_result(response: dict) -> dict:
     )
     attention = classifier.get("attention_map") or classifier.get("explainability") or {}
     recommendations = response.get("recommendations") or {}
+    if not recommendations and not questionnaire and response.get("area") in {"Skin", "Hair", "Nails"}:
+        from recommendation_service import build_recommendations
+        response = dict(response)
+        recommendations = build_recommendations(
+            response["area"], classifier, assessment_state=assessment_state["state"],
+            canonical_evidence=canonical, presentation_case=presentation_case,
+        )
+        response["recommendations"] = recommendations
 
-    return {
+    result = {
         "contract_version": ASSESSMENT_RESULT_VERSION,
         "area": response.get("area"),
         "result_state": terminal_result["state"],
@@ -558,3 +598,8 @@ def build_assessment_result(response: dict) -> dict:
         },
         "medical_disclaimer": response.get("medical_disclaimer") or "Educational prototype only. This response is not a diagnosis or medical advice.",
     }
+    from result_quality import validate_result_content
+    result["content_quality"] = validate_result_content(result)
+    if result["content_quality"]["status"] == "incomplete" and result["result_state"] not in {"poor_quality", "category_mismatch", "unsupported_image"}:
+        raise ValueError("Assessment content floor failed: " + ", ".join(result["content_quality"]["missing"]))
+    return result

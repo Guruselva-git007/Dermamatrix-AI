@@ -234,7 +234,8 @@ class AssessmentStateTests(unittest.TestCase):
                     self.assertGreaterEqual(len(consumer["possible_causes"]), 8)
                     self.assertGreaterEqual(len(consumer["care_steps"]), 8)
                     self.assertGreaterEqual(len(consumer["medication_information"]["common_options"]), 4)
-                    self.assertGreaterEqual(len(consumer["products"]), 5)
+                    self.assertGreaterEqual(len(consumer["products"]), 2)
+                    self.assertLessEqual(len(consumer["products"]), 6)
                     self.assertFalse(consumer["possible_conditions"])
                     for product in consumer["products"]:
                         destinations = [product["commerce"]["primary"], *product["commerce"]["alternatives"]]
@@ -291,9 +292,6 @@ class AssessmentStateTests(unittest.TestCase):
             self.assertTrue(consumer["care_sections"])
             self.assertTrue(consumer["routine_sections"])
             self.assertTrue(consumer["treatment_sections"])
-            if area == "Hair" or not nail_weights_available():
-                self.assertTrue(consumer["products"])
-                self.assertTrue(consumer["medication_information"]["common_options"])
-            else:
-                self.assertFalse(consumer["products"])
-                self.assertFalse(consumer["medication_information"]["common_options"])
+            self.assertTrue(consumer["products"])
+            self.assertTrue(all(product["domain"] == area for product in consumer["products"]))
+            self.assertEqual(result["assessment_result"]["content_quality"]["status"], "complete")

@@ -687,7 +687,7 @@ class KnowledgeBoundaryTests(unittest.TestCase):
         self.assertTrue(acne["medication_topics"])
         self.assertTrue(acne["evidence_references"])
         self.assertIn("not confirm a diagnosis", acne["medical_notice"])
-        self.assertEqual({item["id"] for item in educational_condition_catalog("Nails")}, {"onychomycosis", "nail-psoriasis", "nail-change-deficiency", "blue-nails"})
+        self.assertEqual({item["id"] for item in educational_condition_catalog("Nails")}, {"onychomycosis", "nail-psoriasis", "nail-change-deficiency", "blue-nails", "onychogryphosis", "melanonychia"})
 
     def test_guides_keep_single_items_as_lists_and_use_relevant_sources(self):
         blue_nails = educational_condition_topic("blue-nails")
@@ -702,7 +702,7 @@ class KnowledgeBoundaryTests(unittest.TestCase):
         client = app.test_client()
         index = client.get("/api/knowledge/conditions?area=Hair")
         self.assertEqual(index.status_code, 200)
-        self.assertEqual({item["id"] for item in index.get_json()["items"]}, {"seborrheic-dermatitis", "pattern-hair-loss", "alopecia-areata"})
+        self.assertEqual({item["id"] for item in index.get_json()["items"]}, {"seborrheic-dermatitis", "pattern-hair-loss", "alopecia-areata", "scalp-psoriasis"})
         detail = client.get("/api/knowledge/conditions/acne")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.get_json()["topic"]["status"], "EDUCATION_ONLY_NOT_A_MODEL_CLASS")

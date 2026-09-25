@@ -53,6 +53,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     result_condition = result.get("condition") or {}
     consumer = result.get("consumer") or {}
     consumer_primary = consumer.get("primary_result") or {}
+    consumer_topic = consumer.get("condition_information") or {}
     result_status = result.get("status") or {}
     result_severity = result.get("severity") or {}
     result_risk = canonical.get("assessment_risk") or result.get("assessment_risk") or summary.get("assessment_risk") or {}
@@ -77,9 +78,9 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     styles = getSampleStyleSheet()
     title = ParagraphStyle("DermaTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=colors.HexColor("#123A68"), alignment=TA_LEFT, spaceAfter=3 * mm)
     eyebrow = ParagraphStyle("DermaEyebrow", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.5, leading=10, textColor=colors.HexColor("#3178C6"), spaceAfter=3 * mm)
-    heading = ParagraphStyle("DermaHeading", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=12, leading=15, textColor=colors.HexColor("#173B63"), spaceBefore=5 * mm, spaceAfter=2.4 * mm)
-    body = ParagraphStyle("DermaBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=9, leading=13, textColor=colors.HexColor("#34495E"))
-    note = ParagraphStyle("DermaNote", parent=body, fontSize=8, leading=11, textColor=colors.HexColor("#5C6E80"))
+    heading = ParagraphStyle("DermaHeading", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=11.2, leading=13.5, textColor=colors.HexColor("#173B63"), spaceBefore=4 * mm, spaceAfter=2 * mm)
+    body = ParagraphStyle("DermaBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.5, leading=11.5, textColor=colors.HexColor("#34495E"))
+    note = ParagraphStyle("DermaNote", parent=body, fontSize=7.8, leading=10.5, textColor=colors.HexColor("#5C6E80"))
 
     created_at = str(assessment.get("created_at", ""))[:19].replace("T", " ")
     priority_value = f"{_text(result_priority.get('score', risk.get('score')), '—')}/100 · {_text(result_priority.get('level', risk.get('level')), 'NOT ASSESSED')}"
@@ -208,6 +209,19 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>Professional support:</b> {_text(doctor.get('specialty'))}. {_text(doctor.get('appointment'))}", body),
         Paragraph(f"<b>Knowledge references:</b> {_bullets(references)}", note),
         Paragraph("General guidance for discussion", heading),
+        Paragraph("Possible conditions and associated symptoms", heading),
+        Paragraph(_text(consumer.get("differential_status")), note),
+        Paragraph(_bullets([item.get("name") for item in consumer.get("possible_conditions") or []]), body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Common associated symptoms:</b><br/>{_bullets(consumer.get('common_symptoms'))}", body),
+        Paragraph("Causes, triggers and care", heading),
+        Paragraph(f"<b>Possible contributors:</b><br/>{_bullets(consumer.get('possible_causes'))}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Care steps:</b><br/>{_bullets(consumer.get('care_steps'))}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Treatment paths:</b><br/>{_bullets([item for section in consumer.get('treatment_sections') or [] for item in section.get('items') or []])}", body),
+        Spacer(1, 1.5 * mm),
+        Paragraph(f"<b>Pattern context:</b> {_text(consumer_topic.get('description'), 'A specific condition could not be established from the available evidence.')}", note),
         Paragraph(f"<b>CDSS status:</b> {_text(cdss.get('status'))}. {_text(cdss.get('next_step') or cdss.get('notice'))}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Next step:</b> {_text(care_plan.get('next_step'))}", body),
@@ -217,6 +231,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>Wellbeing:</b><br/>{_bullets(recommendations.get('diet'))}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Lifestyle:</b><br/>{_bullets(recommendations.get('lifestyle'))}", body),
+        Paragraph(f"<b>Monitoring:</b><br/>{_bullets((consumer.get('monitoring') or {}).get('what_to_track'))}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>Medication information:</b> {_text(medication_information.get('notice'), 'No medication recommendation is generated from this assessment.')} {_text(medication_information.get('consultation_notice'), 'Discuss medication decisions with a qualified doctor or pharmacist.')}", body),
         Spacer(1, 1.5 * mm),
