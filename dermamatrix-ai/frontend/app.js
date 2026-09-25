@@ -1739,7 +1739,11 @@ function consumerProductDescription(product) {
 
 function commerceCard(product) {
   const category = String(product.domain || 'care').toLowerCase();
-  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><div class="catalog-media">${productPreviewMarkup(product)}</div><div class="catalog-card-body"><span class="catalog-type">${escapeHTML(product.category || 'CARE PRODUCT')}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(consumerProductDescription(product))}</p><div class="catalog-key-attributes"><span>${escapeHTML(product.key_property || 'Confirm suitability before use.')}</span></div></div><div class="catalog-card-footer">${commerceDestinationMarkup(product, 'catalog-destination', category === 'search' ? 'Search online' : 'Compare online')}</div></article>`;
+  const pharmacyLinks = (Array.isArray(product.pharmacy_links) ? product.pharmacy_links : []).map(option => {
+    const url = supportedExternalUrl(option.url);
+    return url ? `<a class="pharmacy-search-link" href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer" aria-label="Search ${escapeHTML(product.name || 'this product')} on ${escapeHTML(option.name)}">${escapeHTML(option.name)} <span aria-hidden="true">↗</span></a>` : '';
+  }).filter(Boolean).join('');
+  return `<article class="catalog-card catalog-card--product" data-category="${escapeHTML(category)}"><div class="catalog-media">${productPreviewMarkup(product)}</div><div class="catalog-card-body"><span class="catalog-type">${escapeHTML(product.category || 'CARE PRODUCT')}</span><h3>${escapeHTML(product.name || 'Product search')}</h3><p>${escapeHTML(consumerProductDescription(product))}</p><div class="catalog-key-attributes"><span>${escapeHTML(product.key_property || 'Confirm suitability before use.')}</span></div></div><div class="catalog-card-footer">${commerceDestinationMarkup(product, 'catalog-destination', category === 'search' ? 'Search online' : 'Compare online')}${pharmacyLinks ? `<div class="pharmacy-search-actions"><small>Search pharmacies</small><div>${pharmacyLinks}</div></div>` : ''}</div></article>`;
 }
 
 function installProductImageFallbacks() {
@@ -1960,12 +1964,12 @@ function applyConsumerCopy() {
   const productEyebrow = $('#products .products-heading .eyebrow');
   const productTitle = $('#productsTitle');
   const productCopy = $('#products .products-heading p:not(.eyebrow)');
-  if (productEyebrow) productEyebrow.textContent = 'CARE PRODUCTS';
-  if (productTitle) productTitle.textContent = 'Find products for your routine.';
-  if (productCopy) productCopy.textContent = 'Search by product, ingredient, brand, or everyday care need.';
+  if (productEyebrow) productEyebrow.textContent = 'PRODUCTS & PHARMACY';
+  if (productTitle) productTitle.textContent = 'Explore care products.';
+  if (productCopy) productCopy.textContent = 'Browse care categories and search independent pharmacies for relevant items.';
   $('#careContext strong').textContent = 'Explore at your own pace';
   $('#careContext p').textContent = 'Browse product categories and compare options online.';
-  $('.catalog-disclaimer').textContent = 'Shopping links are optional and do not change your health check.';
+  $('.catalog-disclaimer').textContent = 'External searches do not influence screening or suitability. Pharmacies determine availability, prescription requirements, price, and checkout.';
   $('#resultTitle').textContent = 'Your assessment';
   $('.modal-disclaimer').textContent = 'Educational assessment · not a diagnosis';
   $('.disclaimer-details summary').textContent = 'Important information';

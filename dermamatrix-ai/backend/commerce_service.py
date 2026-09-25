@@ -15,6 +15,26 @@ from urllib.parse import urlencode, urlparse
 GOOGLE_SHOPPING_URL = "https://www.google.com/search"
 AMAZON_IN_SEARCH_URL = "https://www.amazon.in/s"
 FLIPKART_SEARCH_URL = "https://www.flipkart.com/search"
+PHARMACY_PROVIDERS = {
+    "tata_1mg": {"name": "Tata 1mg", "search_url": "https://www.1mg.com/search/all", "query_key": "name"},
+    "pharmeasy": {"name": "PharmEasy", "search_url": "https://pharmeasy.in/search/all", "query_key": "name"},
+}
+# Only these existing care categories get pharmacy discovery links. An exact
+# user search and unrelated catalogue items never acquire pharmacy actions.
+PHARMACY_CATALOG_QUERIES = {
+    "barrier-moisturiser": "fragrance free barrier moisturiser",
+    "sun-protection": "broad spectrum sunscreen",
+    "psoriasis-emollient": "rich fragrance free emollient ointment",
+    "salicylic-acid": "salicylic acid skin care product",
+    "benzoyl-peroxide": "benzoyl peroxide skin care product",
+    "azelaic-acid": "azelaic acid skin care product",
+    "ketoconazole-shampoo": "ketoconazole shampoo",
+    "selenium-sulfide-shampoo": "selenium sulfide shampoo",
+    "zinc-pyrithione-shampoo": "zinc pyrithione shampoo",
+    "minoxidil-category": "minoxidil hair loss product",
+    "topical-antifungal": "topical antifungal skin product",
+    "nail-antifungal": "nail antifungal product",
+}
 
 
 def valid_external_url(value: object) -> str | None:
@@ -39,6 +59,17 @@ def marketplace_search_url(marketplace: str, query: str) -> str:
     if marketplace == "flipkart":
         return f"{FLIPKART_SEARCH_URL}?{urlencode({'q': query})}"
     return f"{GOOGLE_SHOPPING_URL}?{urlencode({'tbm': 'shop', 'q': query})}"
+
+
+def pharmacy_search_url(provider: str, query: str) -> str:
+    """Build an encoded search only for a configured external pharmacy."""
+    if provider not in PHARMACY_PROVIDERS:
+        raise ValueError("Unsupported pharmacy provider")
+    normalized = " ".join(str(query or "").split())
+    if not normalized:
+        raise ValueError("A pharmacy search needs a product name")
+    config = PHARMACY_PROVIDERS[provider]
+    return f"{config['search_url']}?{urlencode({config['query_key']: normalized})}"
 
 
 def resolve_product_destination(product: dict) -> dict:
@@ -120,6 +151,12 @@ def materialize_product(product: dict) -> dict:
         "alt": str(image.get("alt") or product.get("image_alt") or product.get("name") or "Care product"),
     } if image_url else None
     record["commerce"] = resolve_product_destination(record)
+    pharmacy_query = product.get("pharmacy_query") or PHARMACY_CATALOG_QUERIES.get(product.get("id"))
+    if pharmacy_query:
+        record["pharmacy_links"] = [
+            {"provider": provider, "name": config["name"], "url": pharmacy_search_url(provider, pharmacy_query)}
+            for provider, config in PHARMACY_PROVIDERS.items()
+        ]
     # Kept for older clients that only understand a single external link.
     record["url"] = record["commerce"]["primary"]["url"]
     return record

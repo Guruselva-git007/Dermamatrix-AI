@@ -618,3 +618,17 @@ body.reduce-motion .dashboard-action::after, body.reduce-motion .catalog-card--p
   transition: none !important;
 }
 body.reduce-motion .dashboard-action:hover, body.reduce-motion .catalog-card--product:hover { transform: none; }
+
+/* Products & Pharmacy: keep catalogue cards and external search actions inside
+   the content column at desktop, tablet, and mobile widths. */
+#catalogScroll { overflow-x: clip; }
+#productCatalog { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; }
+#productCatalog .catalog-card { min-width: 0; }
+.pharmacy-search-actions { display: grid; gap: 7px; width: 100%; margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--dm-line); }
+.pharmacy-search-actions small { color: var(--dm-faint); font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.pharmacy-search-actions > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.pharmacy-search-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 33px; padding: 7px 10px; border: 1px solid #a8d6d2; border-radius: 8px; background: #eef9f6; color: #0a6865; font-size: 11px; font-weight: 700; line-height: 1.2; text-decoration: none; }
+.pharmacy-search-link:hover, .pharmacy-search-link:focus-visible { border-color: #0a7773; background: #e0f3ef; color: #075d5b; }
+body[data-theme="dark"] .pharmacy-search-link { border-color: #377e81; background: #123f49; color: #b8eae4; }
+@media (max-width: 820px) { #productCatalog { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { #productCatalog { grid-template-columns: minmax(0, 1fr); } .pharmacy-search-link { flex: 1 1 120px; } }
