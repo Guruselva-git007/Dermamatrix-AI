@@ -1,7 +1,7 @@
 # Consumer development execution status
 
 Updated: 27 October 2026. Canonical checkpoint. Sequential implementation;
-**deployment is deferred by the owner**. No public release. Source branch is pushed; remote CI verifies implementation commit `524c6b2`.
+**deployment and real email-provider setup are deferred by the owner**. No public release. Source branch is `codex/consumer-evolution`; the remote verification receipts below identify checked implementations.
 
 ## Verdict and current batch
 
@@ -47,7 +47,7 @@ booking service was added without an approved requirement.
 | 10 / D | Search/categories, existing guides/sources/version/date, truthful missing-reviewer disclosure and correction requests | Implemented locally; reviewer identity/publishing approval and monitored correction service remain pending; no automatic translations |
 | 11 / E | Focused modules/services, validation/transactions/owner queries, session/CSRF/rate protections, explicit migrations, secret-safe logging/config | Implemented and regression verified; independent deployment security assessment remains unverified |
 | 12 / E | Explicit bounded mail/reminder workers, state visibility, shared inference slots; no photos/tokens in jobs | Implemented and verified; no scheduler or external worker service installed automatically |
-| 13 / E | Local pinned dependency inventory, pip consistency check, CI workflow, source hygiene, readiness/model-smoke commands, authenticated encrypted-copy tooling | Local checks and synthetic restore verified; remote CI/Linux/container/staging execution not verified; deployment deferred |
+| 13 / E | Local pinned dependency inventory, pip consistency check, CI workflow, source hygiene, readiness/model-smoke commands, authenticated encrypted-copy tooling | Local checks, synthetic restore and remote Linux CI verified; container/staging execution unverified; deployment deferred |
 | 14 / F | Reusable controls, native review/account/context dialogs, focus/labels/status, 320/390/768/1440 samples and both themes | Browser/logic samples verified; actual screen-reader speech, full WCAG certification and physical touch devices unverified |
 | 15 / F | Comparable local baseline/final questionnaire samples and actual installed-adapter smoke timings | Measured; no broad speed-up or production p75/p95/SLA claim; see performance evidence |
 | 16 / F | Install metadata, icons, safe static offline explanation; existing products/maps/visit PDF preserved | PWA network/cache boundary verified; photo retention, actual booking, commerce/community/payments remain future/decision-dependent |
@@ -56,9 +56,9 @@ booking service was added without an approved requirement.
 
 ## Verification
 
-- Full integration: **225 backend tests pass locally**, zero failures/skips; **48 frontend
-  tests pass**, zero failures/skips. Latest account hardening also passes its
-  focused 15-test SQL suite.
+- Latest full integration: **233 backend tests pass locally**, zero failures/skips;
+  **52 frontend tests pass**, zero failures/skips. This includes the follow-up
+  transport, concurrent occurrence, stale schedule and UI lifecycle regressions.
 - Browser: account UI 9 checks, recurring/Learn UI 14, review/offline/reflow 14,
   reusable smoke 3, reset request and three reset-confirm/login checks. Grouping,
   canonical result/PDF and archive interactions were exercised; explicit final
@@ -82,20 +82,22 @@ booking service was added without an approved requirement.
   health/readiness/assets verified. Old cookies require sign-in once to obtain
   a revocable session. Test services and sleep hold are closed at task completion.
 
-Evidence: ignored `local-artifacts/consumer-evolution-2026-10-27/` at project root.
+Evidence: ignored `local-artifacts/consumer-evolution-2026-10-27/` and
+`local-artifacts/consumer-followup-2026-10-27/` at project root.
 Implementation/configuration: [consumer-development.md](consumer-development.md).
 Human/device protocol: [consumer-validation-protocol.md](consumer-validation-protocol.md).
 
 ## Exact next action for continuation
 
 Read this checkpoint and inspect Git status; preserve completed local work.
-The next dependent activation step is choosing the actual operator/support owner
-and email provider, configuring a verified sender/origin, then running the bounded
-mail/reminder workers and testing real acceptance/delivery. Do not enable the
-synthetic sink for real accounts. Approve retention/erasure/backup-key ownership
-before irreversible rights execution. Complete remote CI and real-device/human
-validation when those environments/participants are available. Deployment remains
-deferred until the owner requests it. Do not restart the roadmap or retrain models.
+The owner explicitly deferred email-provider selection and activation to deployment.
+Keep real delivery disabled until then. At that stage, choose the actual
+operator/support owner and provider, configure a verified sender/origin, then run
+the bounded mail/reminder workers and test real acceptance/delivery. Do not enable
+the synthetic sink for real accounts. Approve retention/erasure/backup-key ownership
+before irreversible rights execution. Complete real-device/human validation when
+those environments/participants are available. Deployment remains deferred until
+the owner requests it. Do not restart the roadmap or retrain models.
 
 ## Resumed dependency completion
 
@@ -135,3 +137,21 @@ Current independently implemented development is integrated and saved. Remaining
 items are the stated operator/policy/provider, real-device/human/clinical and
 future deployment decisions. The next action is their approved activation and
 verification, not a new rebuild or repetition of completed engineering.
+
+## Development follow-up — 27 October 2026
+
+- SMTP now explicitly requires system-trusted certificates and hostname checks;
+  invalid certificates stop the handoff. Four mocked transport tests exercise
+  success, rejection, certificate failure and disabled delivery without real email.
+- A scheduled occurrence is recorded once even when different tabs use different
+  request keys. Conflicting Done/Skip actions return a conflict. The schedule-row
+  lock and current-read event lookup are tested with concurrent SQL requests.
+- Today submits its schedule version and keeps the same request key after a
+  connection failure. A stale task cannot mark a changed schedule.
+- Journey invalidates saved search results when the assessment list changes.
+  Account clearing removes private routine choices, result rows and status text;
+  guest mode hides account-only history search. Late-response guards remain.
+- Local regression: 233 backend and 52 frontend tests pass. Browser and remote
+  verification for this follow-up are recorded in the task's completion receipt.
+- No schema change, model change, deployment, provider configuration or real
+  notification is part of this follow-up.

@@ -231,3 +231,41 @@ class ConsumerEngagement(unittest.TestCase):
         routines=self.client.get('/api/routines').get_json()['routines']
         self.assertEqual(routines[0]['status'],'archived')
         self.assertEqual(self.client.get('/api/today').get_json()['tasks'],[])
+
+    def test_different_request_keys_still_record_one_occurrence(self):
+        routine=self.routine();self.schedule(routine)
+        payload=dict(action='completed',step=0,time='09:00',date=date.today().isoformat(),schedule_version=1)
+        path=f'/api/routine-schedules/{routine}/events'
+        first=self.call(path,payload,headers={'Idempotency-Key':uuid.uuid4().hex})
+        again=self.call(path,payload,headers={'Idempotency-Key':uuid.uuid4().hex})
+        self.assertEqual(first.status_code,201);self.assertEqual(first.get_json(),again.get_json())
+        conflict=self.call(path,{**payload,'action':'skipped'},headers={'Idempotency-Key':uuid.uuid4().hex})
+        self.assertEqual(conflict.status_code,409)
+        self.assertEqual(conflict.get_json()['code'],'EVENT_ALREADY_RECORDED')
+        self.assertEqual(len(self.client.get('/api/routine-schedules/'+routine).get_json()['events']),1)
+
+    def test_stale_today_step_does_not_mark_a_changed_schedule(self):
+        routine=self.routine();self.schedule(routine)
+        task=self.client.get('/api/today').get_json()['tasks'][0]
+        self.assertEqual(task['schedule_version'],1)
+        self.schedule(routine,version=1,steps=['Changed step'])
+        response=self.call(f'/api/routine-schedules/{routine}/events',dict(action='completed',step=0,time='09:00',date=date.today().isoformat(),schedule_version=task['schedule_version']),headers={'Idempotency-Key':uuid.uuid4().hex})
+        self.assertEqual(response.status_code,409)
+        self.assertEqual(response.get_json()['code'],'SCHEDULE_CHANGED')
+        self.assertEqual(self.client.get('/api/routine-schedules/'+routine).get_json()['events'],[])
+
+    def test_two_tabs_cannot_duplicate_one_scheduled_occurrence(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        routine=self.routine();self.schedule(routine)
+        cookie=self.client.get_cookie('session').value;barrier=Barrier(2)
+        def submit(_):
+            client=self.app.test_client();client.set_cookie('session',cookie)
+            csrf=client.get('/api/security/csrf').get_json()['csrf_token']
+            barrier.wait()
+            return client.post(f'/api/routine-schedules/{routine}/events',json=dict(action='completed',step=0,time='09:00',date=date.today().isoformat(),schedule_version=1),headers={'X-CSRF-Token':csrf,'Idempotency-Key':uuid.uuid4().hex})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses=list(pool.map(submit,range(2)))
+        self.assertEqual([r.status_code for r in responses],[201,201])
+        self.assertEqual(responses[0].get_json()['event_id'],responses[1].get_json()['event_id'])
+        self.assertEqual(len(self.client.get('/api/routine-schedules/'+routine).get_json()['events']),1)

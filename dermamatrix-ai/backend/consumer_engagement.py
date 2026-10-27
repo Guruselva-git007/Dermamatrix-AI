@@ -161,7 +161,19 @@ def register_engagement(app, database, current_user, read_summary):
                 today = datetime.now(ZoneInfo(config['timezone'])).date()
                 if day > today or day < today - timedelta(days=365):
                     raise ValueError('Choose today or a date within the past year.')
+                supplied_version = payload.get('schedule_version')
+                if supplied_version is not None and (type(supplied_version) is not int or supplied_version != config['version']):
+                    return jsonify(error='This scheduled step changed. Refresh Today before recording it.', code='SCHEDULE_CHANGED'), 409
                 data = dict(action=action, step=step, step_text=config['steps'][step], time=slot, date=day.isoformat(), schedule_version=config['version'], timezone=config['timezone'])
+                # The schedule row is locked above. Two tabs with different
+                # request keys still represent one occurrence, not two events.
+                cursor.execute("SELECT record_id,data_json FROM consumer_records WHERE user_id=%s AND kind='routine_event' AND subject_id=%s AND JSON_UNQUOTE(JSON_EXTRACT(data_json,'$.date'))=%s AND JSON_UNQUOTE(JSON_EXTRACT(data_json,'$.time'))=%s AND JSON_EXTRACT(data_json,'$.step')=%s AND JSON_EXTRACT(data_json,'$.schedule_version')=%s ORDER BY id DESC LIMIT 1 FOR UPDATE",
+                               (user['id'], routine_id, day.isoformat(), slot, step, config['version']))
+                existing_event = cursor.fetchone()
+                if existing_event:
+                    if json.loads(existing_event['data_json']) != data:
+                        return jsonify(error='This scheduled step already has a different recorded action. Refresh Today.', code='EVENT_ALREADY_RECORDED'), 409
+                    return jsonify(event_id=existing_event['record_id'], event=data), 201
                 result = record(connection, user['id'], 'routine_event', routine_id, data, key)
                 if json.loads(result['data_json']) != data:
                     return jsonify(error='This action identifier was already used for different details.'), 409
@@ -192,7 +204,7 @@ def register_engagement(app, database, current_user, read_summary):
                         completed[marker] = data['action']
                 for slot in config['times']:
                     for index, label in enumerate(config['steps']):
-                        tasks.append(dict(routine_id=entry['routine_id'], routine_name=entry['routine_name'], step=index, label=label, time=slot, date=day.isoformat(), timezone=config['timezone'], state=completed.get((day.isoformat(), slot, index, config['version']), 'pending')))
+                        tasks.append(dict(routine_id=entry['routine_id'], routine_name=entry['routine_name'], step=index, label=label, time=slot, date=day.isoformat(), timezone=config['timezone'], schedule_version=config['version'], state=completed.get((day.isoformat(), slot, index, config['version']), 'pending')))
             return jsonify(tasks=tasks, recent_result=recent, meaning='Completion and trends are user-reported, not measured healing.', routine_window_limit=100)
 
     @bp.put('/api/journey/assessments/<assessment_id>/context')

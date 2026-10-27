@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   let generation = 0, historyCursor = null, historyQuery = '', historyArea = '', historyEpisode='',historyBodyArea='',historyLoading = false, todayFlight = null;
-  let historyRequestVersion=0;
+  let historyRequestVersion=0, historySnapshotKey=null;
   let schedule = null, scheduleId = '', scheduleLoadVersion = 0, guideVersion = 0;
   const $ = id => document.getElementById(id);
   const node = (tag, text, cls) => { const n = document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n; };
@@ -25,11 +25,14 @@
         for(const task of data.tasks) {
           const row=node('article',undefined,'today-task');
           row.append(node('strong',task.label),node('p',`${task.routine_name} · ${task.time} · ${task.timezone}`),node('span',task.state==='pending'?'Not recorded':task.state==='completed'?'Completed — self-reported':'Skipped — self-reported'));
-          if(task.state==='pending') for(const [label,value] of [['Done','completed'],['Skip','skipped']])row.append(action(label,async()=>{
+          if(task.state==='pending') for(const [label,value] of [['Done','completed'],['Skip','skipped']]) {
+            const requestKey=crypto.randomUUID();
+            row.append(action(label,async()=>{
             const buttons=[...row.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
-            try { await put(`/api/routine-schedules/${encodeURIComponent(task.routine_id)}/events`,{action:value,step:task.step,date:task.date,time:task.time},'POST',{'Idempotency-Key':crypto.randomUUID()});if(current(version))await loadTodayFresh(); }
+            try { await put(`/api/routine-schedules/${encodeURIComponent(task.routine_id)}/events`,{action:value,step:task.step,date:task.date,time:task.time,schedule_version:task.schedule_version},'POST',{'Idempotency-Key':requestKey});if(current(version))await loadTodayFresh(); }
             catch(e){if(current(version))status('engagementStatus',e.message);buttons.forEach(b=>b.disabled=false);}
           }));
+          }
           list.append(row);
         }
         if(data.recent_result)list.append(action('Open your latest saved result',async()=>{
@@ -68,6 +71,7 @@
     for(const r of state.routines)select.add(new Option(r.routine_name,r.routine_id));
     if(state.routines.some(r=>r.routine_id===selected))select.value=selected;
     $('scheduleWorkspace').hidden=!signed();
+    $('completeJourney').hidden=!signed();
   }
 
   async function loadHistory(reset=false){
@@ -128,9 +132,13 @@
   }
 
   window.EngagementUI={
-    clear(){generation++;scheduleLoadVersion++;historyRequestVersion++;historyLoading=false;todayFlight=null;historyCursor=null;schedule=null;scheduleId='';$('resultContextDialog')?.close();for(const id of ['todayTasks','journeySearchResults','routineEventHistory'])$(id)?.replaceChildren();for(const id of ['routineSteps','routineEpisode','routineBodyArea','journeySearch','journeyEpisode','journeyBodyArea','contextEpisode','contextBodyArea'])if($(id))$(id).value='';if($('scheduleWorkspace'))$('scheduleWorkspace').hidden=true;},
+    clear(){generation++;scheduleLoadVersion++;historyRequestVersion++;historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';schedule=null;scheduleId='';$('resultContextDialog')?.close();for(const id of ['todayTasks','journeySearchResults','routineEventHistory','scheduleStatus','reminderStatus','journeySearchStatus','engagementStatus'])$(id)?.replaceChildren();for(const id of ['routineSteps','routineEpisode','routineBodyArea','journeySearch','journeyEpisode','journeyBodyArea','contextEpisode','contextBodyArea'])if($(id))$(id).value='';if($('scheduleRoutine'))$('scheduleRoutine').replaceChildren(new Option('Choose a saved routine',''));if($('scheduleWorkspace'))$('scheduleWorkspace').hidden=true;if($('completeJourney'))$('completeJourney').hidden=true;},
     page(page){if(page==='dashboard')loadToday();if(page==='progress'){updateRoutines();if(signed()&&!$('journeySearchResults').children.length)loadHistory(true);}if(page==='learn')guides();},
-    progress(){updateRoutines();},
+    progress(){
+      updateRoutines();
+      const next=JSON.stringify((state.analyses||[]).map(item=>[item.assessment_id,item.created_at,item.unavailable]));
+      if(next!==historySnapshotKey){historySnapshotKey=next;if(signed()&&document.querySelector('.page-active')?.id==='progress')loadHistory(true);else $('journeySearchResults')?.replaceChildren();}
+    },
     welcome(){if(!sessionStorage.getItem('dermamatrix_intro_seen'))$('welcomeDialog')?.showModal();}
   };
   function install(){
@@ -146,7 +154,7 @@
       try{const payload={version:schedule?.version||0,steps:$('routineSteps').value.split('\n').map(s=>s.trim()).filter(Boolean),days:[...document.querySelectorAll('[name=routine_day]:checked')].map(i=>Number(i.value)),times:$('routineTimes').value.split(',').map(s=>s.trim()),timezone:$('routineTimezone').value,area:$('routineScheduleArea').value,status:$('routineScheduleStatus').value,episode:$('routineEpisode').value,body_area:$('routineBodyArea').value,reminders:$('routineReminderOptIn').checked,quiet_start:$('quietStart').value,quiet_end:$('quietEnd').value};const data=await put('/api/routine-schedules/'+encodeURIComponent(id),payload);if(current(version)&&scheduleId===id){schedule=data.schedule;status('scheduleStatus',data.message);await loadTodayFresh();await loadProgress({force:true});}}
       catch(e){if(current(version))status('scheduleStatus',e.message);}finally{b.disabled=false;}};
     $('showReminders').onclick=async()=>{const v=generation;try{const d=await requestJSON('/api/reminders');if(!current(v))return;status('reminderStatus',`Transport: ${d.transport}. ${d.jobs.length} recent jobs. ${d.jobs.map(j=>j.state.replaceAll('_',' ')).join(', ')||'No jobs scheduled yet.'} Delivery is not confirmed by queueing.`);}catch(e){if(current(v))status('reminderStatus',e.message);}};
-    const history=node('section',undefined,'consumer-panel');history.id='completeJourney';history.innerHTML='<h3>Search all saved results</h3><form id="journeySearchForm" class="consumer-filter"><label>Search<input id="journeySearch" type="search" maxlength="120" placeholder="Concern or result text"></label><label>Area<select id="journeyArea"><option value="">All areas</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><label>Episode / concern group<input id="journeyEpisode" maxlength="120" placeholder="Exact saved label"></label><label>Body area<input id="journeyBodyArea" maxlength="80" placeholder="Exact saved label"></label><button class="button quiet" type="submit">Search results</button></form><p id="journeySearchStatus" role="status" aria-live="polite"></p><div id="journeySearchResults"></div><button id="journeyMore" type="button" class="button quiet" hidden>Load next results</button>';
+    const history=node('section',undefined,'consumer-panel');history.id='completeJourney';history.hidden=true;history.innerHTML='<h3>Search all saved results</h3><form id="journeySearchForm" class="consumer-filter"><label>Search<input id="journeySearch" type="search" maxlength="120" placeholder="Concern or result text"></label><label>Area<select id="journeyArea"><option value="">All areas</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><label>Episode / concern group<input id="journeyEpisode" maxlength="120" placeholder="Exact saved label"></label><label>Body area<input id="journeyBodyArea" maxlength="80" placeholder="Exact saved label"></label><button class="button quiet" type="submit">Search results</button></form><p id="journeySearchStatus" role="status" aria-live="polite"></p><div id="journeySearchResults"></div><button id="journeyMore" type="button" class="button quiet" hidden>Load next results</button>';
     schedulePanel.after(history);$('journeySearchForm').onsubmit=e=>{e.preventDefault();loadHistory(true);};$('journeyMore').onclick=()=>loadHistory();
     const contextDialog=node('dialog',undefined,'consumer-dialog');contextDialog.id='resultContextDialog';contextDialog.setAttribute('aria-labelledby','contextTitle');contextDialog.innerHTML='<form id="resultContextForm"><h2 id="contextTitle">Organise this result</h2><p id="contextStatus" role="status"></p><label>Episode / concern group<input id="contextEpisode" maxlength="120"></label><label>Body area<input id="contextBodyArea" maxlength="80"></label><div class="consumer-actions"><button id="cancelResultContext" type="button" class="button quiet">Cancel</button><button type="submit" class="button primary">Save labels</button></div></form>';document.body.append(contextDialog);$('cancelResultContext').onclick=()=>contextDialog.close();
     const learn=node('section',undefined,'learn-section');learn.id='learn';learn.dataset.page='learn';learn.setAttribute('aria-labelledby','learnTitle');learn.innerHTML='<h1 id="learnTitle">Understand your concerns</h1><p>Source-linked education, separate from your assessment. These guides do not diagnose or prescribe.</p><form id="learnForm" class="consumer-filter"><label>Search guides<input id="learnSearch" type="search" maxlength="120" placeholder="Search a topic"></label><label>Category<select id="learnArea"><option value="">All categories</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><button class="button quiet" type="submit">Find guides</button></form><p id="learnStatus" role="status"></p><div id="learnList"></div><article id="learnDetail" class="consumer-panel" hidden></article>';

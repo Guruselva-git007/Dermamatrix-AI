@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import smtplib
+import ssl
 from email.message import EmailMessage
 import uuid
 
@@ -56,7 +57,7 @@ def send_message(recipient, subject, body, *, message_id=None):
         if message_id:
             message['Message-ID'] = f'<{message_id}@dermamatrix.local>'
         message.set_content(body)
-        with smtplib.SMTP_SSL(host, int(os.getenv('DERMAMATRIX_SMTP_PORT', '465')), timeout=10) as smtp:
+        with smtplib.SMTP_SSL(host, int(os.getenv('DERMAMATRIX_SMTP_PORT', '465')), timeout=10, context=ssl.create_default_context()) as smtp:
             if os.getenv('DERMAMATRIX_SMTP_USER'):
                 smtp.login(os.environ['DERMAMATRIX_SMTP_USER'], os.environ['DERMAMATRIX_SMTP_PASSWORD'])
             rejected = smtp.send_message(message)

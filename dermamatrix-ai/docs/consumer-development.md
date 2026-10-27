@@ -67,7 +67,10 @@ The sink writes synthetic emails to mode-0600 files in a mode-0700 directory. It
 is not real delivery. Never enable it for real user accounts. SMTP support uses
 implicit TLS, explicit host/from/optional credentials, and HTTPS account links
 outside tests. Choosing/configuring a provider remains an owner action; successful
-SMTP acceptance is `provider_accepted`, not confirmed delivery.
+SMTP acceptance is `provider_accepted`, not confirmed delivery. The implicit TLS
+connection explicitly verifies certificate trust and hostname using the system
+trust configuration; certificate failure stops delivery without a fallback.
+The owner has deferred provider selection and real delivery testing to deployment.
 
 Explicit bounded worker cycles (no scheduler/service installed automatically):
 
@@ -77,6 +80,11 @@ PYTHONPATH=backend .venv/bin/python backend/scripts/run_reminders.py --run-once
 ```
 
 Routines have immutable schedule revisions and completion/skip event snapshots.
+Today submits the schedule version and reuses its request key after a failed
+response. Under the schedule lock, one occurrence (owner, routine, date, time,
+step and schedule version) has one event even across tabs with different request
+keys. A different action for that occurrence or a stale submitted version returns
+a conflict and requires refreshing Today.
 Editing steps never rewrites events. Archiving preserves routines, check-ins and completion events; paused/archived routines are excluded from active totals. Schedules record IANA timezone, days,
 local times and quiet hours. DST gaps are skipped; repeated local times use the
 first occurrence once. Quiet-hour occurrences are skipped, not silently shifted.
