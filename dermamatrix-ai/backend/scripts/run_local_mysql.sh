@@ -39,11 +39,41 @@ if [[ ! -d "$data_dir/mysql" ]]; then
   "$mysql_bin" --no-defaults --initialize-insecure --datadir="$data_dir"
 fi
 
-if [[ -f "$pid_path" ]] && kill -0 "$(cat "$pid_path")" 2>/dev/null; then
+mysql_running=false
+if [[ -f "$pid_path" ]]; then
+  recorded_pid="$(cat "$pid_path")"
+  if [[ "$recorded_pid" =~ ^[0-9]+$ ]]; then
+    recorded_command="$(ps -p "$recorded_pid" -o command= 2>/dev/null || true)"
+    recorded_executable="$(ps -p "$recorded_pid" -o comm= 2>/dev/null || true)"
+    # A PID can be reused after reboot. Never mistake or signal another app.
+    if [[ "${recorded_executable##*/}" == "mysqld" && "$recorded_command" == *"--datadir=$data_dir"* && "$recorded_command" == *"--socket=$socket_path"* ]]; then
+      mysql_running=true
+    fi
+  fi
+fi
+if [[ "$mysql_running" == true ]]; then
   echo "DermaMatrix local MySQL is already running on port $port."
 else
+  if command -v lsof >/dev/null && lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Port $port is occupied by another service; no process was stopped." >&2
+    exit 1
+  fi
+  # MySQL also keeps a PID in its Unix-socket lock. A reboot can leave that
+  # PID reused by a non-MySQL process, so clean only a verified stale lock.
+  if [[ -f "$socket_path.lock" ]]; then
+    socket_lock_pid="$(cat "$socket_path.lock")"
+    socket_lock_executable=""
+    if [[ "$socket_lock_pid" =~ ^[0-9]+$ ]]; then
+      socket_lock_executable="$(ps -p "$socket_lock_pid" -o comm= 2>/dev/null || true)"
+    fi
+    if [[ "${socket_lock_executable##*/}" == "mysqld" ]] || { command -v lsof >/dev/null && lsof "$socket_path" >/dev/null 2>&1; }; then
+      echo "The project MySQL socket may be in use; its lock was preserved." >&2
+      exit 1
+    fi
+    rm -f "$socket_path.lock"
+  fi
   rm -f "$socket_path" "$pid_path"
-  "$mysql_bin" --no-defaults --datadir="$data_dir" --socket="$socket_path" --pid-file="$pid_path" --port="$port" --mysqlx-port="$mysqlx_port" --bind-address=127.0.0.1 --log-error="$log_path" --skip-name-resolve --daemonize
+  "$mysql_bin" --no-defaults --datadir="$data_dir" --socket="$socket_path" --pid-file="$pid_path" --port="$port" --mysqlx-port="$mysqlx_port" --mysqlx-socket="$backend_dir/.local-mysql/mysqlx.sock" --bind-address=127.0.0.1 --log-error="$log_path" --skip-name-resolve --daemonize
 fi
 
 # The app's MYSQL_* settings are loaded above, but MySQL's CLI also treats some
