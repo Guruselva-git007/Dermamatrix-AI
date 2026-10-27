@@ -2349,7 +2349,7 @@ function renderDashboardInsight(analyses, routines) {
   }
   if (latest) {
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your latest ${escapeHTML(String(latest.area).toLowerCase())} result is saved.</h2><p>Earlier records may use different or unrecorded versions. Review each result in its own context.</p></div><div class="dashboard-insight-metric"><small>SAVED CHECK-INS</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check an area →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your latest ${escapeHTML(String(latest.area).toLowerCase())} result is saved.</h2><p>Earlier records may use different or unrecorded versions. Review each result in its own context.</p></div><div class="dashboard-insight-metric"><small>Saved assessments</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check an area →</button></div>`;
     return;
   }
   if (routines.length) {

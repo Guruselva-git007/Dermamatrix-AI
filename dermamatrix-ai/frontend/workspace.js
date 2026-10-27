@@ -81,6 +81,8 @@
     $('historyExport').hidden=!signed();
     const snapshot=document.querySelector('.health-snapshot');
     if(snapshot)snapshot.hidden=!(state.analyses?.length||state.routines?.length||state.checkins?.length);
+    // A single saved result is already in the overview; it is not a trend.
+    if($('dashboardInsight')&&(state.analyses?.length||0)<2)$('dashboardInsight').hidden=true;
     const careNote=document.querySelector('.dashboard-care-note');if(careNote)careNote.hidden=snapshot?.hidden;
     const routineAction=$('todayJourney');
     if(routineAction){routineAction.textContent=signed()?'Manage routines':'Create an account';routineAction.onclick=()=>{if(signed()){showPage('progress');journey('routines');}else showAuthGate('register');};}

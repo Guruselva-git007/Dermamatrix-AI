@@ -82,6 +82,7 @@ async page => {
     await page.setViewportSize({width,height:960});
     for(const route of ['dashboard','progress','settings','learn','home','support','products']){
       await page.evaluate(route=>showPage(route),route);
+      if(route==='dashboard')assert(!await page.locator('#dashboardInsight').isVisible(),'One result is repeated as a baseline/trend panel');
       if(route==='products')await page.waitForFunction(()=>state.productCatalogLoaded&&!state.productLoading);
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Horizontal overflow: '+route+' at '+width);
       const tiny=await page.evaluate(()=>[...document.querySelectorAll('.app-shell *')].filter(e=>e.getClientRects().length&&e.getBoundingClientRect().height>0&&[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim())&&parseFloat(getComputedStyle(e).fontSize)<11).map(e=>e.id||e.className));
