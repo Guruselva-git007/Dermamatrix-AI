@@ -44,4 +44,5 @@ exec "$python_bin" -m gunicorn \
   --workers "$web_workers" \
   --timeout 120 \
   --access-logfile - \
+  --access-logformat '%(m)s status=%(s)s duration_us=%(D)s' \
   app:app

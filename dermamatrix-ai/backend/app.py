@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 import pymysql
 from flask import Flask, g, has_request_context, jsonify, request, send_file, send_from_directory, session
 from PIL import Image, ImageFilter, ImageOps, ImageStat
+from pillow_heif import register_heif_opener
+register_heif_opener(thumbnails=False, depth_images=False, aux_images=False, decode_threads=1)
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -48,11 +50,14 @@ from session_configuration import session_configuration
 from account_data_export import AccountDataExportError, begin_account_data_snapshot, collect_account_data, encode_account_data
 from request_security import request_security_configuration, request_security_error
 from assessment_submission import guard_assessment_submission
+import consumer_security
+from consumer_engagement import register_engagement, archive_routine
+from inference_capacity import bounded_inference
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif"}
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "avif", "heic", "heif"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
 # Keep client uploads comfortably within a local prototype's processing budget.
 # This is an input-safety limit, not an image-quality or clinical threshold.
@@ -63,6 +68,8 @@ EXPECTED_IMAGE_FORMATS = {
     "jpeg": "JPEG",
     "webp": "WEBP",
     "avif": "AVIF",
+    "heic": "HEIF",
+    "heif": "HEIF",
 }
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 AUTH_SCHEMA_VERSION = "20260907_auth_profile_preferences_v1"
@@ -373,7 +380,7 @@ def _opened_image(image_bytes: bytes, filename: str | None = None) -> tuple[Imag
                     raise ImageValidationError("Use an image no larger than 16 megapixels.")
                 probe.verify()
         if detected_format not in set(EXPECTED_IMAGE_FORMATS.values()):
-            raise ImageValidationError("Use a PNG, JPG, JPEG, WEBP, or AVIF image.")
+            raise ImageValidationError("Use a PNG, JPG, JPEG, WEBP, AVIF, HEIC, or HEIF image.")
         if filename and "." in filename:
             extension = filename.rsplit(".", 1)[1].lower()
             expected_format = EXPECTED_IMAGE_FORMATS.get(extension)
@@ -411,6 +418,8 @@ def current_user(connection: pymysql.Connection) -> dict | None:
     """Resolve the active account from the server-side signed session only."""
     session_user_id = session.get("user_id")
     if not session_user_id:
+        return None
+    if consumer_security.enabled() and not consumer_security.session_valid(connection, session_user_id):
         return None
     with connection.cursor() as cursor:
         cursor.execute(
@@ -490,6 +499,8 @@ def authenticated_response(connection: pymysql.Connection, user: dict, include_h
 
 
 def routine_payload(payload: dict) -> tuple[str, str, str, str] | None:
+    if not isinstance(payload, dict):
+        return None
     condition_label = str(payload.get("condition_label", "")).strip()[:180]
     routine_name = str(payload.get("routine_name", "")).strip()[:180]
     start_date = str(payload.get("start_date", "")).strip()[:10]
@@ -758,6 +769,33 @@ def health():
         })
 
 
+@app.get("/api/readiness")
+def readiness():
+    """Storage/schema readiness only; never pretend models were smoke-tested."""
+    connection = None
+    try:
+        connection = database()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1 AS connected")
+            cursor.fetchone()
+            cursor.execute("SELECT COUNT(*) AS required_tables FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('users','auth_accounts','analysis_records')")
+            base_ready = cursor.fetchone()["required_tables"] == 3
+            consumer_ready = None
+            if app.config.get("CONSUMER_ENABLED"):
+                from consumer_schema import VERSION
+                cursor.execute("SELECT version FROM schema_migrations WHERE version=%s", (VERSION,))
+                consumer_ready = cursor.fetchone() is not None
+        ready = base_ready and consumer_ready is not False
+        return jsonify(status="ready" if ready else "not_ready", database="connected", base_schema_ready=base_ready, consumer_schema_ready=consumer_ready,
+                       consumer_enabled=bool(app.config.get("CONSUMER_ENABLED")), model_inference_tested=False,
+                       notice="Run the explicit local model smoke command for actual inference evidence. This endpoint does not establish clinical or deployment readiness."), 200 if ready else 503
+    except pymysql.MySQLError:
+        return jsonify(status="not_ready", database="unavailable", model_inference_tested=False), 503
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 @app.get("/api/model-registry")
 def model_registry():
     """Expose the capability source used by API and frontend status copy."""
@@ -792,7 +830,8 @@ def auth_session():
     # connection for it so the local screening flow remains available before
     # MySQL is configured or running.
     if not session.get("user_id"):
-        session.clear()
+        if not consumer_security.enabled():
+            session.clear()
         return jsonify({"authenticated": False})
     connection = database()
     try:
@@ -812,7 +851,8 @@ def auth_me():
     try:
         user = current_user(connection)
         if not user:
-            session.clear()
+            if not consumer_security.enabled():
+                session.clear()
             return jsonify({"error": "Your session has expired. Please sign in again."}), 401
         return jsonify(authenticated_response(connection, user))
     finally:
@@ -834,8 +874,8 @@ def register_account():
         return jsonify({"error": "Enter your full name and a valid email address."}), 400
     if phone_number and len(phone_number) < 8:
         return jsonify({"error": "Enter a valid phone number or leave it blank."}), 400
-    if len(password) < 8:
-        return jsonify({"error": "Use a password with at least 8 characters."}), 400
+    if not 8 <= len(password) <= 128:
+        return jsonify({"error": "Use a password of 8–128 characters."}), 400
     if password != confirm_password:
         return jsonify({"error": "Password confirmation does not match."}), 400
     if payload.get("account_consent") is not True:
@@ -866,6 +906,8 @@ def register_account():
             cursor.execute("INSERT INTO user_preferences (user_id, theme, notifications_enabled, reduced_motion, updated_at) VALUES (%s, %s, %s, %s, %s)", (user_id, "light", True, False, timestamp))
         connection.commit()
         session.clear(); session["user_id"] = user_id; session["patient_id"] = patient_id; session.permanent = True
+        if consumer_security.enabled():
+            consumer_security.start_session(connection, {"id": user_id, "patient_id": patient_id})
         user = current_user(connection)
         return jsonify(authenticated_response(connection, user)), 201
     except pymysql.IntegrityError as error:
@@ -887,7 +929,7 @@ def login_account():
         return jsonify({"error": "Send a JSON object."}), 400
     email_address = str(payload.get("email_address", "")).strip().lower()[:254]
     password = str(payload.get("password", ""))
-    if not valid_email(email_address) or not password:
+    if not valid_email(email_address) or not password or len(password) > 128:
         return jsonify({"error": "Enter your email address and password."}), 400
     connection = database()
     try:
@@ -906,7 +948,10 @@ def login_account():
             cursor.execute("UPDATE users SET last_login_at=%s, updated_at=%s WHERE id=%s", (timestamp, timestamp, user["id"]))
         connection.commit()
         user["last_login_at"] = timestamp; user["updated_at"] = timestamp
-        session.clear(); session["user_id"] = user["id"]; session["patient_id"] = user["patient_id"]; session.permanent = True
+        if consumer_security.enabled():
+            consumer_security.start_session(connection, user)
+        else:
+            session.clear(); session["user_id"] = user["id"]; session["patient_id"] = user["patient_id"]; session.permanent = True
         return jsonify(authenticated_response(connection, user))
     finally:
         connection.close()
@@ -914,6 +959,12 @@ def login_account():
 
 @app.post("/api/auth/logout")
 def logout_account():
+    if consumer_security.enabled() and session.get("user_id"):
+        connection = database()
+        try:
+            consumer_security.revoke_current(connection)
+        finally:
+            connection.close()
     session.clear()
     return jsonify({"authenticated": False})
 
@@ -1074,6 +1125,12 @@ def list_routines():
                 (user["id"],),
             )
             routines = cursor.fetchall()
+        if consumer_security.enabled():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT subject_id,data_json FROM consumer_records WHERE user_id=%s AND kind='routine_schedule'", (user['id'],))
+                schedules = {row['subject_id']: json.loads(row['data_json']) for row in cursor.fetchall()}
+            for routine in routines:
+                routine['status'] = schedules.get(routine['routine_id'], {}).get('status', 'active')
         return jsonify({"routines": routines, "image_policy": "Uploaded comparison photos are not stored."})
     finally:
         connection.close()
@@ -1137,6 +1194,11 @@ def delete_routine(routine_id: str):
         user = current_user(connection)
         if not user:
             return jsonify({"error": "Create a local profile before deleting routines."}), 401
+        if consumer_security.enabled():
+            if not archive_routine(connection, user['id'], routine_id):
+                return jsonify({"error": "Routine not found."}), 404
+            connection.commit()
+            return jsonify({"routine_id": routine_id, "message": "Routine archived. Past check-ins and completion events are preserved."})
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM progress_checkins WHERE routine_id=%s AND user_id=%s", (routine_id, user["id"]))
             cursor.execute("DELETE FROM care_routines WHERE routine_id=%s AND user_id=%s", (routine_id, user["id"]))
@@ -1516,6 +1578,7 @@ def knowledge_condition(topic_id: str):
 
 
 @app.post("/api/assessments")
+@bounded_inference(database=lambda: database())
 @guard_assessment_submission(database=lambda: database(), current_user=lambda connection: current_user(connection), purpose="image_assessment")
 def create_assessment():
     # Multipart receipt/parsing still occurs at the server. No application
@@ -1533,7 +1596,7 @@ def create_assessment():
         return jsonify({"error": "An image is required."}), 400
     if not allowed_file(image_file.filename):
         return rejected_image_upload(
-            message="Use a PNG, JPG, JPEG, WEBP, or AVIF image.", http_status=415, area=area,
+            message="Use a PNG, JPG, JPEG, WEBP, AVIF, HEIC, or HEIF image.", http_status=415, area=area,
         )
     image_bytes = image_file.read()
     if not image_bytes:
@@ -2017,10 +2080,18 @@ def protect_local_responses(response):
     return response
 
 
+consumer_security.register_security(app, lambda: database(), lambda connection: current_user(connection))
+register_engagement(app, lambda: database(), lambda connection: current_user(connection), lambda value: read_saved_summary(value))
+
 load_local_env()
 app.config.update(session_configuration(os.environ))
 app.config.update(request_security_configuration(os.environ))
-initialise_database()
+app.config["SESSION_REFRESH_EACH_REQUEST"] = False
+app.config["CONSUMER_ENABLED"] = os.getenv("DERMAMATRIX_CONSUMER_ENABLED", "false").lower() == "true"
+# Schema changes are a deliberate development/maintenance operation, not a side
+# effect of starting a worker. See backend/scripts/migrate_database.py.
+if os.getenv("DERMAMATRIX_INITIALISE_SCHEMA", "false").lower() == "true":
+    initialise_database()
 
 if __name__ == "__main__":
     try:

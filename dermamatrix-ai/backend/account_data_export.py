@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
+from flask import current_app, has_app_context
 import json
 
 
@@ -84,11 +85,24 @@ def collect_account_data(connection, user_id: int) -> dict:
                     row["json_field_status"] = json_fields
                 rows.append(row)
             records[table] = rows
+    if has_app_context() and current_app.config.get("CONSUMER_ENABLED"):
+        extra_columns = {
+            "account_mail_jobs": ("job_id", "user_id", "purpose", "target_email", "state", "created_at", "updated_at"),
+            "account_security": ("user_id", "email_verified_at", "processing_paused", "updated_at"),
+            "account_sessions": ("user_id", "device_label", "created_at", "expires_at", "revoked"),
+            "consumer_records": ("record_id", "user_id", "kind", "subject_id", "data_json", "created_at", "updated_at"),
+            "reminder_jobs": ("job_id", "user_id", "routine_id", "due_at", "state", "attempts", "available_at", "provider_reference", "created_at", "updated_at"),
+            "account_tokens": ("user_id", "purpose", "target_email", "expires_at", "consumed", "created_at"),
+        }
+        with connection.cursor() as cursor:
+            for table, columns in extra_columns.items():
+                cursor.execute(f"SELECT {', '.join(columns)} FROM {table} WHERE user_id=%s ORDER BY user_id, created_at" if "created_at" in columns else f"SELECT {', '.join(columns)} FROM {table} WHERE user_id=%s", (user_id,))
+                records[table] = [{column: source[column] for column in columns} for source in cursor.fetchall()]
     return {
-        "format_version": FORMAT_VERSION,
+        "format_version": FORMAT_VERSION + ("-consumer" if len(records) > len(ACCOUNT_COLUMNS) else ""),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scope": {
-            "description": "All rows owned by this signed-in account in the eleven known local account tables listed in records; no 50/50/100 PDF limits.",
+            "description": "All rows owned by this signed-in account in the known account tables listed in records, including enabled consumer tables; no 50/50/100 PDF limits.",
             "legal_request_status": "Technical local account-data copy; not a complete legal access-request service or evidence that all applicable data-rights obligations are satisfied.",
             "exclusions": ["Password hashes, session secrets and credentials", "Other accounts' records and unowned guest results",
                            "Source-image files and overlays (not stored by the current assessment pipeline)",
