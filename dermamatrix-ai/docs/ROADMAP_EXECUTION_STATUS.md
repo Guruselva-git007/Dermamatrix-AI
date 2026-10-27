@@ -25,6 +25,8 @@ booking service was added without an approved requirement.
 - `756a771` — development CI and operating/validation guides.
 - `bf4f722` — patched dependencies and explicit decoder/pipeline lineage.
 - `524c6b2` — stale local MySQL process/socket-lock recovery.
+- `161f3ca` — verified SMTP trust, routine occurrence integrity and workspace lifecycle.
+- `b2d17e9` — full schedule/search/context form reset on account clearing.
 - Final documentation-only checkpoint follows these verified implementation commits.
 - Main/history were not reset or rewritten. No force push, cloud publication or
   silent inclusion of unrelated work. Existing root guidance/snapshots and the
@@ -152,7 +154,13 @@ verification, not a new rebuild or repetition of completed engineering.
   Account clearing resets complete schedule/search/context forms (including
   times, quiet hours and reminder choices), private routine choices, rows and status;
   guest mode hides account-only history search. Late-response guards remain.
-- Local regression: 233 backend and 52 frontend tests pass. Browser and remote
-  verification for this follow-up are recorded in the task's completion receipt.
+- Local regression: 233 backend and 52 frontend tests pass. Actual Chromium
+  verifies automatic history refresh, a lost-response retry with one stored event,
+  sign-out/guest clearing and native full-form reset. Stable 390px guest Journey
+  has no horizontal page overflow.
+- [Final remote verification](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40491802232)
+  passes on `b2d17e9020ba66d67daa39222b50d66f06a90d78`: 233 backend tests,
+  52 frontend tests, explicit synthetic migrations, dependency/source checks
+  and Chromium smoke. A subsequent checkpoint-only commit preserves that runtime.
 - No schema change, model change, deployment, provider configuration or real
   notification is part of this follow-up.
