@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, jsonify, request, send_file, session
 from itsdangerous import URLSafeTimedSerializer, BadSignature
-from werkzeug.exceptions import Conflict, NotFound, Unauthorized
+from werkzeug.exceptions import BadRequest, Conflict, NotFound, Unauthorized
 
 from consumer_security import enabled, json_object, record, digest
 
@@ -96,7 +96,7 @@ def link_episode(connection, owner, entity, identifier, episode_id, expected=Non
         if expected is not None and (type(expected) is not int or expected != previous.get('version', 0)):
             raise Conflict('This concern association changed. Reload before editing.')
         if episode and entity == 'assessment' and episode['area'] not in {'General', entity_row['area']}:
-            raise ValueError('This concern category does not match the saved assessment. Choose a matching concern or leave it unassigned.')
+            raise BadRequest('This concern category does not match the saved assessment. Choose a matching concern or leave it unassigned.')
         if previous.get('episode_id', '') == (episode_id or ''):
             return previous
         data = dict(episode_id=episode_id or '', label=episode['label'] if episode else '', body_area=episode['body_area'] if episode else '', version=previous.get('version', 0) + 1, actor_id=owner)

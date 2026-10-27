@@ -80,6 +80,7 @@ async page => {
   await page.locator('#rightsRequestForm [name="note"]').fill('Synthetic unsaved note');checks.push('focused security and privacy');
   for(const width of [320,390,768,1440]){
     await page.setViewportSize({width,height:960});
+    const searchEntries=Number(await page.locator('#workspaceSearch').isVisible())+Number(await page.locator('#mobileWorkspaceSearch').isVisible());assert(searchEntries===1,'Search entry duplicated or unavailable at '+width);
     for(const route of ['dashboard','progress','settings','learn','home','support','products']){
       await page.evaluate(route=>showPage(route),route);
       if(route==='dashboard')assert(!await page.locator('#dashboardInsight').isVisible(),'One result is repeated as a baseline/trend panel');

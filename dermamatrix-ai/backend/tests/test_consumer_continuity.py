@@ -252,3 +252,13 @@ class ConsumerContinuity(unittest.TestCase):
         self.assertEqual(first.status_code,201);self.assertEqual(first.get_json()['routine_id'],second.get_json()['routine_id'])
         self.assertEqual(len(self.client.get('/api/routines').get_json()['routines']),1)
         self.assertEqual(self.keyed('/api/routines',{**payload,'notes':'Other'},key=key).status_code,409)
+
+    def test_assessment_with_incompatible_concern_rolls_back_without_evidence(self):
+        wrong=self.episode(area='Skin')
+        response=self.keyed('/api/sweat-assessments',dict(pattern='usual',questionnaire_consent=True,episode_id=wrong))
+        self.assertEqual(response.status_code,400,response.get_json())
+        self.assertIn('category does not match',response.get_json()['error'])
+        self.assertEqual(self.client.get('/api/journey/assessments').get_json()['analyses'],[])
+        data=self.client.get('/api/account-data/download').get_json()
+        self.assertEqual(data['records']['assessments'],[])
+        self.assertEqual(data['records']['analysis_records'],[])

@@ -780,7 +780,7 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
 #briefSelection { display: grid; gap: 8px; }
 @media (min-width: 900px) { #episodeForm { grid-template-columns: 1.5fr 1fr 1fr; align-items: end; } #episodeForm button { grid-column: 1 / -1; justify-self: start; } }
 @media (max-width: 900px) { .journey-row-actions { max-width: 240px; } }
-@media (max-width: 880px) { #mobileWorkspaceSearch { display: inline-flex; min-width: 44px; padding: 8px; background: transparent; border-color: transparent; } }
+@media (max-width: 640px) { #mobileWorkspaceSearch { display: inline-flex; min-width: 44px; padding: 8px; background: transparent; border-color: transparent; } }
 @media (max-width: 640px) {
   #unifiedSearchDialog .continuity-form, #visitBriefForm { grid-template-columns: 1fr; }
   .continuity-row .button { min-height: 44px; }
