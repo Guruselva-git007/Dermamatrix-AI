@@ -33,7 +33,7 @@ async page => {
   assert(await page.evaluate(()=>state.resultPersistence)!=='mysql','Guest result was saved');checks.push('review back and guest result');
   await page.locator('#resultModal .modal-close').click();
   await page.locator('#workspaceSearch').fill('Acne');await page.locator('#workspaceSearch').press('Enter');
-  await page.waitForSelector('.learn-row');assert(await page.locator('#learnSearch').inputValue()==='Acne','Header search did not find health guides');checks.push('health guide search');
+  await page.waitForSelector('#unifiedResults article');assert(await page.locator('#unifiedQuery').inputValue()==='Acne','Header search did not open workspace search');await page.locator('#unifiedSearchDialog button').filter({hasText:'Open guide'}).first().click();await page.waitForSelector('#learnDetail h2');checks.push('workspace and guide search');
   await nav('progress');assert(await page.locator('#journeyEmptyState').isVisible(),'Guest guidance missing');
   assert(!await page.locator('#journeyTabs').isVisible(),'Account tabs shown to guest');checks.push('guest Journey');
   await page.locator('[data-create-account]').click();
@@ -50,7 +50,7 @@ async page => {
   assert(await page.locator('#journeyTabs-routines').getAttribute('aria-selected')==='true','Tab state missing');checks.push('keyboard accessible views');
   await page.locator('#routineEditorDisclosure > summary').click();
   await page.locator('#conditionLabel').fill('Synthetic skin concern');await page.locator('#routineName').fill('Synthetic daily routine');
-  await page.locator('#routineForm [type="submit"]').click();
+  await page.locator('#routineStartDate').fill(new Date().toISOString().slice(0,10));await page.locator('#routineForm [type="submit"]').click();
   await page.waitForFunction(()=>state.routines.length===1);
   const routine=await page.evaluate(()=>state.routines[0].routine_id);
   await page.waitForFunction(id=>document.querySelector('#scheduleRoutine').value===id,routine);
@@ -65,7 +65,7 @@ async page => {
   assert(await page.locator('#journey-checkins').isVisible(),'Check-in shortcut opened hidden form');
   assert(await page.locator('#checkinRoutine').inputValue()===routine,'Routine handoff missing');
   await page.locator('#checkinTrend').selectOption('unchanged');await page.locator('#checkinNote').fill('Synthetic browser check-in');
-  await page.locator('#checkinForm [type="submit"]').click();
+  await page.locator('#checkinForm [type="submit"]').click();await page.locator('#continuityDialog [type=submit]').click();
   await page.waitForFunction(()=>state.checkins.length===1);checks.push('check-in handoff and save');
   await nav('home');await page.locator('[data-area="Sweat"]').click();await page.locator('#imageConsent').check();
   await page.locator('#analyzeButton').click();await page.locator('#confirmAssessmentReview').click();await page.locator('#resultModal.show').waitFor();

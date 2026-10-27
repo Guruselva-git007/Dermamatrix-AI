@@ -52,6 +52,7 @@ from request_security import request_security_configuration, request_security_er
 from assessment_submission import guard_assessment_submission
 import consumer_security
 from consumer_engagement import register_engagement, archive_routine
+from consumer_continuity import register_continuity, effective_checkins, routine_counts, episode_links, utc_iso, checkin_values, link_episode, request_key, lock_owner, record as continuity_record, digest as continuity_digest
 from inference_capacity import bounded_inference
 
 
@@ -1120,7 +1121,7 @@ def list_routines():
                 """SELECT r.routine_id, r.condition_label, r.routine_name, DATE_FORMAT(r.start_date, '%%Y-%%m-%%d') AS start_date, r.notes,
                    DATE_FORMAT(r.updated_at, '%%Y-%%m-%%dT%%H:%%i:%%sZ') AS updated_at,
                    COUNT(c.id) AS checkin_count, MAX(c.checkin_date) AS latest_checkin_date
-                   FROM care_routines r LEFT JOIN progress_checkins c ON c.routine_id = r.routine_id
+                   FROM care_routines r LEFT JOIN progress_checkins c ON c.routine_id = r.routine_id AND c.user_id=r.user_id
                    WHERE r.user_id = %s GROUP BY r.id ORDER BY r.updated_at DESC""",
                 (user["id"],),
             )
@@ -1129,8 +1130,11 @@ def list_routines():
             with connection.cursor() as cursor:
                 cursor.execute("SELECT subject_id,data_json FROM consumer_records WHERE user_id=%s AND kind='routine_schedule'", (user['id'],))
                 schedules = {row['subject_id']: json.loads(row['data_json']) for row in cursor.fetchall()}
+            routine_links = episode_links(connection, user['id'])
             for routine in routines:
                 routine['status'] = schedules.get(routine['routine_id'], {}).get('status', 'active')
+                routine['episode_link'] = routine_links.get('routine:' + routine['routine_id'], {})
+            routine_counts(connection, user['id'], routines)
         return jsonify({"routines": routines, "image_policy": "Uploaded comparison photos are not stored."})
     finally:
         connection.close()
@@ -1147,6 +1151,21 @@ def create_routine():
         user = current_user(connection)
         if not user:
             return jsonify({"error": "Create a local profile before adding routines."}), 401
+        retry_key = request.headers.get('Idempotency-Key') if consumer_security.enabled() else None
+        if retry_key:
+            try:
+                request_key()
+            except ValueError as error:
+                return jsonify(error=str(error)), 400
+            lock_owner(connection, user['id'])
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT data_json FROM consumer_records WHERE user_id=%s AND dedupe_key=%s FOR UPDATE', (user['id'], continuity_digest(f"{user['id']}:routine_submission:{retry_key}")))
+                previous = cursor.fetchone()
+            if previous:
+                saved = json.loads(previous['data_json'])
+                if saved['input'] != list(values):
+                    return jsonify(error='This retry identifier belongs to a different routine.'), 409
+                return jsonify(routine_id=saved['routine_id'], message='Routine already saved.'), 201
         routine_id = f"routine-{uuid.uuid4().hex[:12]}"
         timestamp = now()
         with connection.cursor() as cursor:
@@ -1154,6 +1173,8 @@ def create_routine():
                 "INSERT INTO care_routines (routine_id, user_id, condition_label, routine_name, start_date, notes, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                 (routine_id, user["id"], *values, timestamp, timestamp),
             )
+        if retry_key:
+            continuity_record(connection, user['id'], 'routine_submission', routine_id, dict(input=list(values), routine_id=routine_id), retry_key)
         connection.commit()
         return jsonify({"routine_id": routine_id, "message": "Routine saved. The app does not verify diagnoses; record only clinician-confirmed information."}), 201
     except Exception:
@@ -1222,14 +1243,17 @@ def list_progress_checkins():
             return jsonify({"error": "Create or open a local profile before viewing progress."}), 401
         with connection.cursor() as cursor:
             cursor.execute(
-                """SELECT c.checkin_id, c.routine_id, DATE_FORMAT(c.checkin_date, '%%Y-%%m-%%d') AS checkin_date, c.reported_trend,
+                """SELECT c.id, c.checkin_id, c.routine_id, DATE_FORMAT(c.checkin_date, '%%Y-%%m-%%d') AS checkin_date, c.reported_trend,
                    c.discomfort_score, c.change_score, c.priority_score, c.note, c.image_stored, r.condition_label, r.routine_name
-                   FROM progress_checkins c JOIN care_routines r ON r.routine_id=c.routine_id
-                   WHERE c.user_id=%s ORDER BY c.checkin_date DESC, c.id DESC LIMIT 100""",
+                   FROM progress_checkins c JOIN care_routines r ON r.routine_id=c.routine_id AND r.user_id=c.user_id
+                   WHERE c.user_id=%s ORDER BY c.checkin_date DESC, c.id DESC""" + ('' if consumer_security.enabled() else ' LIMIT 100'),
                 (user["id"],),
             )
             checkins = cursor.fetchall()
-        return jsonify({"checkins": checkins, "score_label": "Reported-concern priority, not disease risk", "image_policy": "Comparison images are processed in the browser and are not stored."})
+        projected = effective_checkins(connection, user['id'], checkins)
+        selected = {r['checkin_id'] for r in [r for r in projected if not r.get('voided')][:100] + [r for r in projected if r.get('voided')][:100]}
+        checkins = [r for r in projected if r['checkin_id'] in selected]
+        return jsonify({"checkins": checkins, "window": "Up to 100 active and 100 removed check-ins; search and account JSON cover older records.", "score_label": "Reported-concern priority, not disease risk", "image_policy": "Comparison images are processed in the browser and are not stored."})
     finally:
         connection.close()
 
@@ -1252,7 +1276,7 @@ def list_analysis_history():
         for record in records:
             summary = read_saved_summary(record["result_json"])
             analyses.append({
-                "assessment_id": record["assessment_id"], "area": record["area"], "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
+                "assessment_id": record["assessment_id"], "area": record["area"], "created_at": utc_iso(record['created_at']),
                 "image_stored": bool(record["image_stored"]), "summary": summary or {}, "unavailable": summary is None,
             })
         return jsonify({"analyses": analyses, "assessments": analyses, "image_policy": "Analysis metadata is stored for registered profiles. Uploaded image bytes are not stored in this prototype."})
@@ -1281,9 +1305,10 @@ def get_assessment(assessment_id: str):
             return jsonify({"error": "Saved assessment metadata is unreadable. The original record has not been changed."}), 409
         return jsonify({
             "assessment_id": record["assessment_id"], "area": record["area"],
-            "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
+            "created_at": utc_iso(record['created_at']),
             "image_stored": bool(record["image_stored"]), "summary": summary,
             "assessment": summary.get("assessment_result") or {},
+            "episode_link": episode_links(connection, user['id']).get('assessment:' + assessment_id, {}) if consumer_security.enabled() else {},
         })
     finally:
         connection.close()
@@ -1314,6 +1339,8 @@ def download_assessment_report(assessment_id: str):
             "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
             "summary": summary,
         }
+        if consumer_security.enabled():
+            assessment['episode_link'] = episode_links(connection, user['id']).get('assessment:' + assessment_id, {})
         report_bytes = build_assessment_report_pdf(account=account_response(user), assessment=assessment)
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1357,7 +1384,7 @@ def download_history_export():
             )
             raw_analyses = cursor.fetchall()
             cursor.execute(
-                """SELECT r.condition_label, r.routine_name, DATE_FORMAT(r.start_date, '%%Y-%%m-%%d') AS start_date,
+                """SELECT r.routine_id, r.condition_label, r.routine_name, DATE_FORMAT(r.start_date, '%%Y-%%m-%%d') AS start_date,
                    COUNT(c.id) AS checkin_count FROM care_routines r
                    LEFT JOIN progress_checkins c ON c.routine_id=r.routine_id AND c.user_id=r.user_id
                    WHERE r.user_id=%s GROUP BY r.routine_id ORDER BY r.start_date DESC, r.id DESC LIMIT 50""",
@@ -1365,12 +1392,15 @@ def download_history_export():
             )
             routines = cursor.fetchall()
             cursor.execute(
-                """SELECT DATE_FORMAT(c.checkin_date, '%%Y-%%m-%%d') AS checkin_date, c.reported_trend, c.priority_score,
-                   r.condition_label FROM progress_checkins c JOIN care_routines r ON r.routine_id=c.routine_id
-                   WHERE c.user_id=%s ORDER BY c.checkin_date DESC, c.id DESC LIMIT 100""",
+                """SELECT c.id, c.checkin_id, DATE_FORMAT(c.checkin_date, '%%Y-%%m-%%d') AS checkin_date, c.reported_trend, c.priority_score,
+                   r.condition_label FROM progress_checkins c JOIN care_routines r ON r.routine_id=c.routine_id AND r.user_id=c.user_id
+                   WHERE c.user_id=%s ORDER BY c.checkin_date DESC, c.id DESC""" + ('' if consumer_security.enabled() else ' LIMIT 100'),
                 (user["id"],),
             )
             checkins = cursor.fetchall()
+        checkins = [r for r in effective_checkins(connection, user['id'], checkins) if not r.get('voided')][:100]
+        if consumer_security.enabled():
+            routine_counts(connection, user['id'], routines)
         analyses = []
         for record in raw_analyses:
             try:
@@ -1434,6 +1464,8 @@ def download_account_data():
 @app.post("/api/progress-checkins")
 def create_progress_checkin():
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify(error='Send a JSON object.'), 400
     routine_id = str(payload.get("routine_id", "")).strip()[:50]
     trend = str(payload.get("reported_trend", "")).strip()
     checkin_date = str(payload.get("checkin_date", "")).strip()[:10]
@@ -1443,13 +1475,33 @@ def create_progress_checkin():
     try:
         datetime.strptime(checkin_date, "%Y-%m-%d")
         discomfort = int(payload.get("discomfort", 0)); change = int(payload.get("change", 0))
-    except ValueError:
+    except (ValueError, TypeError):
         return jsonify({"error": "Provide valid check-in details."}), 400
     connection = database()
     try:
         user = current_user(connection)
         if not user:
             return jsonify({"error": "Create a local profile before adding a check-in."}), 401
+        consumer = consumer_security.enabled()
+        if consumer:
+            try:
+                key = request_key()
+                corrected = checkin_values(payload, lambda d, c: run_screening_model(0, d, c, 80, {"width": 0, "height": 0}, urgent_concern=False)['risk_score'])
+                episode_id = payload.get('episode_id', '')
+                if not isinstance(episode_id, str):
+                    raise ValueError('Choose a valid concern.')
+            except ValueError as error:
+                return jsonify(error=str(error)), 400
+            lock_owner(connection, user['id'])
+            with connection.cursor() as cursor:
+                cursor.execute('SELECT data_json FROM consumer_records WHERE user_id=%s AND dedupe_key=%s FOR UPDATE', (user['id'], continuity_digest(f"{user['id']}:checkin_submission:{key}")))
+                replay = cursor.fetchone()
+            fingerprint = dict(routine_id=routine_id, episode_id=episode_id, **corrected)
+            if replay:
+                saved = json.loads(replay['data_json'])
+                if saved['input'] != fingerprint:
+                    return jsonify(error='This retry identifier belongs to different check-in details.'), 409
+                return jsonify(saved['response']), 201
         with connection.cursor() as cursor:
             cursor.execute("SELECT routine_id FROM care_routines WHERE routine_id=%s AND user_id=%s", (routine_id, user["id"]))
             if not cursor.fetchone():
@@ -1461,9 +1513,14 @@ def create_progress_checkin():
                 "INSERT INTO progress_checkins (checkin_id, user_id, routine_id, checkin_date, reported_trend, discomfort_score, change_score, priority_score, note, image_stored, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE, %s)",
                 (checkin_id, user["id"], routine_id, checkin_date, trend, discomfort, change, model["risk_score"], note, now()),
             )
-        connection.commit()
         trend_label = {"improving": "Improving — self-reported", "unchanged": "No change — self-reported", "worsening": "Worsening — self-reported"}[trend]
-        return jsonify({"checkin_id": checkin_id, "priority_score": model["risk_score"], "priority_label": "Reported-concern priority, not disease risk", "progress_label": trend_label, "image_stored": False}), 201
+        response = {"checkin_id": checkin_id, "priority_score": model["risk_score"], "priority_label": "Reported-concern priority, not disease risk", "progress_label": trend_label, "image_stored": False}
+        if consumer:
+            if episode_id:
+                link_episode(connection, user['id'], 'checkin', checkin_id, episode_id)
+            continuity_record(connection, user['id'], 'checkin_submission', checkin_id, dict(input=fingerprint, response=response), key)
+        connection.commit()
+        return jsonify(response), 201
     except Exception:
         connection.rollback()
         raise
@@ -1878,6 +1935,8 @@ def create_assessment():
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
                 (assessment_id, user_id, area, json.dumps(stored_analysis_summary(response)), timestamp),
             )
+            if consumer_security.enabled() and request.form.get('episode_id'):
+                link_episode(connection, user_id, 'assessment', assessment_id, request.form['episode_id'])
             cursor.execute(
                 "INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)",
                 (user_id, notice_version, consent_record_purpose("image_assessment", assessment_id=assessment_id), timestamp),
@@ -2027,6 +2086,10 @@ def create_sweat_assessment():
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
                 (assessment_id, user["id"], "Sweat", json.dumps(stored_analysis_summary(response)), timestamp),
             )
+            if consumer_security.enabled() and payload.get('episode_id'):
+                if not isinstance(payload['episode_id'], str):
+                    return jsonify(error='Choose a valid concern.'), 400
+                link_episode(connection, user['id'], 'assessment', assessment_id, payload['episode_id'])
             cursor.execute(
                 "INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)",
                 (user["id"], notice_version, consent_record_purpose("questionnaire_assessment", assessment_id=assessment_id), timestamp),
@@ -2084,6 +2147,7 @@ def protect_local_responses(response):
 
 consumer_security.register_security(app, lambda: database(), lambda connection: current_user(connection))
 register_engagement(app, lambda: database(), lambda connection: current_user(connection), lambda value: read_saved_summary(value))
+register_continuity(app, lambda: database(), lambda connection: current_user(connection), lambda value: read_saved_summary(value), lambda d,c: run_screening_model(0,d,c,80,{"width":0,"height":0},urgent_concern=False)['risk_score'])
 
 load_local_env()
 app.config.update(session_configuration(os.environ))

@@ -733,3 +733,58 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+/* Continuity controls share the existing ledger; disclosure keeps forms focused. */
+.continuity-form { display: grid; gap: 16px; margin-top: 16px; }
+.continuity-form label, #continuityDialog label, #assessmentEpisodeField, #checkinForm > label { display: grid; gap: 6px; min-width: 0; }
+.continuity-form input:not([type=checkbox]), .continuity-form select, .continuity-form textarea,
+#continuityDialog input:not([type=checkbox]), #continuityDialog select, #continuityDialog textarea,
+#assessmentEpisodeField select, #scheduleEpisode, #checkinEpisode, #journeyEpisodeId {
+  width: 100%; min-height: 44px; border: 1px solid var(--dm-line-strong); border-radius: 7px;
+  background: var(--dm-surface); color: var(--dm-ink); font: inherit; padding: 10px 12px;
+}
+.continuity-form textarea, #continuityDialog textarea { min-height: 88px; resize: vertical; }
+.continuity-form input[type=checkbox], #continuityDialog input[type=checkbox] { width: 20px; height: 20px; margin: 10px 8px 10px 0; accent-color: var(--dm-ink); }
+#briefSelection label { display: flex; align-items: center; overflow-wrap: anywhere; min-height: 44px; }
+#continuityDialog form { display: grid; gap: 16px; }
+#continuityDialog label { margin-top: 12px; }
+.continuity-row { padding: 16px 0; border-bottom: 1px solid var(--dm-line); overflow-wrap: anywhere; }
+.continuity-row h3, .continuity-row p { margin: 4px 0 8px; }
+.continuity-row .button { margin: 4px 8px 4px 0; }
+.continuity-row small { font-size: 12px; color: var(--dm-muted); }
+#assessmentEpisodeField { margin: 16px 0; }
+#assessmentEpisodeField small { font-size: 12px; color: var(--dm-muted); }
+.needs-area #assessmentEpisodeField { display: none; }
+#visitBrief, #savedGuides, #productFeedback, #captureGuidance { padding: 16px 0; border-top: 1px solid var(--dm-line); }
+#captureGuidance .button { margin: 8px 8px 0 0; }
+#visitBrief summary, #savedGuides summary, #productFeedback summary, #captureGuidance summary, #episodeWorkspace summary { cursor: pointer; min-height: 44px; padding: 10px 0; }
+#episodeWorkspace { margin-bottom: 16px; }
+#episodeWorkspace h3 { margin: 0 0 8px; }
+#episodeWorkspace > p { margin: 0 0 8px; }
+#unifiedSearchDialog { width: min(760px, calc(100vw - 32px)); }
+#unifiedSearchDialog .continuity-form { grid-template-columns: minmax(0, 1fr) minmax(150px, .65fr) auto; align-items: end; }
+.result-plain-explanation { border-bottom: 1px solid var(--dm-line); padding: 0 0 20px; margin-bottom: 20px; }
+.result-plain-explanation h3 { margin: 0 0 16px; }
+.result-plain-explanation dl { margin: 0; }
+.result-plain-explanation dt { font-weight: 600; margin-top: 12px; }
+.result-plain-explanation dd { margin: 4px 0 0; line-height: 1.55; overflow-wrap: anywhere; }
+.concern-controls { display: flex; gap: 16px; align-items: end; margin: 16px 0; }
+#mobileWorkspaceSearch { display: none; }
+.concern-controls > label { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.journey-search-row { grid-template-columns: minmax(0, 1fr) auto; }
+.journey-row-actions { grid-column: 2; grid-row: 1 / span 5; align-self: center; display: flex; flex-wrap: wrap; gap: 8px; max-width: 440px; }
+.journey-search-row .journey-row-actions button { grid-area: auto; min-height: 44px; }
+#visitBriefForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#visitBriefForm > label:first-child, #visitBriefForm > label:has(textarea), #visitBriefForm > p, #visitBriefForm > div, #visitBriefForm > button { grid-column: 1 / -1; }
+#visitBriefForm > button { justify-self: start; }
+#visitBrief { padding: 16px 22px; margin: 20px 0; }
+#briefSelection { display: grid; gap: 8px; }
+@media (min-width: 900px) { #episodeForm { grid-template-columns: 1.5fr 1fr 1fr; align-items: end; } #episodeForm button { grid-column: 1 / -1; justify-self: start; } }
+@media (max-width: 900px) { .journey-row-actions { max-width: 240px; } }
+@media (max-width: 880px) { #mobileWorkspaceSearch { display: inline-flex; min-width: 44px; padding: 8px; background: transparent; border-color: transparent; } }
+@media (max-width: 640px) {
+  #unifiedSearchDialog .continuity-form, #visitBriefForm { grid-template-columns: 1fr; }
+  .continuity-row .button { min-height: 44px; }
+  .concern-controls { flex-direction: column; align-items: stretch; }
+  .journey-row-actions { grid-column: 1; grid-row: auto; max-width: none; margin-top: 8px; }
+  #visitBrief { padding: 16px; }
+}

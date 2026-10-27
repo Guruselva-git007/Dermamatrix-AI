@@ -46,6 +46,35 @@ enforcement remains decision-dependent; this design is not enforcement.**
 
 ## DM-06 — stored-data inventory and rights design
 
+### Account closure preparation — 28 October 2026
+
+The existing password-confirmed, owner-scoped rights request and status view is
+the technical entry point; its state remains `recorded_locally_pending_operator`.
+It does not close an account or claim erasure. The independent account export,
+session revocation and original/correction record inventory are implemented and
+tested. No irreversible erasure endpoint or retention default is introduced.
+
+Before executing closure, DM-06 must approve record-class retention, exceptions
+and holds, withdrawal effects, backup expiry/restoration treatment, verification
+and the responsible responder. The proposed executor must reauthenticate, show
+consequences and applicable exceptions, obtain an explicit confirmation bound to
+the account and request, lock/recheck the request, and record actor/time/approved
+policy version and outcome. Its inventory includes assessments, routines,
+check-ins, original actions and corrections, concern links/revisions, guide
+bookmarks/revisions, feedback, consents, mail/reminder jobs and account/security
+records. Health evidence must not be silently removed from historical exports.
+
+Revoke sessions at the approved closure transition. A distinct, idempotent
+policy-approved execution must account for failures and holds; do not treat a
+queued request as successful erasure. Backups require an approved expiry/restore
+plan so an old recovery copy cannot silently reactivate a closed account. Do not
+invent a universal period or promise immediate deletion from immutable backups.
+Use disposable synthetic accounts to test authorization, interrupted/repeated
+execution, partial failure, audit readability and recovery before any approved
+real-data execution. These policy-dependent execution tests remain deferred;
+the existing request/reauthentication/export/isolation tests are software evidence
+for the preparatory controls only.
+
 This inventory comes from source/schema review, not inspection of real user
 records. Source pixels and overlays are excluded from saved assessment JSON;
 derived health information and reported history can still be sensitive data.

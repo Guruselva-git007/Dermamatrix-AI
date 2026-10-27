@@ -123,7 +123,9 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
   if (options.signal?.aborted) controller.abort();
   const timeout = window.setTimeout(abort, timeoutMs);
   try {
-    const prepared = window.ConsumerClient ? await window.ConsumerClient.prepare(options) : options;
+    const { ownerGuard, ...requestOptions } = options;
+    const prepared = window.ConsumerClient ? await window.ConsumerClient.prepare(requestOptions) : requestOptions;
+    if (ownerGuard && !ownerGuard()) throw Error('The account changed before submission. Nothing was sent for this attempt.');
     const response = await fetch(url, { ...prepared, signal: controller.signal });
     window.ConsumerClient?.observe(response);
     let payload;
@@ -450,6 +452,7 @@ function clearWorkspaceEvidence() {
   window.EngagementUI?.clear();
   window.AssessmentUX?.clear();
   window.WorkspaceUI?.clear();
+  window.ContinuityUI?.clear();
   state.workspaceVersion += 1;
   if (state.assessmentInFlight) interruptAssessment();
   closeResult(); closeProfile();
@@ -848,6 +851,7 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   if (target === 'products') loadCommerceCatalog();
   if (target === 'settings') window.ConsumerUI?.refresh();
   window.EngagementUI?.page(target);
+  window.ContinuityUI?.page(target);
   window.WorkspaceUI?.page(target);
   if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
   if (scrollToTop) window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
@@ -1490,6 +1494,7 @@ function renderUnifiedConsumerResult(data) {
 }
 
 function renderPatientResult(data) {
+  queueMicrotask(() => window.ContinuityUI?.explain(data));
   // All image states use the persisted consumer contract. Research and
   // presentation metadata belong in AI & Technical Details, not a smaller UI.
   if (data.input_type !== 'questionnaire') {
@@ -1728,11 +1733,13 @@ async function analyze() {
         pattern: $('#sweatPattern').value, frequency: $('#sweatFrequency').value, duration: $('#sweatDuration').value,
         body_location: $('#sweatLocation').value, stress: $('#sweatStress').value, heat: $('#sweatHeat').value,
         medication_change: $('#sweatMedication').checked, daily_impact: $('#sweatImpact').checked,
+        episode_id: window.ContinuityUI?.assessmentEpisode() || '',
       };
       data = await requestJSON('/api/sweat-assessments', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': state.submissionKey }, body: JSON.stringify(payload), signal: controller.signal });
     } else {
       const form = new FormData();
       form.append('consent_notice_version', processingNoticeVersion('image_assessment'));
+      if (window.ContinuityUI?.assessmentEpisode()) form.append('episode_id', window.ContinuityUI.assessmentEpisode());
       [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['image_consent', String($('#imageConsent').checked)], ['presentation_case_enabled', String($('#presentationCaseEnabled').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
       $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
       data = await requestJSON('/api/assessments', { method: 'POST', headers: { 'Idempotency-Key': state.submissionKey }, body: form, signal: controller.signal }, 60000);
@@ -2364,7 +2371,7 @@ function renderDashboardInsight(analyses, routines) {
 function renderDashboard() {
   const analyses = state.analyses || [];
   const routines = (state.routines || []).filter(routine => !routine.status || routine.status === 'active');
-  const checkins = state.checkins || [];
+  const checkins = (state.checkins || []).filter(item => !item.voided);
   const latestAnalysis = analyses[0];
   const latestCheckin = checkins[0];
   const latestEvidence = latestAnalysis?.summary?.assessment_result?.canonical_evidence || latestAnalysis?.summary?.canonical_evidence || {};
@@ -2591,7 +2598,7 @@ async function downloadAccountData() {
 
 function renderProgress() {
   const hasProfile = Boolean(state.profile?.patient_id);
-  const routines = state.routines || []; const checkins = state.checkins || []; const analyses = state.analyses || [];
+  const routines = state.routines || []; const checkins = (state.checkins || []).filter(item => !item.voided); const analyses = state.analyses || [];
   let emptyJourney = $('#journeyEmptyState');
   if (!emptyJourney) {
     emptyJourney = document.createElement('section');
@@ -2619,7 +2626,7 @@ function renderProgress() {
     const lastCheckin = routineCheckins[0];
     const trend = lastCheckin ? readableStatus(lastCheckin.reported_trend) : 'Not checked in yet';
     const lastUpdate = lastCheckin ? `Last check-in: ${lastCheckin.checkin_date}` : `Started ${routine.start_date}`;
-    return `<article class="routine-item"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}${routine.status ? ` · ${escapeHTML(readableStatus(routine.status))}` : ''}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">${window.ConsumerClient?.enabled ? 'Archive' : 'Delete'}</button></div></article>`;
+    return `<article class="routine-item"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}${routine.status ? ` · ${escapeHTML(readableStatus(routine.status))}` : ''}</p>${routine.episode_link?.label?`<small>Concern: ${escapeHTML(routine.episode_link.label)} · ${escapeHTML(routine.episode_link.body_area)}</small>`:''}${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">${window.ConsumerClient?.enabled ? 'Archive' : 'Delete'}</button></div></article>`;
   }).join('');
   const selectedRoutine = $('#checkinRoutine').value;
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
@@ -2632,6 +2639,7 @@ function renderProgress() {
   $$('[data-checkin-routine]').forEach(button => { button.onclick = () => startRoutineCheckin(button.dataset.checkinRoutine); });
   renderReportRegister();
   window.EngagementUI?.progress();
+  window.ContinuityUI?.progress();
   const reportRegister = $('#reportRegister');
   if (reportRegister) reportRegister.hidden = !hasProfile;
   renderDashboard();
@@ -2702,7 +2710,7 @@ function startRoutineCheckin(routineId) {
   const select = $('#checkinRoutine');
   if (!select) return;
   window.WorkspaceUI?.reveal('checkins');
-  select.value = routineId;
+  select.value = routineId;window.ContinuityUI?.routineSelected(routineId);
   $('.checkin-card')?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
   window.setTimeout(() => $('#checkinTrend')?.focus({ preventScroll: true }), 250);
 }
@@ -2714,9 +2722,11 @@ async function saveRoutine(event) {
   if (submitButton.disabled) return;
   const payload = { condition_label: $('#conditionLabel').value, routine_name: $('#routineName').value, start_date: $('#routineStartDate').value, notes: $('#routineNotes').value };
   const editingId = $('#editingRoutineId').value;
+  const workspaceVersion = state.workspaceVersion;
   submitButton.disabled = true;
   try {
-    const saved = await requestJSON(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const saved = await requestJSON(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json', ...(!editingId&&window.ContinuityUI?.enabled()?{'Idempotency-Key':window.ContinuityUI.retryKey('/api/routines',payload)}:{}) }, body: JSON.stringify(payload), ownerGuard:()=>workspaceVersion===state.workspaceVersion });
+    if(workspaceVersion!==state.workspaceVersion)return;
     resetRoutineForm(); await loadProgress({ force: true }); toast(editingId ? 'Routine updated.' : 'Routine added.');
     if (!editingId && saved.routine_id) await window.WorkspaceUI?.routineSaved(saved.routine_id);
   } catch (error) { toast(error.message || 'Could not save this routine.'); }
@@ -2734,6 +2744,7 @@ async function deleteRoutine(routineId) {
 
 async function saveCheckin(event) {
   event.preventDefault();
+  if(window.ContinuityUI?.enabled()) return window.ContinuityUI.reviewCheckin();
   if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving check-ins.'); }
   const form = event.currentTarget;
   const submitButton = form.querySelector('[type="submit"]');
@@ -2852,6 +2863,7 @@ $('#workspaceSearch').onkeydown = event => {
   if (event.key !== 'Enter') return;
   const query = event.currentTarget.value.trim();
   if (!query) return;
+  if(window.ContinuityUI?.enabled()) { window.ContinuityUI.search(query); return; }
   $('#learnSearch').value = query; showPage('learn');
 };
 $('#notificationsToggle').onchange = event => { persistPreferences({ notifications_enabled: event.target.checked }); toast(event.target.checked ? 'Reminder preference enabled. Configure a routine schedule; delivery requires a verified email and transport.' : 'Reminder preference paused.'); };

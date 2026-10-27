@@ -98,7 +98,15 @@ def collect_account_data(connection, user_id: int) -> dict:
             for table, columns in extra_columns.items():
                 cursor.execute(f"SELECT {', '.join(columns)} FROM {table} WHERE user_id=%s ORDER BY user_id, created_at" if "created_at" in columns else f"SELECT {', '.join(columns)} FROM {table} WHERE user_id=%s", (user_id,))
                 records[table] = [{column: source[column] for column in columns} for source in cursor.fetchall()]
+    effective_views = {}
+    if has_app_context() and current_app.config.get('CONSUMER_ENABLED'):
+        from consumer_continuity import effective_checkins, effective_events
+        effective_views['checkins'] = effective_checkins(connection, user_id, records['progress_checkins'])
+        event_rows = [dict(id=r['record_id'], routine_id=r['subject_id'], **json.loads(r['data_json']), created_at=r['created_at']) for r in records['consumer_records'] if r['kind'] == 'routine_event']
+        effective_views['routine_actions'] = effective_events(connection, user_id, event_rows)
+        effective_views['meaning'] = 'Current projections use immutable correction records. Original rows and all revisions remain in records.'
     return {
+        'effective_views': effective_views,
         "format_version": FORMAT_VERSION + ("-consumer" if len(records) > len(ACCOUNT_COLUMNS) else ""),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scope": {

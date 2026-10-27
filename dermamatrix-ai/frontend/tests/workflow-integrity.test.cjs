@@ -38,6 +38,19 @@ test('timed out requests also carry interruption rather than successful completi
   const h=harness();h.context.fetch=(_url,{signal})=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Object.assign(Error(),{name:'AbortError'}))));
   await assert.rejects(h.api.requestJSON('/api/assessments',{},1),e=>e.interrupted===true && /too long/.test(e.message));
 });
+test('an account switch during CSRF preparation prevents the old draft from being sent',async()=>{
+  const h=harness();let release,valid=true,calls=0;
+  h.context.window.ConsumerClient={prepare:options=>new Promise(resolve=>{release=()=>resolve(options);})};
+  h.context.fetch=async()=>{calls++;throw Error('old draft must never reach fetch');};
+  const pending=h.api.requestJSON('/api/episodes',{method:'POST',body:'private draft',ownerGuard:()=>valid});
+  valid=false;release();await assert.rejects(pending,/account changed.*Nothing was sent/);assert.equal(calls,0);
+});
+test('the owner guard stays in the client and preserves normal request headers',async()=>{
+  const h=harness();let sent;
+  h.context.fetch=async(_url,options)=>{sent=options;return{ok:true,json:async()=>({saved:true})};};
+  await h.api.requestJSON('/api/episodes',{method:'POST',headers:{'Idempotency-Key':'stable-synthetic-key'},body:'draft',ownerGuard:()=>true});
+  assert.equal(sent.ownerGuard,undefined);assert.equal(sent.headers['Idempotency-Key'],'stable-synthetic-key');assert.equal(sent.body,'draft');
+});
 test('database failure and incomplete priority are never labelled as guest results',()=>{
   const h=harness();
   assert.match(h.api.persistenceMessage('not-persisted-guest'),/Guest/);

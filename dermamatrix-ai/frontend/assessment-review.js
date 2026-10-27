@@ -9,6 +9,7 @@
       const body=el('assessmentReviewFields');body.replaceChildren();
       const add=(label,value)=>{const term=document.createElement('dt'),detail=document.createElement('dd');term.textContent=label;detail.textContent=value;body.append(term,detail);};
       add('Concern area',state.area);
+      if(window.ContinuityUI?.enabled())add('Linked concern',el('assessmentEpisode')?.selectedOptions[0]?.textContent||'No concern selected');
       add('Input',state.area==='Sweat'?'Questionnaire; no photo is used':`${state.file.name} · ${(state.file.size/1024/1024).toFixed(2)} MB`);
       if(state.area==='Sweat')for(const id of ['sweatPattern','sweatFrequency','sweatDuration','sweatLocation']){const input=el(id);add(input.closest('label')?.firstChild.textContent.trim()||id,input.selectedOptions?.[0]?.textContent||input.value);}
       else {add('Capture type',el('imageContext').selectedOptions[0].textContent);for(const id of ['duration','discomfort','change']){const input=el(id);add(input.closest('label')?.textContent.split('\n')[0].trim().slice(0,90)||id,input.selectedOptions?.[0]?.textContent||input.value);}}

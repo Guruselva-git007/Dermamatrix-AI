@@ -1,7 +1,7 @@
 /* Factual Today, routine scheduling, full Journey search and educational guides. */
 (() => {
   'use strict';
-  let generation = 0, historyCursor = null, historyQuery = '', historyArea = '', historyEpisode='',historyBodyArea='',historyLoading = false, todayFlight = null;
+  let generation = 0, historyCursor = null, historyQuery = '', historyArea = '', historyEpisode='',historyBodyArea='',historyEpisodeId='',historyLoading = false, todayFlight = null, todayRequestVersion=0;
   let historyRequestVersion=0, historySnapshotKey=null;
   let schedule = null, scheduleId = '', scheduleLoadVersion = 0, guideVersion = 0;
   const $ = id => document.getElementById(id);
@@ -16,20 +16,22 @@
   async function loadToday() {
     if(!signed()) { if($('todayTasks'))$('todayTasks').replaceChildren(node('p','Create an account to schedule routines and save check-ins. Guest assessments stay in this tab.'));return; }
     if(todayFlight)return todayFlight;
-    const version=generation;
+    const version=generation,requestVersion=++todayRequestVersion;
     const flight=(async()=>{
       try {
-        const data=await requestJSON('/api/today');if(!current(version))return;
+        const data=await requestJSON('/api/today');if(!current(version)||requestVersion!==todayRequestVersion)return;status('engagementStatus','');
         const list=$('todayTasks');list.replaceChildren();
         if(!data.tasks.length)list.append(node('p','No scheduled steps today. Add a routine in Journey, then choose its steps and schedule.'));
         for(const task of data.tasks) {
           const row=node('article',undefined,'today-task');
+          if(task.episode?.label)row.append(node('p','Concern: '+task.episode.label));
           row.append(node('strong',task.label),node('p',`${task.routine_name} · ${task.time} · ${task.timezone}`),node('span',task.state==='pending'?'Not recorded':task.state==='completed'?'Completed — self-reported':'Skipped — self-reported'));
-          if(task.state==='pending') for(const [label,value] of [['Done','completed'],['Skip','skipped']]) {
+          if(task.event_id)row.append(action('Correct',()=>window.ContinuityUI?.correctEvent(task.event_id,task.revision,task.label)));
+          if(task.state==='pending'&&!task.event_id) for(const [label,value] of [['Done','completed'],['Skip','skipped']]) {
             const requestKey=crypto.randomUUID();
             row.append(action(label,async()=>{
             const buttons=[...row.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
-            try { await put(`/api/routine-schedules/${encodeURIComponent(task.routine_id)}/events`,{action:value,step:task.step,date:task.date,time:task.time,schedule_version:task.schedule_version},'POST',{'Idempotency-Key':requestKey});if(current(version))await loadTodayFresh(); }
+            try { await put(`/api/routine-schedules/${encodeURIComponent(task.routine_id)}/events`,{action:value,step:task.step,date:task.date,time:task.time,schedule_version:task.schedule_version},'POST',{'Idempotency-Key':requestKey});if(current(version)){if(window.ContinuityUI)await window.ContinuityUI.changed();else await loadTodayFresh();} }
             catch(e){if(current(version))status('engagementStatus',e.message);buttons.forEach(b=>b.disabled=false);}
           }));
           }
@@ -37,7 +39,7 @@
         }
         if(data.recent_result)list.append(action('Open your latest saved result',async()=>{
           const id=data.recent_result.assessment_id;
-          if(!state.analyses.some(r=>r.assessment_id===id)) { const detail=await requestJSON(`/api/assessments/${encodeURIComponent(id)}`);if(!current(version))return;state.analyses.push({assessment_id:id,area:data.recent_result.area,summary:detail.assessment||detail,created_at:data.recent_result.created_at}); }
+          if(!state.analyses.some(r=>r.assessment_id===id)) { const detail=await requestJSON(`/api/assessments/${encodeURIComponent(id)}`);if(!current(version))return;state.analyses.push({assessment_id:id,area:data.recent_result.area,summary:detail.summary||detail.assessment||detail,created_at:data.recent_result.created_at}); }
           showSavedReport(id);
         }));
       }catch(e){if(current(version))status('engagementStatus',e.message);}
@@ -46,21 +48,24 @@
   }
   async function loadTodayFresh(){todayFlight=null;return loadToday();}
 
-  async function loadSchedule() {
+  async function loadSchedule(options={}) {
+    const preserveInput=options?.preserveInput===true;
     const id=$('scheduleRoutine').value;const version=generation;const load=++scheduleLoadVersion;
-    scheduleId=id;schedule=null;$('scheduleEditor').hidden=!id;$('routineEventHistory').replaceChildren();if(!id)return;
+    scheduleId=id;if(!preserveInput)schedule=null;$('scheduleEditor').hidden=!id;$('routineEventHistory').replaceChildren();if(!id)return;
     status('scheduleStatus','Loading schedule…');
     try {
       const data=await requestJSON(`/api/routine-schedules/${encodeURIComponent(id)}`);
       if(!current(version)||load!==scheduleLoadVersion||scheduleId!==id)return;
-      schedule=data.schedule;
+      if(!preserveInput){schedule=data.schedule;
+      window.ContinuityUI?.scheduleLoaded(data.episode_link||{});
       const c=schedule||{steps:[],days:[0,1,2,3,4,5,6],times:['09:00'],timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,area:'General',status:'active',episode:'',body_area:'',reminders:false,quiet_start:'21:00',quiet_end:'08:00'};
       $('routineSteps').value=c.steps.join('\n');$('routineTimes').value=c.times.join(', ');$('routineTimezone').value=c.timezone;
       $('routineScheduleArea').value=c.area;$('routineScheduleStatus').value=c.status;$('routineEpisode').value=c.episode;$('routineBodyArea').value=c.body_area;
       $('routineReminderOptIn').checked=c.reminders;$('quietStart').value=c.quiet_start;$('quietEnd').value=c.quiet_end;
       document.querySelectorAll('[name=routine_day]').forEach(input=>input.checked=c.days.includes(Number(input.value)));
       status('scheduleStatus',schedule?'Schedule loaded. Edits preserve past completion records.':'Add your own steps and schedule. This does not create a medical treatment plan.');
-      for(const event of data.events)$('routineEventHistory').append(node('li',`${event.date} ${event.time} · ${event.step_text} · ${event.action} · schedule version ${event.schedule_version}`));
+      }else status('scheduleStatus','Completion history refreshed. Your current schedule input is preserved. Save explicitly to apply changes.');
+      for(const event of data.events){const row=node('li',`${event.date} ${event.time} · ${event.step_text} · ${event.action} · schedule version ${event.schedule_version}`);row.append(action('Correct',()=>window.ContinuityUI?.correctEvent(event.id,event.revision,event.step_text)));if(event.corrections?.length){const details=node('details'),title=node('summary','Correction history');details.append(title,node('p',`Original action: ${event.original.action}`));for(const c of event.corrections)details.append(node('p',`${new Date(c.created_at).toLocaleString()} · ${c.data.effective.action} · account actor ${c.data.actor_id}${c.data.reason?' · '+c.data.reason:''}`));row.append(details);}$('routineEventHistory').append(row);}
       if(!data.events.length)$('routineEventHistory').append(node('li','No completion events recorded.'));
     }catch(e){if(current(version)&&load===scheduleLoadVersion)status('scheduleStatus',e.message);}
   }
@@ -76,10 +81,10 @@
 
   async function loadHistory(reset=false){
     if(!signed()||historyLoading&&!reset)return;
-    if(reset){historyCursor=null;historyQuery=$('journeySearch').value.trim();historyArea=$('journeyArea').value;historyEpisode=$('journeyEpisode').value.trim();historyBodyArea=$('journeyBodyArea').value.trim();$('journeySearchResults').replaceChildren();}
+    if(reset){historyCursor=null;historyQuery=$('journeySearch').value.trim();historyArea=$('journeyArea').value;historyEpisode=$('journeyEpisode').value.trim();historyBodyArea=$('journeyBodyArea').value.trim();historyEpisodeId=$('journeyEpisodeId')?.value||'';$('journeySearchResults').replaceChildren();}
     const version=generation, requestVersion=++historyRequestVersion;historyLoading=true;$('journeyMore').disabled=true;
     try{
-      const params=new URLSearchParams({q:historyQuery,area:historyArea,episode:historyEpisode,body_area:historyBodyArea});if(historyCursor)params.set('cursor',historyCursor);
+      const params=new URLSearchParams({q:historyQuery,area:historyArea,episode:historyEpisode,body_area:historyBodyArea,episode_id:historyEpisodeId});if(historyCursor)params.set('cursor',historyCursor);
       const data=await requestJSON('/api/journey/assessments?'+params);if(!current(version)||requestVersion!==historyRequestVersion)return;
       if(!data.analyses.length&&reset)$('journeySearchResults').append(node('p','No saved results match these filters.'));
       for(const result of data.analyses){
@@ -87,8 +92,11 @@
         const title=result.summary.assessment_result?.condition?.name||result.summary.condition_intelligence?.finding?.name||`${result.area} assessment`;
         row.append(node('h4',title),node('p',`${result.area} · ${new Date(result.created_at).toLocaleString()}${result.unavailable?' · Original record unavailable':''}`));
         if(result.context?.episode||result.context?.body_area)row.append(node('p',`Your labels: ${result.context.episode||'No episode'} · ${result.context.body_area||'No body area'}`));
-        row.append(action('Organise result',()=>editContext(result)));
+        row.append(action('Edit labels',()=>editContext(result)));
+        row.append(action('Link concern',()=>window.ContinuityUI?.linkAssessment(result)));
+        if(result.episode_link?.label)row.append(node('p',`Concern: ${result.episode_link.label} · ${result.episode_link.body_area}`));
         if(!result.unavailable)row.append(action('Open result',()=>{const old=state.analyses.findIndex(r=>r.assessment_id===result.assessment_id);if(old<0)state.analyses.push(result);else state.analyses[old]=result;showSavedReport(result.assessment_id);}),action('Download PDF',()=>{if(!state.analyses.some(r=>r.assessment_id===result.assessment_id))state.analyses.push(result);downloadSavedReport(result.assessment_id);}));
+        const actions=node('div',undefined,'journey-row-actions');for(const control of [...row.querySelectorAll('button')])actions.append(control);row.append(actions);
         $('journeySearchResults').append(row);
       }
       historyCursor=data.next_cursor;$('journeyMore').hidden=!historyCursor;status('journeySearchStatus',`${$('journeySearchResults').querySelectorAll('article').length} matching results shown. Newest saved first.`);
@@ -128,13 +136,17 @@
       const sources=node('ul');for(const source of topic.evidence_references||[]){const url=supportedExternalUrl(source.url);if(url){const li=node('li'),a=node('a',source.title||source.name||url);a.href=url;a.target='_blank';a.rel='noopener noreferrer';li.append(a);sources.append(li);}}body.append(sources);
       body.append(action('Report a correction',()=>{showPage('settings');window.WorkspaceUI?.privacy();if(signed()){document.querySelector('#rightsRequestForm [name=kind]').value='content_correction';document.querySelector('#rightsRequestForm [name=note]').value=`Guide: ${topic.id}; version: ${topic.version}\n`;document.querySelector('#rightsRequestForm textarea').focus();}else{toast('Sign in to record a local correction request. No monitored support service is configured.');}}));
       body.hidden=false;body.tabIndex=-1;body.focus();body.scrollIntoView({block:'start',behavior:'auto'});
+      window.ContinuityUI?.guide(topic);
     }catch(e){status('learnStatus',e.message);}
   }
 
   window.EngagementUI={
+    async refresh(){const reads=[loadTodayFresh()];if(signed())reads.push(loadHistory(true));if(scheduleId)reads.push(loadSchedule({preserveInput:true}));await Promise.allSettled(reads);},
+    filterEpisode(id){$('journeyEpisodeId').value=id;loadHistory(true);},
+    openGuide,
     clear(){
       generation++;scheduleLoadVersion++;historyRequestVersion++;historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;
-      historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';schedule=null;scheduleId='';
+      historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';historyEpisodeId='';schedule=null;scheduleId='';
       $('resultContextDialog')?.close();
       for(const id of ['scheduleEditor','journeySearchForm','resultContextForm'])$(id)?.reset();
       for(const id of ['todayTasks','journeySearchResults','routineEventHistory','scheduleStatus','reminderStatus','journeySearchStatus','engagementStatus','contextStatus'])$(id)?.replaceChildren();
@@ -160,7 +172,7 @@
     document.querySelector('#progress .progress-layout')?.after(schedulePanel);
     $('scheduleRoutine').onchange=loadSchedule;
     $('scheduleEditor').onsubmit=async event=>{event.preventDefault();const b=event.currentTarget.querySelector('[type=submit]');if(b.disabled)return;b.disabled=true;const version=generation,id=scheduleId;
-      try{const payload={version:schedule?.version||0,steps:$('routineSteps').value.split('\n').map(s=>s.trim()).filter(Boolean),days:[...document.querySelectorAll('[name=routine_day]:checked')].map(i=>Number(i.value)),times:$('routineTimes').value.split(',').map(s=>s.trim()),timezone:$('routineTimezone').value,area:$('routineScheduleArea').value,status:$('routineScheduleStatus').value,episode:$('routineEpisode').value,body_area:$('routineBodyArea').value,reminders:$('routineReminderOptIn').checked,quiet_start:$('quietStart').value,quiet_end:$('quietEnd').value};const data=await put('/api/routine-schedules/'+encodeURIComponent(id),payload);if(current(version)&&scheduleId===id){schedule=data.schedule;status('scheduleStatus',data.message);await loadTodayFresh();await loadProgress({force:true});}}
+      try{const payload={version:schedule?.version||0,steps:$('routineSteps').value.split('\n').map(s=>s.trim()).filter(Boolean),days:[...document.querySelectorAll('[name=routine_day]:checked')].map(i=>Number(i.value)),times:$('routineTimes').value.split(',').map(s=>s.trim()),timezone:$('routineTimezone').value,area:$('routineScheduleArea').value,status:$('routineScheduleStatus').value,episode:$('routineEpisode').value,body_area:$('routineBodyArea').value,reminders:$('routineReminderOptIn').checked,quiet_start:$('quietStart').value,quiet_end:$('quietEnd').value};Object.assign(payload,window.ContinuityUI?.scheduleLink()||{});const data=await put('/api/routine-schedules/'+encodeURIComponent(id),payload);if(current(version)&&scheduleId===id){schedule=data.schedule;window.ContinuityUI?.scheduleLoaded(data.episode_link||{});status('scheduleStatus',data.message);await loadTodayFresh();await loadProgress({force:true});}}
       catch(e){if(current(version))status('scheduleStatus',e.message);}finally{b.disabled=false;}};
     $('showReminders').onclick=async()=>{const v=generation;try{const d=await requestJSON('/api/reminders');if(!current(v))return;status('reminderStatus',`Transport: ${d.transport}. ${d.jobs.length} recent jobs. ${d.jobs.map(j=>j.state.replaceAll('_',' ')).join(', ')||'No jobs scheduled yet.'} Delivery is not confirmed by queueing.`);}catch(e){if(current(v))status('reminderStatus',e.message);}};
     const history=node('section',undefined,'consumer-panel');history.id='completeJourney';history.hidden=true;history.innerHTML='<h3>Search all saved results</h3><form id="journeySearchForm" class="consumer-filter"><label>Search<input id="journeySearch" type="search" maxlength="120" placeholder="Concern or result text"></label><label>Area<select id="journeyArea"><option value="">All areas</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><label>Episode / concern group<input id="journeyEpisode" maxlength="120" placeholder="Exact saved label"></label><label>Body area<input id="journeyBodyArea" maxlength="80" placeholder="Exact saved label"></label><button class="button quiet" type="submit">Search results</button></form><p id="journeySearchStatus" role="status" aria-live="polite"></p><div id="journeySearchResults"></div><button id="journeyMore" type="button" class="button quiet" hidden>Load next results</button>';

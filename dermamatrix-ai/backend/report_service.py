@@ -27,6 +27,75 @@ def _bullets(values: list[object] | None) -> str:
     return "<br/>".join(f"• {value}" for value in safe_values) or "Not available"
 
 
+def build_visit_brief_pdf(brief: dict) -> bytes:
+    """Concern/date selected preparation copy; no mutation or clinical upgrade."""
+    output = io.BytesIO()
+    document = SimpleDocTemplate(output, pagesize=A4, leftMargin=18*mm, rightMargin=18*mm, topMargin=16*mm, bottomMargin=16*mm, title='Dermamatrix clinician-visit preparation')
+    styles = getSampleStyleSheet()
+    body = ParagraphStyle('VisitBody', parent=styles['BodyText'], fontSize=10, leading=14, textColor=colors.HexColor('#252a2f'), spaceAfter=3*mm, splitLongWords=True)
+    heading = ParagraphStyle('VisitHeading', parent=body, fontName='Helvetica-Bold', fontSize=13, leading=17, spaceBefore=4*mm)
+    story = [Paragraph('Clinician-visit preparation', styles['Title'])]
+    def add(value, style=body):
+        story.append(Paragraph(_text(value), style))
+    add(f"{brief['episode']['label']} | {brief['episode']['area']} | {brief['episode']['body_area']}", heading)
+    add(f"Date range: {brief['start']} to {brief['end']} (inclusive). {brief['timezone']}.")
+    add('Included records: ' + ', '.join(f'{key.replace("_", " ")}: {value}' for key, value in brief['counts'].items()))
+    add(brief['photo_notice'])
+    add('Saved assessments', heading)
+    if not brief['assessments']:
+        add('No assessments selected in this range.')
+    for row in brief['assessments']:
+        summary = row.get('summary') or {}
+        consumer = (summary.get('assessment_result') or {}).get('consumer') or {}
+        primary = consumer.get('primary_result') or {}
+        add(f"{row['created_at']} | {row['area']}", heading)
+        add('Assessment reference: ' + row['assessment_id'])
+        screening = summary.get('screening') or {}
+        add(primary.get('title') or screening.get('title') or 'Saved assessment; see the original full report for detailed evidence.')
+        description = primary.get('summary') or screening.get('summary')
+        if description:
+            add(description)
+        questionnaire = (summary.get('manual_context') or {}).get('sweat_questionnaire') or {}
+        if questionnaire:
+            add('Self-reported questionnaire: ' + '; '.join(f'{key.replace("_", " ")}: {value}' for key, value in questionnaire.items() if value is not None and value != ''))
+        canonical = summary.get('canonical_evidence') or {}
+        findings = canonical.get('image_findings') or summary.get('image_findings') or {}
+        if findings.get('available') and findings.get('summary'):
+            add('Recorded image observations: ' + str(findings['summary']))
+        add('Evidence status: ' + str(consumer.get('state') or summary.get('assessment_state') or ('Questionnaire only; no image classifier' if summary.get('input_type') == 'questionnaire' else 'See original report')))
+        risk = canonical.get('assessment_risk') or summary.get('assessment_risk') or {}
+        severity = canonical.get('severity') or summary.get('severity') or {}
+        pirs = canonical.get('pirs') or summary.get('pirs') or {}
+        add('Recorded tracking priority (PIRS): ' + str(pirs.get('score', 'Unavailable')) + '; assessment concern: ' + str(risk.get('level', 'Unavailable')) + '; reported severity: ' + str(severity.get('level', 'Unavailable')) + '. These are the original recorded values; they have not been recalculated.')
+        add('Research rankings and educational interpretations are not confirmed clinical diagnoses. The original report retains technical provenance.')
+    add('Self-reported symptom changes', heading)
+    if not brief['checkins']:
+        add('No active check-ins explicitly linked to this concern in this range.')
+    for row in brief['checkins']:
+        discomfort = {0:'None',6:'Mild',14:'Moderate',25:'Severe / worsening'}.get(row['discomfort_score'], f"Recorded input {row['discomfort_score']}")
+        change = {0:'No noticeable change',8:'Slight change',18:'Rapid change'}.get(row['change_score'], f"Recorded input {row['change_score']}")
+        add(f"{row['checkin_date']} | {row['reported_trend']} (self-reported) | discomfort: {discomfort} | change: {change} | correction revision {row.get('revision', 0)}")
+        if row.get('note'):
+            add(row['note'])
+    add('User-recorded routine plans', heading)
+    for row in brief.get('routines', []):
+        add(f"{row['routine_name']} | started {row['start_date']} | recorded focus: {row['condition_label']}")
+        if row.get('notes'):
+            add(row['notes'])
+    if not brief.get('routines'):
+        add('No routine plan is currently linked to this concern.')
+    add('Routine actions - self-reported', heading)
+    if not brief['events']:
+        add('No scheduled actions explicitly linked to this concern in this range.')
+    for row in brief['events']:
+        add(f"{row['date']} {row['time']} {row['timezone']} | {row['step_text']} | {row['action']} | correction revision {row.get('revision', 0)}")
+    add('Personal questions and notes', heading)
+    add(brief['questions'] or 'No personal questions supplied.')
+    add('Prepared from saved metadata. This copy does not document a clinician review, diagnose a condition or establish treatment effectiveness.')
+    document.build(story)
+    return output.getvalue()
+
+
 def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
     """Create a concise, printable discussion brief from one stored assessment."""
     summary = assessment.get("summary") or {}
@@ -143,6 +212,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
 
     rows = [
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
+        [Paragraph("Concern grouping", eyebrow), Paragraph(_text((assessment.get('episode_link') or {}).get('label'), 'Unassigned') + ' · ' + _text((assessment.get('episode_link') or {}).get('body_area'), 'No body-area label'), body)],
         [Paragraph("Assessment date", eyebrow), Paragraph(_text(created_at), body)],
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
         [Paragraph("Assessment outcome", eyebrow), Paragraph(_text(outcome_label), body)],

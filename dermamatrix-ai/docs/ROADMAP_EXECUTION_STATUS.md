@@ -1,11 +1,17 @@
 # Consumer development execution status
 
-Updated: 27 October 2026. Canonical checkpoint. Sequential implementation;
+Updated: 28 October 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
 ## Verdict and current batch
+
+**October 28 continuity batch:** A–L consumer enhancements are implemented and
+under final integration/Git verification. Preserve the Achromatic ledger and
+English-only interface. No deployment/provider activation, new classifier,
+training, source-photo retention, schema change or historical rewrite.
+See the current batch below before following an older continuation instruction.
 
 **B — Major implementation complete, with explicitly dependent/unverified items.**
 Batches A–F have integrated local development implementations and verification.
@@ -94,6 +100,8 @@ Human/device protocol: [consumer-validation-protocol.md](consumer-validation-pro
 ## Exact next action for continuation
 
 Read this checkpoint and inspect Git status; preserve completed local work.
+Finish any outstanding October 28 verification/receipts below first. Do not
+restart completed enhancements or infer deployment/provider setup as a next task.
 The owner explicitly deferred email-provider selection and activation to deployment.
 Keep real delivery disabled until then. At that stage, choose the actual
 operator/support owner and provider, configure a verified sender/origin, then run
@@ -206,3 +214,45 @@ activation must not be inferred as the next task.
   and Chromium smoke. A subsequent checkpoint-only commit preserves that runtime.
 - No schema change, model change, deployment, provider configuration or real
   notification is part of this follow-up.
+
+## October 28 — integrated consumer continuity
+
+Implementation uses the existing owner-indexed `consumer_records` store. No new
+DDL, migration, table, historical backfill or real-data erasure. Original
+assessment JSON, check-ins and scheduled action rows remain intact. Corrections
+append versioned actor/time history; shared effective adapters feed consumers.
+
+| Requested feature | Previous behavior | Implemented development behavior | Verification / status |
+| --- | --- | --- | --- |
+| A Corrections | Done/Skip and check-ins could not be corrected | Confirmed owner-scoped, idempotent correction, stale-version conflict, original plus immutable history, undo by effective pending/voided state | SQL concurrency, recovery, Today/history/counts/JSON/PDF tests; browser integrated |
+| B Concerns | Independent free-text labels only | Explicit optional episode IDs, body-area picker, create/select/link, filters and follow-up; old labels/unassigned results retained | Empty/one/56 mixed assessments, retry/owner/stale-link tests; browser end to end |
+| C Results | Detailed rich report | Four concise evidence/uncertainty/next-step explanations before retained details; live concern context separate from saved evidence | Browser plus unchanged canonical/scoring regressions |
+| D Visit brief | Full assessment and bounded recent-history PDFs only | Episode/date preview, selected assessments, self-reports, routine plans/actions, personal questions, counts and no-photo disclosure | SQL selection/isolation/PDF tests; real browser download and rendered PDF |
+| E Capture | Basic preparation guidance | Framing/light/focus/distance/orientation/glare/type, camera hint/gallery fallback, retained limits and recoverable preview | Synthetic invalid/poor-image browser checks and ordinary/dermoscopy separation; physical phones outstanding |
+| F Follow-up | Direct check-in save | Visible routine/concern defaults, short self-report, review/back, stable retry, correction and preserved schedule drafts | Concurrent SQL retries; browser lost-response-after-commit test and history checks |
+| G Reminders | Configuration and job status | Next local occurrence, timezone, quiet effects, pause/opt-in explanation; preview explicitly queues/sends nothing | DST gap/fold/quiet/pause tests; disabled-provider browser check |
+| H Recovery | General errors | Current-tab retry, conflict/missing-record guidance, owner guard after CSRF, stale preview invalidation and late-response guards | SQL invalid/stale/interrupted cases, JS owner-switch regression and browser recovery |
+| I Accessibility | Existing focus/tabs/responsive shell | Native labelled pickers/dialogs, status feedback, focus restoration, mobile Search entry, existing primary target sizes | 320/390/768/1440 and large text, keyboard/Escape/dark checks; actual screen-reader speech/human testing outstanding |
+| J Search | Header searched guides; separate saved-result filters | Same header opens grouped private assessment/episode/routine/check-in and public guide search, mobile entry, signed pagination, older check-in detail | 56-result pagination, cursor filter/owner/revision tests; browser and second-account isolation |
+| K Saved guides | No bookmarks | Account-owned save/reopen/remove with source/version/date and immutable revisions | SQL replay/version tests; browser save→search→reopen→remove |
+| L Feedback | Rights/content request only | Category/page/version/optional explanation, local status and no automatic health attachments | SQL dedupe and browser; explicitly unmonitored |
+| Closure/erasure | Password-confirmed local request, no executor | Preparatory inventory/consequences/authorization/audit/backup design added to DM-06; existing request/export controls retained | Independent software controls tested; destructive executor awaits approved policy and explicit action |
+
+Important source: `backend/consumer_continuity.py`, shared app/engagement/export
+adapters and `report_service.py`; `frontend/continuity.js`, app/engagement/review
+hooks and existing `product.css`; focused SQL tests, browser continuity suite and
+existing development CI. Technical/recovery contract: `consumer-continuity.md`.
+No third-party service or dependency was added.
+
+Local verification so far: complete backend **243 pass**; frontend **55 pass**;
+existing browser smoke **15 pass**; new integrated browser workflow **12 checks**;
+supplementary capture/keyboard/dark browser **5 pass**, no script errors. Focused
+post-integration checks and final remote commit/CI receipts follow. Earlier failed
+harness attempts (collapsed controls, hidden mobile header input, native file
+chooser interruption) are not counted as passing runs; observed mobile search and
+layout defects were fixed and rechecked. Physical camera/HEIC/touch, actual
+screen-reader speech and representative human usability remain external checks.
+
+Ignored evidence: `local-artifacts/consumer-next-2026-10-28/`. Normal loopback
+service refresh, guarded commits/push equality, final CI and task helper cleanup
+remain the closing steps. Deployment and provider activation remain deferred.

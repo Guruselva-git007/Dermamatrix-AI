@@ -56,6 +56,7 @@ jobs:
           node --check frontend/consumer.js
           node --check frontend/engagement.js
           node --check frontend/workspace.js
+          node --check frontend/continuity.js
           git diff --check
       - name: Dependency and tracked-secret checks
         run: |
@@ -73,4 +74,7 @@ jobs:
           playwright-cli -s=ci open http://127.0.0.1:8001 --browser=chrome
           playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-smoke.js > /tmp/dermamatrix-browser.json
           python -c "import json; d=json.load(open('/tmp/dermamatrix-browser.json')); assert len(d['checks']) >= 12 and not d['errors']; print(json.dumps(d))"
+          mkdir -p ../local-artifacts/consumer-next-2026-10-28
+          playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-continuity.js > /tmp/dermamatrix-continuity.json
+          python -c "import json; d=json.load(open('/tmp/dermamatrix-continuity.json')); assert len(d['checks']) >= 11 and not d['errors']; print(json.dumps(d))"
           playwright-cli -s=ci close

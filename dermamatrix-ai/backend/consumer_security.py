@@ -121,7 +121,7 @@ def record(connection, user_id, kind, subject, data, dedupe=None):
     with connection.cursor() as cursor:
         cursor.execute('INSERT IGNORE INTO consumer_records(record_id,user_id,kind,subject_id,dedupe_key,data_json,created_at,updated_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
                        (identifier, user_id, kind, subject, key, json.dumps(data), utcnow(), utcnow()))
-        cursor.execute('SELECT record_id,data_json,created_at FROM consumer_records WHERE dedupe_key=%s AND user_id=%s', (key, user_id))
+        cursor.execute('SELECT record_id,data_json,created_at FROM consumer_records WHERE dedupe_key=%s AND user_id=%s FOR UPDATE', (key, user_id))
         return cursor.fetchone()
 
 
@@ -205,7 +205,7 @@ def register_security(app, database, current_user):
                     return jsonify(error='Your session ended. Sign in again.', code='SESSION_REVOKED'), 401
                 profile_payload = request.get_json(silent=True) if request.path == '/api/profile' else None
                 profile_health = isinstance(profile_payload, dict) and any(k in profile_payload for k in ['past_history', 'current_history'])
-                protected = unsafe and (request.path.startswith(('/api/assessments', '/api/sweat-assessments', '/api/routines', '/api/progress-checkins', '/api/routine-schedules', '/api/journey/assessments', '/api/clinical-review-requests', '/api/profiles')) or profile_health)
+                protected = unsafe and (request.path.startswith(('/api/assessments', '/api/sweat-assessments', '/api/routines', '/api/progress-checkins', '/api/routine-schedules', '/api/journey/assessments', '/api/clinical-review-requests', '/api/profiles', '/api/episodes', '/api/episode-links')) or profile_health)
                 if request.method == 'DELETE' and request.path.startswith('/api/routines/'):
                     protected = False  # Archiving stops future work; it preserves history.
                 if protected:
