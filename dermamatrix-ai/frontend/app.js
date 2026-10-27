@@ -123,7 +123,9 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
   if (options.signal?.aborted) controller.abort();
   const timeout = window.setTimeout(abort, timeoutMs);
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
+    const prepared = window.ConsumerClient ? await window.ConsumerClient.prepare(options) : options;
+    const response = await fetch(url, { ...prepared, signal: controller.signal });
+    window.ConsumerClient?.observe(response);
     let payload;
     try { payload = await response.json(); } catch {
       if (response.ok) throw Error('The server returned an unreadable response. Please retry.');
@@ -131,6 +133,7 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
     }
     if (response.ok && (!payload || typeof payload !== 'object' || Array.isArray(payload))) throw Error('The server returned an incomplete response. Please retry.');
     if (!response.ok) {
+      if (payload.code === 'SESSION_REVOKED') window.dispatchEvent(new CustomEvent('dermamatrix-session-ended'));
       const error = Error(payload.error || `Request failed (${response.status}).`);
       error.status = response.status;
       error.payload = payload;
@@ -228,6 +231,7 @@ function selectArea(area, { userSelected = false } = {}) {
 }
 
 function previewReadinessMessage(readiness) {
+  if (readiness.status === 'SERVER_DECODE_REQUIRED') return { label: 'HEIC PHOTO SELECTED', title: 'The server can read this photo after consent', message: 'This browser cannot display its preview. Check the original in your gallery; HEIC is decoded in memory during assessment, with the same size and quality checks.' };
   if (readiness.status === 'CHECKING') return { label: 'ON-DEVICE PHOTO CHECK', title: 'Checking lighting and image detail', message: 'This quick preview check stays on your device. The server makes the final image-quality decision.' };
   if (readiness.status === 'READY') return { label: 'PREVIEW READY', title: 'Ready for server review', message: `${readiness.width} × ${readiness.height} px · focus and final quality are checked during assessment${readiness.advisory ? ` · ${readiness.advisory}` : ''}` };
   if (readiness.status === 'RETAKE_SUGGESTED') return { label: 'RETAKE SUGGESTED', title: 'A clearer photo may give a better review', message: readiness.issues.join(' ') };
@@ -293,9 +297,9 @@ async function inspectLocalImageReadiness(imageUrl) {
 function setImage(file) {
   if (state.assessmentInFlight) return toast('The current image is being assessed. You can replace it when this review is complete.');
   if (state.area === 'Sweat') return toast('Sweat patterns use the questionnaire instead of an image.');
-  const supported = /\.(jpe?g|png|webp|avif)$/i.test(file?.name || '');
-  if (!file || !supported) return setUploadError('Choose a JPG, PNG, WEBP, or AVIF image.');
-  if (file.size > 10 * 1024 * 1024) return setUploadError('Choose an image smaller than 10 MB.');
+  const supported = /\.(jpe?g|png|webp|avif|heic|heif)$/i.test(file?.name || '');
+  if (!file || !supported) return setUploadError('Choose a JPG, PNG, WEBP, AVIF, HEIC, or HEIF image.');
+  if (file.size > 10 * 1024 * 1024) return setUploadError('Choose an image up to 10 MB and 16 megapixels. Export a smaller copy from your gallery if needed.');
   clearUploadError();
   state.areaSelected = true; state.reviewResultReady = false;
   $('#imageConsent').checked = false;
@@ -306,6 +310,8 @@ function setImage(file) {
   state.file = file; state.imageUrl = URL.createObjectURL(file); state.imageReadiness = { status: 'CHECKING' };
   const selectedImageUrl = state.imageUrl;
   const zone = $('#dropZone'); zone.style.backgroundImage = `url("${state.imageUrl}")`; zone.classList.add('has-image');
+  $('#uploadPreviewImage').hidden = false;
+  $('#uploadPreviewImage').onerror = () => { if (/\.hei[cf]$/i.test(state.file?.name || '')) $('#uploadPreviewImage').hidden = true; };
   $('#uploadPreviewImage').src = state.imageUrl;
   $('#uploadPreviewName').textContent = file.name;
   $('#uploadPreview').hidden = false;
@@ -315,6 +321,7 @@ function setImage(file) {
   transitionAssessment(AssessmentState.INPUT_REQUIRED, 'IMAGE READY FOR REVIEW');
   void inspectLocalImageReadiness(selectedImageUrl).then(readiness => {
     if (readinessToken !== state.imageReadinessToken || state.imageUrl !== selectedImageUrl) return;
+    if (readiness.status === 'NOT_CHECKED' && /\.hei[cf]$/i.test(file.name)) readiness = {status:'SERVER_DECODE_REQUIRED'};
     state.imageReadiness = readiness;
     renderImageReadiness(readiness);
   });
@@ -438,6 +445,9 @@ function interruptAssessment() {
 }
 
 function clearWorkspaceEvidence() {
+  window.ConsumerUI?.clear();
+  window.EngagementUI?.clear();
+  window.AssessmentUX?.clear();
   state.workspaceVersion += 1;
   if (state.assessmentInFlight) interruptAssessment();
   closeResult(); closeProfile();
@@ -685,6 +695,7 @@ async function persistPreferences(patch) {
 function applyAccount(account, preferences = null) {
   if (state.profile?.patient_id !== account.patient_id) clearWorkspaceEvidence();
   state.profile = { ...account }; state.isGuest = false; state.progressLoadedFor = null;
+  window.ConsumerUI?.session(account);
   $('#profileName').textContent = account.full_name; $('#profileMeta').textContent = account.patient_id;
   if (preferences) applyPreferences(preferences);
   updateDashboardIdentity(); persistBrowserProfile();
@@ -694,8 +705,8 @@ function applyAccount(account, preferences = null) {
 
 async function enterAccount(authentication, message) {
   applyAccount(authentication.user || authentication.account, authentication.preferences); hideAuthGate();
-  await hydrateProfile(); await loadProgress({ force: true });
   showPage('dashboard');
+  await hydrateProfile(); await loadProgress({ force: true });
   if (message) toast(message);
 }
 
@@ -741,6 +752,7 @@ async function continueAsGuest() {
   updateAccountExportControls();
   showPage('dashboard');
   toast('Guest workspace opened. Create an account to save reports and routines.');
+  window.EngagementUI?.welcome();
 }
 
 async function restoreAuthentication() {
@@ -820,15 +832,18 @@ function finishProcessing(succeeded = false) {
 
 function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   setNavigationOpen(false);
-  const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings'];
-  const target = allowed.includes(page) ? page : 'dashboard';
+  const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings', 'learn'];
+  const route = ({today:'dashboard',check:'home',journey:'progress',profile:'settings'})[page] || page;
+  const target = allowed.includes(route) ? route : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
   if (target === 'home') updateAssessmentProgress();
   $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
-  const titles = { dashboard: 'Home', home: 'Check My Health', progress: 'My Journey', products: 'Products', support: 'Find a Doctor', settings: 'Settings' };
+  const titles = { dashboard: 'Today', home: 'Check', progress: 'Journey', products: 'Products', support: 'Find a Doctor', settings: 'Profile', learn:'Learn' };
   $('#workspaceTitle').textContent = titles[target];
   if (target === 'progress' || target === 'dashboard') loadProgress();
   if (target === 'products') loadCommerceCatalog();
+  if (target === 'settings') window.ConsumerUI?.refresh();
+  window.EngagementUI?.page(target);
   if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
   if (scrollToTop) window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
@@ -1043,7 +1058,7 @@ function normaliseAssessmentPresentation(data) {
           ? 'Keep track of meaningful changes and discuss persistent, changing, painful, or worrying symptoms with a qualified clinician.'
           : cdss.next_step || carePlan.next_step || 'No next step is available for this check.',
     scope: classifier.available
-        ? 'A configured research image model ran for this declared dermatoscopic image. Its ranking is not a diagnosis or calibrated condition likelihood.'
+        ? 'A configured research image model ran for this declared image route. Its ranking is not a diagnosis or calibrated condition likelihood.'
       : imageFindings.available
         ? 'DermaMatrix measured this photo locally. No disease classifier or diagnosis was used; the assessment concern score remains based on its separate inputs.'
       : assessmentStatus.notice
@@ -2296,6 +2311,16 @@ function assessmentConcernScore(analysis) {
   return value !== null && value !== '' && Number.isFinite(numeric) ? numeric : null;
 }
 
+function assessmentComparisonKey(analysis) {
+  const summary = analysis?.summary || {};
+  const score = summary.assessment_risk || summary.assessment_result?.assessment_risk || {};
+  const model = summary.model_metadata || {};
+  if (!score.methodology_version || !model.model_version || !model.pipeline_version) return null;
+  return JSON.stringify([analysis.area, summary.input_type, summary.input_validation?.workflow,
+    score.methodology_version, model.model_id, model.model_version,
+    model.dataset_version, model.pipeline_version, model.calibration_version]);
+}
+
 function renderDashboardInsight(analyses, routines) {
   let insight = $('#dashboardInsight');
   if (!insight) {
@@ -2305,18 +2330,19 @@ function renderDashboardInsight(analyses, routines) {
   }
   const latest = analyses[0];
   const latestScore = assessmentConcernScore(latest);
-  const earlierSameArea = latest && analyses.slice(1).find(item => item.area === latest.area && assessmentConcernScore(item) !== null);
+  const comparisonKey = assessmentComparisonKey(latest);
+  const earlierSameArea = comparisonKey && analyses.slice(1).find(item => assessmentComparisonKey(item) === comparisonKey && assessmentConcernScore(item) !== null);
   const previousScore = assessmentConcernScore(earlierSameArea);
   if (latest && latestScore !== null && earlierSameArea && previousScore !== null) {
     const delta = latestScore - previousScore;
     const direction = delta === 0 ? 'unchanged' : delta < 0 ? `${Math.abs(delta)} points lower` : `${delta} points higher`;
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">YOUR TREND</p><h2>${escapeHTML(String(latest.area))} score is ${escapeHTML(direction)}.</h2><p>Compare your saved check-ins when you notice a meaningful change.</p></div><div class="dashboard-insight-metric"><small>LATEST / PREVIOUS</small><strong>${latestScore}<span>/100</span> <b>·</b> ${previousScore}<span>/100</span></strong><button class="text-button" data-dashboard-nav="progress">View journey →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">RECORDED CONCERN</p><h2>${escapeHTML(String(latest.area))} concern indicator is ${escapeHTML(direction)}.</h2><p>Compared using the same recorded scoring and model versions. This is not measured healing or a clinical trend.</p></div><div class="dashboard-insight-metric"><small>LATEST / PREVIOUS</small><strong>${latestScore}<span>/100</span> <b>·</b> ${previousScore}<span>/100</span></strong><button class="text-button" data-dashboard-nav="progress">View journey →</button></div>`;
     return;
   }
   if (latest) {
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your first ${escapeHTML(String(latest.area).toLowerCase())} check-in is saved.</h2><p>Add another only when something meaningfully changes.</p></div><div class="dashboard-insight-metric"><small>SAVED CHECK-INS</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check an area →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your latest ${escapeHTML(String(latest.area).toLowerCase())} result is saved.</h2><p>Earlier records may use different or unrecorded versions. Review each result in its own context.</p></div><div class="dashboard-insight-metric"><small>SAVED CHECK-INS</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check an area →</button></div>`;
     return;
   }
   if (routines.length) {
@@ -2330,7 +2356,7 @@ function renderDashboardInsight(analyses, routines) {
 
 function renderDashboard() {
   const analyses = state.analyses || [];
-  const routines = state.routines || [];
+  const routines = (state.routines || []).filter(routine => !routine.status || routine.status === 'active');
   const checkins = state.checkins || [];
   const latestAnalysis = analyses[0];
   const latestCheckin = checkins[0];
@@ -2574,7 +2600,7 @@ function renderProgress() {
   if (progressActions) progressActions.hidden = !hasProfile;
   emptyJourney.hidden = hasProfile;
   const latest = checkins[0];
-  $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.length}</strong><small>active routines</small></article><article><span>◷</span><strong>${latest ? escapeHTML(latest.checkin_date) : '—'}</strong><small>latest check-in</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(readableStatus(latest.reported_trend)) : '—'}</strong><small>current trend</small></article>`;
+  $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.filter(routine => !routine.status || routine.status === 'active').length}</strong><small>active routines</small></article><article><span>◷</span><strong>${latest ? escapeHTML(latest.checkin_date) : '—'}</strong><small>latest check-in</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(readableStatus(latest.reported_trend)) : '—'}</strong><small>current trend</small></article>`;
   $('#openProfileFromProgress').textContent = hasProfile ? 'Profile connected' : 'Set up profile';
   $('#monitoringNote').textContent = !hasProfile
     ? 'Create an account to save routines, check-ins, and past results.'
@@ -2586,7 +2612,7 @@ function renderProgress() {
     const lastCheckin = routineCheckins[0];
     const trend = lastCheckin ? readableStatus(lastCheckin.reported_trend) : 'Not checked in yet';
     const lastUpdate = lastCheckin ? `Last check-in: ${lastCheckin.checkin_date}` : `Started ${routine.start_date}`;
-    return `<article class="routine-item"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">Delete</button></div></article>`;
+    return `<article class="routine-item"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}${routine.status ? ` · ${escapeHTML(readableStatus(routine.status))}` : ''}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">${window.ConsumerClient?.enabled ? 'Archive' : 'Delete'}</button></div></article>`;
   }).join('');
   const selectedRoutine = $('#checkinRoutine').value;
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
@@ -2598,6 +2624,7 @@ function renderProgress() {
   $$('[data-delete-routine]').forEach(button => { button.onclick = () => deleteRoutine(button.dataset.deleteRoutine); });
   $$('[data-checkin-routine]').forEach(button => { button.onclick = () => startRoutineCheckin(button.dataset.checkinRoutine); });
   renderReportRegister();
+  window.EngagementUI?.progress();
   const reportRegister = $('#reportRegister');
   if (reportRegister) reportRegister.hidden = !hasProfile;
   renderDashboard();
@@ -2686,10 +2713,11 @@ async function saveRoutine(event) {
 }
 
 async function deleteRoutine(routineId) {
-  if (!window.confirm('Delete this routine and its progress history?')) return;
+  const archive = Boolean(window.ConsumerClient?.enabled);
+  if (!window.confirm(archive ? 'Archive this routine? Past check-ins and completion events will be kept.' : 'Delete this routine and its progress history?')) return;
   try {
     await requestJSON(`/api/routines/${routineId}`, { method: 'DELETE' });
-    await loadProgress({ force: true }); toast('Routine deleted.');
+    await loadProgress({ force: true }); toast(archive ? 'Routine archived. History preserved.' : 'Routine deleted.');
   } catch (error) { toast(error.message || 'Could not delete this routine.'); }
 }
 
@@ -2735,7 +2763,7 @@ const drop = $('#dropZone');
 ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
 drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
-$('#analyzeButton').onclick = analyze; $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
+$('#analyzeButton').onclick = () => window.AssessmentUX ? window.AssessmentUX.review() : analyze(); $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
 [$('#imageConsent'), $('#dermoscopyConsent')].forEach(input => input.addEventListener('change', clearAssessmentConsentError));
 $$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab(button.dataset.resultTab); });
 $('#doctorSearchForm').onsubmit = searchDoctors; $('#directorySearchForm').onsubmit = searchDirectory;
@@ -2765,7 +2793,7 @@ $$('.auth-form input').forEach(input => {
     input.removeAttribute('aria-invalid'); input.closest('.auth-field')?.classList.remove('is-invalid');
   });
 });
-$('#forgotPasswordButton').onclick = () => setAuthMessage('Password reset is not available yet. Please contact the person who manages your DermaMatrix account for help.');
+$('#forgotPasswordButton').onclick = () => window.ConsumerUI ? window.ConsumerUI.recover() : setAuthMessage('Account recovery could not load. Refresh and retry.');
 $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => setNavigationOpen(!document.body.classList.contains('nav-open'));
@@ -2815,7 +2843,7 @@ $('#workspaceSearch').onkeydown = event => {
   if (!query) return;
   $('#productSearch').value = query; showPage('products'); searchProducts();
 };
-$('#notificationsToggle').onchange = event => { persistPreferences({ notifications_enabled: event.target.checked }); toast(event.target.checked ? 'Care reminders enabled.' : 'Care reminders disabled.'); };
+$('#notificationsToggle').onchange = event => { persistPreferences({ notifications_enabled: event.target.checked }); toast(event.target.checked ? 'Reminder preference enabled. Configure a routine schedule; delivery requires a verified email and transport.' : 'Reminder preference paused.'); };
 $('#motionToggle').onchange = event => { persistPreferences({ reduced_motion: event.target.checked }); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
 $('#clearProfileButton').onclick = clearLocalProfile;
 $('#downloadAccountDataButton').onclick = downloadAccountData;
@@ -2825,6 +2853,10 @@ $('#settingsThemeButton').onclick = () => { const next = document.body.dataset.t
 $('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin; $('#downloadHistoryButton').onclick = downloadHistory;
 window.addEventListener('popstate', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
 window.addEventListener('hashchange', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
+window.addEventListener('dermamatrix-session-ended', () => {
+  clearWorkspaceEvidence(); state.profile = null; state.isGuest = false;
+  showAuthGate('login'); setAuthMessage('Your session ended. Sign in again to continue.');
+});
 window.addEventListener('beforeunload', () => { if (state.imageUrl) URL.revokeObjectURL(state.imageUrl); });
 
 async function initialiseApp() {
@@ -2869,6 +2901,7 @@ async function initialiseApp() {
   if (authenticated) await hydrateProfile();
   showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false });
   if (!authenticated) showAuthGate('login');
+  window.ConsumerUI?.ready();
 }
 
 initialiseApp();
