@@ -115,3 +115,21 @@ and synthetic camera/gallery fallback checks are software evidence. Physical
 iPhone/Android capture/HEIC, actual screen-reader speech and representative human
 usability checks remain external. No WCAG certification, clinical review, real
 delivery or deployment is claimed. Closure/erasure execution awaits DM-06 policy.
+
+## Concern boundaries on comparisons
+
+New comparisons use the existing scoring/lineage engine with history restricted
+by the authoritative explicit concern link. Unassigned assessments compare only
+with unassigned records of the same area. Distinct concerns get distinct derived
+query identities. Persistence is serialized per owner after ending the initial
+authentication read snapshot, so simultaneous follow-ups see a consistent saved
+baseline. No score formula, classifier or historical JSON is changed.
+
+The Today comparison key includes the current concern association as well as
+model/decoder/scoring lineage. Saved-result opening refreshes owner-scoped
+metadata; a comparison saved under a different assignment is suppressed in the
+current consumer view with an explanation. The original comparison remains in
+the original metadata/report, where query context is explicitly labelled as
+original save-time context. Tests cover two separate same-area concerns,
+unassigned history, several follow-ups in one concern, simultaneous follow-ups,
+correct baseline identity, and reassignment without modifying saved evidence.

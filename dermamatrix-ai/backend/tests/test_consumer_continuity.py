@@ -262,3 +262,34 @@ class ConsumerContinuity(unittest.TestCase):
         data=self.client.get('/api/account-data/download').get_json()
         self.assertEqual(data['records']['assessments'],[])
         self.assertEqual(data['records']['analysis_records'],[])
+
+    def test_followups_compare_only_the_explicit_concern_and_keep_unassigned_history(self):
+        first=self.episode('First sweat concern',area='Sweat');second=self.episode('Separate sweat concern',area='Sweat')
+        def assess(episode):
+            response=self.keyed('/api/sweat-assessments',dict(questionnaire_consent=True,pattern='usual',episode_id=episode))
+            self.assertEqual(response.status_code,200,response.get_json());self.assertEqual(response.get_json()['persistence'],'mysql')
+            return response.get_json()
+        a=assess(first);b=assess(second);legacy=assess('');follow=assess(first)
+        self.assertEqual(a['progress_comparison']['status'],'BASELINE_CREATED')
+        self.assertEqual(b['progress_comparison']['status'],'BASELINE_CREATED')
+        self.assertEqual(legacy['progress_comparison']['status'],'BASELINE_CREATED')
+        self.assertEqual(follow['progress_comparison']['journey']['baseline_assessment_id'],a['assessment_id'])
+        self.assertEqual(follow['progress_comparison']['journey']['follow_up_count'],1)
+        self.assertEqual(follow['progress_comparison']['scope']['episode_id'],first)
+        self.assertNotEqual(a['journey']['journey_id'],b['journey']['journey_id'])
+        history=self.client.get('/api/journey/assessments',query_string={'episode_id':first}).get_json()['analyses']
+        self.assertEqual({r['assessment_id'] for r in history},{a['assessment_id'],follow['assessment_id']})
+        all_rows=self.client.get('/api/analysis-history').get_json()['analyses']
+        self.assertEqual(next(r for r in all_rows if r['assessment_id']==b['assessment_id'])['episode_link']['episode_id'],second)
+        response=self.call('/api/visit-brief',dict(episode_id=first,start=date.today().isoformat(),end=date.today().isoformat()))
+        self.assertEqual(response.get_json()['brief']['counts']['assessments'],2)
+        self.assertEqual(self.keyed('/api/sweat-assessments',dict(questionnaire_consent=True,pattern='usual',episode_id=[])).status_code,400)
+        cookie=self.client.get_cookie('session').value;barrier=Barrier(2)
+        def concurrent_followup(_):
+            client=self.app.test_client();client.set_cookie('session',cookie);csrf=client.get('/api/security/csrf').get_json()['csrf_token'];barrier.wait()
+            return client.post('/api/sweat-assessments',json=dict(questionnaire_consent=True,pattern='usual',episode_id=first),headers={'X-CSRF-Token':csrf,'Idempotency-Key':uuid.uuid4().hex})
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses=list(pool.map(concurrent_followup,range(2)))
+        self.assertEqual([r.status_code for r in responses],[200,200])
+        self.assertEqual({r.get_json()['journey']['follow_up_count'] for r in responses},{2,3})
+        self.assertTrue(all(r.get_json()['journey']['baseline_assessment_id']==a['assessment_id'] for r in responses))

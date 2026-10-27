@@ -212,7 +212,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
 
     rows = [
         [Paragraph("Assessment ID", eyebrow), Paragraph(_text(assessment.get("assessment_id")), body)],
-        [Paragraph("Concern grouping", eyebrow), Paragraph(_text((assessment.get('episode_link') or {}).get('label'), 'Unassigned') + ' · ' + _text((assessment.get('episode_link') or {}).get('body_area'), 'No body-area label'), body)],
+        [Paragraph("Current concern grouping", eyebrow), Paragraph(_text((assessment.get('episode_link') or {}).get('label'), 'Unassigned') + ' · ' + _text((assessment.get('episode_link') or {}).get('body_area'), 'No body-area label'), body)],
         [Paragraph("Assessment date", eyebrow), Paragraph(_text(created_at), body)],
         [Paragraph("Area and input", eyebrow), Paragraph(f"{_text(assessment.get('area'))} · {_text(summary.get('input_type'))}", body)],
         [Paragraph("Assessment outcome", eyebrow), Paragraph(_text(outcome_label), body)],
@@ -306,7 +306,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>Medication information:</b> {_text(medication_information.get('notice'), 'No medication recommendation is generated from this assessment.')} {_text(medication_information.get('consultation_notice'), 'Discuss medication decisions with a qualified doctor or pharmacist.')}", body),
         Spacer(1, 1.5 * mm),
         Paragraph(f"<b>General product discovery:</b><br/>{_bullets(product_discovery)}<br/>{_text(product_scope, 'No product need was established from this assessment.')}", body),
-        Paragraph(f"<b>Ongoing query:</b> {_text(journey.get('journey_id'), 'Not saved as an ongoing query')} · baseline {_text(journey.get('baseline_date'))}", note),
+        Paragraph(f"<b>Ongoing query (original save-time context):</b> {_text(journey.get('journey_id'), 'Not saved as an ongoing query')} · baseline {_text(journey.get('baseline_date'))}", note),
         Paragraph("Important safety notice", heading),
         Paragraph("This educational research prototype does not diagnose disease, prescribe medicine, or replace a registered medical practitioner. A saved review request does not mean that a clinician has been assigned or has reviewed this assessment. Research disclaimers do not establish regulatory classification or clinical readiness. Discuss new routines, products, supplements, symptoms, and treatment decisions with a qualified clinician or pharmacist.", body),
     ]

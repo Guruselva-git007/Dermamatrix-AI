@@ -269,3 +269,25 @@ remain the closing steps. Deployment and provider activation remain deferred.
   **58 passing tests**. Superseded Today/search/reminder failures are ignored;
   schedule input changes invalidate old previews. Source and tests are committed
   through the same branch; final CI/remote-equality receipt follows below.
+
+### Concern-boundary integration closure
+
+A final cross-feature regression identified the older area-only comparison
+boundary. The current batch now scopes new comparison history by explicit
+concern (or unassigned same-area records), includes current associations in
+Today comparison keys, and refreshes saved-result context before display.
+Changed assignments suppress incompatible save-time comparisons without
+rewriting original evidence. Existing report query context is labelled original
+save-time context. Sequential and concurrent same-concern follow-ups, separate
+concerns of the same category, unassigned records and mixed-assignment frontend
+comparisons have focused regressions. Final test/commit receipts follow below.
+
+Concern integration verification: **246 backend tests pass**, **60 frontend tests
+pass**, and **15 existing + 12 integrated browser checks pass**. The integrated
+workflow now submits an actual second assessment in the same concern and checks
+its baseline identity and primary explanation. A source-context naming collision
+found during final review was fixed and the browser explicitly verifies that a
+valid same-concern comparison is not incorrectly suppressed. The original
+clinical result/scoring/model contracts remain unchanged. Earlier commits
+`f3b9fb3` and `fb0494c` both passed development CI; the final concern integration
+commit is the remaining CI/receipt step.

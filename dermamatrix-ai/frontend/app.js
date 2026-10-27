@@ -2324,13 +2324,20 @@ function assessmentConcernScore(analysis) {
   return value !== null && value !== '' && Number.isFinite(numeric) ? numeric : null;
 }
 
+function contextualProgress(summary, link) {
+  const progress=summary.progress_comparison||{},savedScope=progress.scope;
+  const currentEpisode=link?.episode_id||'';
+  if((savedScope?.episode_id||'')!==currentEpisode)return {status:'CONCERN_SCOPE_CHANGED',journey:null,summary:'The original comparison was saved under a different or unassigned concern. It is retained in the original report; no concern-specific comparison is shown here. Save a follow-up in the selected concern to establish its comparison.'};
+  return progress;
+}
+
 function assessmentComparisonKey(analysis) {
   const summary = analysis?.summary || {};
   const score = summary.assessment_risk || summary.assessment_result?.assessment_risk || {};
   const model = summary.model_metadata || {};
   if (!score.methodology_version || !model.model_version || !model.pipeline_version) return null;
   if (summary.input_type === 'image' && !model.runtime_image_decoder) return null;
-  return JSON.stringify([analysis.area, summary.input_type, summary.input_validation?.workflow,
+  return JSON.stringify([analysis.area, analysis.episode_link?.episode_id||'', summary.input_type, summary.input_validation?.workflow,
     score.methodology_version, model.model_id, model.model_version,
     model.dataset_version, model.pipeline_version, model.calibration_version, model.runtime_image_decoder]);
 }
@@ -2356,7 +2363,7 @@ function renderDashboardInsight(analyses, routines) {
   }
   if (latest) {
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your latest ${escapeHTML(String(latest.area).toLowerCase())} result is saved.</h2><p>Earlier records may use different or unrecorded versions. Review each result in its own context.</p></div><div class="dashboard-insight-metric"><small>Saved assessments</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check an area →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">YOUR BASELINE</p><h2>Your latest ${escapeHTML(String(latest.area).toLowerCase())} result is saved.</h2><p>Earlier records may belong to another concern or use different or unrecorded versions. Review each result in its own context.</p></div><div class="dashboard-insight-metric"><small>Saved assessments</small><strong>${analyses.length}</strong><button class="text-button" data-dashboard-nav="home">Check an area →</button></div>`;
     return;
   }
   if (routines.length) {
@@ -2471,11 +2478,20 @@ function renderReportRegister() {
   $$('[data-download-report]').forEach(button => { button.onclick = () => downloadSavedReport(button.dataset.downloadReport); });
 }
 
-function showSavedReport(assessmentId) {
-  const item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
+async function showSavedReport(assessmentId) {
+  let item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
+  const workspaceVersion=state.workspaceVersion,requestVersion=(state.savedReportRequestVersion||0)+1;state.savedReportRequestVersion=requestVersion;
+  if(window.ConsumerClient?.enabled && state.profile?.patient_id){
+    try{const detail=await requestJSON('/api/assessments/'+encodeURIComponent(assessmentId));if(workspaceVersion!==state.workspaceVersion||requestVersion!==state.savedReportRequestVersion)return;
+      item={assessment_id:assessmentId,area:detail.area,created_at:detail.created_at,summary:detail.summary,episode_link:detail.episode_link||{},unavailable:false};
+      const index=state.analyses.findIndex(r=>r.assessment_id===assessmentId);if(index<0)state.analyses.push(item);else state.analyses[index]=item;
+    }catch(error){if(workspaceVersion===state.workspaceVersion&&requestVersion===state.savedReportRequestVersion)toast(error.message||'This saved record could not be opened.');return;}
+  }
   if (!item) return toast('This saved report is no longer available.');
   if (item.unavailable) return toast('This saved record is unreadable. Its original data has not been changed.');
   const data = { ...(item.summary || {}), research_classifier: item.summary?.classification || {} };
+  if(window.ConsumerClient?.enabled){data.progress_comparison=contextualProgress(item.summary||{},item.episode_link);data.journey=data.progress_comparison.journey;}
+
   const questionnaire = data.input_type === 'questionnaire';
   const presentation = normaliseAssessmentPresentation(data);
   state.assessmentId = assessmentId;

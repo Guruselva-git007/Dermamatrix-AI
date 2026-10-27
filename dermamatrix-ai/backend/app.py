@@ -689,21 +689,36 @@ def stored_analysis_summary(response: dict) -> dict:
     }
 
 
-def versioned_progress_summary(connection: pymysql.Connection, user_id: int | None, area: str, current: dict) -> dict:
+def versioned_progress_summary(connection: pymysql.Connection, user_id: int | None, area: str, current: dict, episode_id: str = "") -> dict:
     """Extend the existing saved-analysis history without creating a second history system."""
     if not user_id:
         return build_progress_comparison(user_id=None, area=area, current=current, historical=[])
+    scoped = has_request_context() and consumer_security.enabled()
+    condition, parameters = "user_id=%s AND area=%s", (user_id, area)
+    if scoped:
+        linked = "SELECT 1 FROM consumer_records l WHERE l.user_id=analysis_records.user_id AND l.kind='episode_link' AND l.subject_id=CONCAT('assessment:',analysis_records.assessment_id) AND JSON_UNQUOTE(JSON_EXTRACT(l.data_json,'$.episode_id'))"
+        condition += " AND EXISTS(" + linked + "=%s)" if episode_id else " AND NOT EXISTS(" + linked + " IS NOT NULL AND " + "JSON_UNQUOTE(JSON_EXTRACT(l.data_json,'$.episode_id'))<>''" + ")"
+        if episode_id:
+            parameters += (episode_id,)
+    def finish(result):
+        if scoped:
+            result['scope'] = dict(contract='comparison-scope-v1', episode_id=episode_id, kind='concern' if episode_id else 'unassigned_same_area')
+            if result.get('journey'):
+                result['journey']['episode_id'] = episode_id
+                if episode_id:
+                    result['journey']['journey_id'] += '-' + episode_id
+        return result
     with connection.cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user_id, area))
+        cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE " + condition, parameters)
         historical_count = int(cursor.fetchone()["count"])
         if not historical_count:
-            return build_progress_comparison(user_id=user_id, area=area, current=current, historical=[])
-        cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at ASC, id ASC LIMIT 1", (user_id, area))
+            return finish(build_progress_comparison(user_id=user_id, area=area, current=current, historical=[]))
+        cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE " + condition + " ORDER BY created_at ASC, id ASC LIMIT 1", parameters)
         baseline = cursor.fetchone()
         if historical_count == 1:
             previous = baseline
         else:
-            cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE user_id=%s AND area=%s ORDER BY created_at DESC, id DESC LIMIT 1", (user_id, area))
+            cursor.execute("SELECT assessment_id, result_json, created_at FROM analysis_records WHERE " + condition + " ORDER BY created_at DESC, id DESC LIMIT 1", parameters)
             previous = cursor.fetchone()
     historical = []
     for record in (baseline, previous):
@@ -712,7 +727,7 @@ def versioned_progress_summary(connection: pymysql.Connection, user_id: int | No
         except (TypeError, ValueError, json.JSONDecodeError):
             summary = {}
         historical.append({"assessment_id": record["assessment_id"], "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]), "summary": summary})
-    return build_progress_comparison(user_id=user_id, area=area, current=current, historical=historical, historical_count=historical_count)
+    return finish(build_progress_comparison(user_id=user_id, area=area, current=current, historical=historical, historical_count=historical_count))
 
 
 def clinician_first_care_plan(risk_score: int | None) -> dict:
@@ -1268,16 +1283,17 @@ def list_analysis_history():
             return jsonify({"error": "Create or open a local profile before viewing saved analyses."}), 401
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT assessment_id, area, result_json, image_stored, created_at FROM analysis_records WHERE user_id=%s ORDER BY created_at DESC LIMIT 50",
+                "SELECT assessment_id, area, result_json, image_stored, created_at FROM analysis_records WHERE user_id=%s ORDER BY created_at DESC, id DESC LIMIT 50",
                 (user["id"],),
             )
             records = cursor.fetchall()
+        associations = episode_links(connection, user['id']) if consumer_security.enabled() else {}
         analyses = []
         for record in records:
             summary = read_saved_summary(record["result_json"])
             analyses.append({
                 "assessment_id": record["assessment_id"], "area": record["area"], "created_at": utc_iso(record['created_at']),
-                "image_stored": bool(record["image_stored"]), "summary": summary or {}, "unavailable": summary is None,
+                "image_stored": bool(record["image_stored"]), "summary": summary or {}, "unavailable": summary is None, "episode_link": associations.get("assessment:" + record["assessment_id"], {}),
             })
         return jsonify({"analyses": analyses, "assessments": analyses, "image_policy": "Analysis metadata is stored for registered profiles. Uploaded image bytes are not stored in this prototype."})
     finally:
@@ -1379,7 +1395,7 @@ def download_history_export():
             return jsonify({"error": "Sign in to download your saved history."}), 401
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT assessment_id, area, result_json, created_at FROM analysis_records WHERE user_id=%s ORDER BY created_at DESC LIMIT 50",
+                "SELECT assessment_id, area, result_json, created_at FROM analysis_records WHERE user_id=%s ORDER BY created_at DESC, id DESC LIMIT 50",
                 (user["id"],),
             )
             raw_analyses = cursor.fetchall()
@@ -1908,6 +1924,8 @@ def create_assessment():
         if not user:
             return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
         user_id = user["id"]
+        if consumer_security.enabled():
+            connection.commit(); lock_owner(connection, user_id)
         history = account_history(connection, user_id)
         with connection.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user_id, area))
@@ -1917,7 +1935,7 @@ def create_assessment():
         response["recommendations"] = build_recommendations(area, research_classifier, cdss=response["clinical_decision_support"], assessment_state=assessment_state, canonical_evidence=canonical_evidence, presentation_case=presentation_case)
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only"
         attach_condition_intelligence(response)
-        response["progress_comparison"] = versioned_progress_summary(connection, user_id, area, response)
+        response["progress_comparison"] = versioned_progress_summary(connection, user_id, area, response, request.form.get("episode_id", ""))
         response["journey"] = response["progress_comparison"].get("journey")
         timestamp = now()
         with connection.cursor() as cursor:
@@ -1969,6 +1987,8 @@ def create_sweat_assessment():
     for field in ("urgent_concern", "medication_change", "daily_impact"):
         if field in payload and not isinstance(payload[field], bool):
             return jsonify({"error": f"{field.replace('_', ' ').capitalize()} must be true or false."}), 400
+    if consumer_security.enabled() and not isinstance(payload.get('episode_id', ''), str):
+        return jsonify(error='Choose a valid concern identifier.'), 400
     pattern = str(payload.get("pattern", "usual")).strip().lower()
     if pattern not in {"usual", "excessive", "reduced"}:
         return jsonify({"error": "Choose the reported sweating pattern."}), 400
@@ -2059,6 +2079,8 @@ def create_sweat_assessment():
         user = current_user(connection)
         if not user:
             return jsonify({"error": "Your session is no longer available. Sign in again before saving an assessment."}), 401
+        if consumer_security.enabled():
+            connection.commit(); lock_owner(connection, user["id"])
         history = account_history(connection, user["id"])
         with connection.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) AS count FROM analysis_records WHERE user_id=%s AND area=%s", (user["id"], "Sweat"))
@@ -2068,7 +2090,7 @@ def create_sweat_assessment():
         response["recommendations"] = build_recommendations("Sweat", None, cdss=response["clinical_decision_support"], assessment_state=assessment_state)
         response["commerce_eligibility"] = "personal_care_only" if response["clinical_decision_support"]["product_guidance"] in {"GENERAL_SELF_CARE_ONLY", "HEALTHY_MAINTENANCE_ONLY"} else "general_care_only"
         attach_condition_intelligence(response)
-        response["progress_comparison"] = versioned_progress_summary(connection, user["id"], "Sweat", response)
+        response["progress_comparison"] = versioned_progress_summary(connection, user["id"], "Sweat", response, payload.get("episode_id", ""))
         response["journey"] = response["progress_comparison"].get("journey")
         timestamp = now()
         with connection.cursor() as cursor:
