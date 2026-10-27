@@ -1,7 +1,7 @@
 # Consumer development execution status
 
 Updated: 27 October 2026. Canonical checkpoint. Sequential implementation;
-**deployment is deferred by the owner**. No public release. Source branch is pushed; remote CI verification is in progress.
+**deployment is deferred by the owner**. No public release. Source branch is pushed; remote CI verifies implementation commit `524c6b2`.
 
 ## Verdict and current batch
 
@@ -22,7 +22,10 @@ booking service was added without an approved requirement.
   private artifacts, snapshots and unrelated root work.
 - `fea6002` — consumer account/security/privacy/care services and tests.
 - `8ae9f8c` — integrated consumer interface, history, review and offline behaviour.
-- Documentation/CI commit follows this checkpoint. Read `git log` for its exact ID.
+- `756a771` — development CI and operating/validation guides.
+- `bf4f722` — patched dependencies and explicit decoder/pipeline lineage.
+- `524c6b2` — stale local MySQL process/socket-lock recovery.
+- Final documentation-only checkpoint follows these verified implementation commits.
 - Main/history were not reset or rewritten. No force push, cloud publication or
   silent inclusion of unrelated work. Existing root guidance/snapshots and the
   earlier root chat-index change remain outside these app commits.
@@ -53,7 +56,7 @@ booking service was added without an approved requirement.
 
 ## Verification
 
-- Full integration: **225 backend tests pass**, zero failures/skips; **48 frontend
+- Full integration: **225 backend tests pass locally**, zero failures/skips; **48 frontend
   tests pass**, zero failures/skips. Latest account hardening also passes its
   focused 15-test SQL suite.
 - Browser: account UI 9 checks, recurring/Learn UI 14, review/offline/reflow 14,
@@ -67,7 +70,7 @@ booking service was added without an approved requirement.
   closed mobile sidebar ends at x=0. Early capture during resize/scroll was not
   misrepresented as stable layout evidence.
 - All three installed image adapters actually load and infer on generated pixels.
-- Model adapters/metadata, score engines, canonical/assessment contract and PDF
+- Model adapters, score engines, canonical/assessment contract and PDF
   generator are byte-identical to the task baseline. No weights/data modified.
 - Synthetic encrypted restore: all 19 tables exactly reproduced; tampered input
   rejected before SQL; populated target rejected.
@@ -109,3 +112,26 @@ was deliberately advanced for Pillow 13 and saved decoder lineage added. Six
 format/orientation RGB fixtures match; one rotated Skin resize/logit sample
 changes slightly with the same rank order. No cross-decoder trend/clinical
 equivalence is claimed. The compatibility review is retained in task evidence.
+
+## Final verified disposition
+
+[Remote development verification](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40487465720)
+passed on implementation commit `524c6b2793f95190980a0642c4d456e1f86e0fa9`:
+**226 backend tests**, **48 frontend tests**, dependency and tracked-secret gates,
+explicit synthetic migrations and Chromium smoke. The existing source branch
+was verified equal locally/remotely. The default branch remains unmerged, so its
+separate dependency-alert banner is not evidence about this checked branch.
+
+The resumed local launcher regression identified a reboot-stale PID and socket
+lock referencing an unrelated live macOS process. Guarded identity/socket checks
+and a fake-binary regression now prevent false readiness or signalling that
+process. The normal existing local database/app were restored without replacing
+records. Six final health/readiness/asset checks pass; email remains disabled.
+The private synthetic app/database/browser resources were closed. Final sleep-
+hold release and remaining working-tree status are in the ignored completion
+receipt. No deployment or operational delivery is implied by Git push or CI.
+
+Current independently implemented development is integrated and saved. Remaining
+items are the stated operator/policy/provider, real-device/human/clinical and
+future deployment decisions. The next action is their approved activation and
+verification, not a new rebuild or repetition of completed engineering.

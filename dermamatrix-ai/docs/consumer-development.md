@@ -119,8 +119,8 @@ installation does not enable offline assessment or notification delivery.
 - Dependency environment: `.venv/bin/python -m pip check`
 
 `requirements-local.lock` records the verified Darwin arm64 CPython 3.14 runtime.
-The new development CI describes a pinned Linux check but needs an actual remote
-run before Linux reproducibility is claimed. It has no deployment job. Neither
+The development CI successfully executed the pinned Linux install, migration,
+regression, advisory and browser-smoke checks on implementation commit 524c6b2. It has no deployment job. Neither
 an existing Dockerfile nor this workflow establishes a staging deployment.
 
 `encrypted_database_copy.py` streams a consistent MySQL dump into standard CMS
@@ -155,3 +155,9 @@ This is bounded synthetic compatibility evidence, not medical equivalence.
 Image pipeline versions were advanced, decoder runtime is included in saved
 metadata, and the dashboard disallows numerical trends across decoder versions
 or missing decoder evidence. Original historical results remain unchanged.
+
+The local MySQL launcher also verifies the recorded process executable, data and
+socket paths; a PID reused after reboot cannot establish database readiness.
+It preserves occupied ports/live sockets and removes only a verified stale
+project socket lock. A fake-binary test covers an unrelated live process, and
+the existing local app/database were recovered through this path.
