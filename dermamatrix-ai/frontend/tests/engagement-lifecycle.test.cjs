@@ -7,6 +7,7 @@ function harness(request=async()=>({analyses:[],next_cursor:null})){
   add(option){this.options.push(option);}
   append(...children){this.children.push(...children);}
   close(){this.closed=true;}
+  reset(){this.resetCount=(this.resetCount||0)+1;this.onReset?.();}
   querySelectorAll(tag){return this.children.filter(child=>child.tag===tag);}
  }
  const nodes=new Map();const element=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id);};
@@ -25,9 +26,12 @@ test('Journey refreshes when saved assessments change without duplicate unchange
 test('account clear removes private selectors, status text, results and guest-only dead controls',()=>{
  const h=harness();for(const id of ['reminderStatus','scheduleStatus','journeySearchStatus','engagementStatus']){h.element(id).textContent='previous-account status';}
  h.element('scheduleRoutine').options=[{label:'Private routine'}];h.element('routineSteps').value='Private step';h.element('journeySearchResults').append({tag:'article'});
+ h.element('scheduleEditor').onReset=()=>{h.element('routineSteps').value='';};
  h.ui.clear();h.state.profile=null;h.ui.progress();
  for(const id of ['reminderStatus','scheduleStatus','journeySearchStatus','engagementStatus'])assert.equal(h.element(id).textContent,'');
  assert.equal(h.element('scheduleRoutine').options.length,1);assert.equal(h.element('routineSteps').value,'');assert.equal(h.element('journeySearchResults').children.length,0);assert.equal(h.element('completeJourney').hidden,true);assert.equal(h.element('scheduleWorkspace').hidden,true);
+ for(const id of ['scheduleEditor','journeySearchForm','resultContextForm'])assert.equal(h.element(id).resetCount,1);
+ assert.equal(h.element('scheduleEditor').hidden,true);assert.equal(h.element('journeyMore').hidden,true);
 });
 test('late history response cannot repopulate a signed-out workspace',async()=>{
  let release;const pending=new Promise(resolve=>release=resolve);const h=harness(()=>pending);

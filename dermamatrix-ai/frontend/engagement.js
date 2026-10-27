@@ -132,7 +132,15 @@
   }
 
   window.EngagementUI={
-    clear(){generation++;scheduleLoadVersion++;historyRequestVersion++;historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';schedule=null;scheduleId='';$('resultContextDialog')?.close();for(const id of ['todayTasks','journeySearchResults','routineEventHistory','scheduleStatus','reminderStatus','journeySearchStatus','engagementStatus'])$(id)?.replaceChildren();for(const id of ['routineSteps','routineEpisode','routineBodyArea','journeySearch','journeyEpisode','journeyBodyArea','contextEpisode','contextBodyArea'])if($(id))$(id).value='';if($('scheduleRoutine'))$('scheduleRoutine').replaceChildren(new Option('Choose a saved routine',''));if($('scheduleWorkspace'))$('scheduleWorkspace').hidden=true;if($('completeJourney'))$('completeJourney').hidden=true;},
+    clear(){
+      generation++;scheduleLoadVersion++;historyRequestVersion++;historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;
+      historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';schedule=null;scheduleId='';
+      $('resultContextDialog')?.close();
+      for(const id of ['scheduleEditor','journeySearchForm','resultContextForm'])$(id)?.reset();
+      for(const id of ['todayTasks','journeySearchResults','routineEventHistory','scheduleStatus','reminderStatus','journeySearchStatus','engagementStatus','contextStatus'])$(id)?.replaceChildren();
+      if($('scheduleRoutine'))$('scheduleRoutine').replaceChildren(new Option('Choose a saved routine',''));
+      for(const id of ['scheduleEditor','scheduleWorkspace','completeJourney','journeyMore'])if($(id))$(id).hidden=true;
+    },
     page(page){if(page==='dashboard')loadToday();if(page==='progress'){updateRoutines();if(signed()&&!$('journeySearchResults').children.length)loadHistory(true);}if(page==='learn')guides();},
     progress(){
       updateRoutines();

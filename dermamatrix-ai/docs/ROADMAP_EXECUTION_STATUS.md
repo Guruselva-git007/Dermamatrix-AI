@@ -149,7 +149,8 @@ verification, not a new rebuild or repetition of completed engineering.
 - Today submits its schedule version and keeps the same request key after a
   connection failure. A stale task cannot mark a changed schedule.
 - Journey invalidates saved search results when the assessment list changes.
-  Account clearing removes private routine choices, result rows and status text;
+  Account clearing resets complete schedule/search/context forms (including
+  times, quiet hours and reminder choices), private routine choices, rows and status;
   guest mode hides account-only history search. Late-response guards remain.
 - Local regression: 233 backend and 52 frontend tests pass. Browser and remote
   verification for this follow-up are recorded in the task's completion receipt.
