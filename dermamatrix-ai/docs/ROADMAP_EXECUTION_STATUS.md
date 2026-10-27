@@ -7,8 +7,9 @@ Real email-provider setup is also deferred. No public release. Source branch is
 
 ## Verdict and current batch
 
-**October 28 continuity batch:** A–L consumer enhancements are implemented and
-under final integration/Git verification. Preserve the Achromatic ledger and
+**October 28 continuity batch:** All independent A–L development enhancements
+are implemented, integrated and verified. Physical-device/screen-reader/human
+validation and policy-dependent erasure execution remain explicitly outstanding. Preserve the Achromatic ledger and
 English-only interface. No deployment/provider activation, new classifier,
 training, source-photo retention, schema change or historical rewrite.
 See the current batch below before following an older continuation instruction.
@@ -66,8 +67,8 @@ booking service was added without an approved requirement.
 
 ## Verification
 
-- Latest backend integration: **233 tests pass**, zero failures/skips;
-  **53 frontend tests pass**, zero failures/skips. This includes the follow-up
+- Latest backend integration: **246 tests pass**, zero failures/skips;
+  **60 frontend tests pass**, zero failures/skips. This includes the follow-up
   transport, concurrent occurrence, stale schedule and UI lifecycle regressions.
 - Browser: account UI 9 checks, recurring/Learn UI 14, review/offline/reflow 14,
   reusable smoke 3, reset request and three reset-confirm/login checks. Grouping,
@@ -291,3 +292,37 @@ valid same-concern comparison is not incorrectly suppressed. The original
 clinical result/scoring/model contracts remain unchanged. Earlier commits
 `f3b9fb3` and `fb0494c` both passed development CI; the final concern integration
 commit is the remaining CI/receipt step.
+
+### Final verified receipt — 28 October 2026
+
+- Runtime: `e273a52b857b25dfbed42bba83b4078c7b6141f5`, pushed on
+  `codex/consumer-evolution`. Development CI
+  [40584087530](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40584087530)
+  **passed**: 246 backend tests, 60 frontend tests, explicit synthetic migration
+  checks, source hygiene, pinned dependency audit (no known vulnerabilities) and
+  both browser suites (15 existing + 12 integrated checks). No deployment job.
+- Additional local capture/recovery/keyboard/dark checks: 5 pass; rendered
+  clinician brief and changed-screen screenshots inspected. Viewports cover
+  320/390/768/1440, plus large text and stable closed mobile navigation.
+- New concern-specific follow-ups, original event preservation, corrections,
+  concurrent/invalid/retry/owner tests, 56 assessments and 105 check-ins, complete
+  account JSON and existing reports remain verified. New comparisons never use
+  a different explicitly assigned concern as the baseline.
+- Ordinary local application on port 8000 refreshed and ready; frontend assets
+  match the verified source. Startup schema initialization and email transport
+  remain disabled. No real-user health record was newly submitted or opened.
+- Owned synthetic app/MySQL/browser have been closed. Task records and readable
+  project chats are refreshed privately; the task-scoped sleep hold is released
+  as the final closing step. Normal Mac sleep is allowed.
+- A documentation-only closing commit follows this verified runtime. The final
+  local/remote equality and helper-release receipts are in ignored
+  `local-artifacts/consumer-next-2026-10-28/completion.json`.
+
+**Exact next action:** the independent authorized development batch is complete.
+Do not rebuild these features, activate providers, deploy, retrain, localize or
+execute real erasure as an inferred continuation. When devices/participants are
+available, run the documented physical camera/gallery/HEIC/touch, actual
+screen-reader speech and representative human checks. Erasure/closure execution
+requires the approved DM-06 retention/exception/backup policy and explicit action.
+Keep provider setup deferred until the owner requests deployment. Future changes
+start from this verified checkpoint, preserving original records and visual system.
