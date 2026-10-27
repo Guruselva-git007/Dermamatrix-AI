@@ -29,6 +29,7 @@ jobs:
       MYSQL_DATABASE: dermamatrix_ci_synthetic
       DERMAMATRIX_ENV: test
       DERMAMATRIX_INITIALISE_SCHEMA: 'false'
+      DERMAMATRIX_CONSUMER_ENABLED: 'false'
       FLASK_SECRET_KEY: synthetic-ci-secret-never-for-real-use-20261027
       DERMAMATRIX_START_MYSQL: 'false'
     steps:

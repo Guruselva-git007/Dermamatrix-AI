@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 
 import pymysql
 from flask import Flask, g, has_request_context, jsonify, request, send_file, send_from_directory, session
-from PIL import Image, ImageFilter, ImageOps, ImageStat
+from PIL import Image, ImageFilter, ImageOps, ImageStat, __version__ as PILLOW_VERSION
 from pillow_heif import register_heif_opener
 register_heif_opener(thumbnails=False, depth_images=False, aux_images=False, decode_threads=1)
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -371,7 +371,7 @@ def _opened_image(image_bytes: bytes, filename: str | None = None) -> tuple[Imag
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(io.BytesIO(image_bytes)) as probe:
+            with Image.open(io.BytesIO(image_bytes), formats=list(set(EXPECTED_IMAGE_FORMATS.values()))) as probe:
                 detected_format = str(probe.format or "").upper()
                 width, height = probe.size
                 if width <= 0 or height <= 0:
@@ -386,7 +386,7 @@ def _opened_image(image_bytes: bytes, filename: str | None = None) -> tuple[Imag
             expected_format = EXPECTED_IMAGE_FORMATS.get(extension)
             if expected_format and detected_format != expected_format:
                 raise ImageValidationError("The file extension does not match the image content. Export the image again and retry.")
-        with Image.open(io.BytesIO(image_bytes)) as source:
+        with Image.open(io.BytesIO(image_bytes), formats=list(set(EXPECTED_IMAGE_FORMATS.values()))) as source:
             image = ImageOps.exif_transpose(source).convert("RGB")
     except ImageValidationError:
         raise
@@ -1647,7 +1647,9 @@ def create_assessment():
         CLINICAL_SKIN_MODEL_ID if area == "Skin" else
         "hair-model-adapter" if area == "Hair" else NAIL_MODEL_ID
     )
+    assessment_metadata = {**assessment_metadata, "runtime_image_decoder": "pillow-" + PILLOW_VERSION}
     validation = {
+        "runtime_image_decoder": "pillow-" + PILLOW_VERSION,
         "status": route["status"],
         "image_context": route["image_context"],
         "image_context_label": route["image_context_label"],

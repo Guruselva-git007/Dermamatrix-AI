@@ -14,15 +14,15 @@ import os
 SKIN_MODEL_ID = "ham10000-resnet34-research"
 SKIN_MODEL_VERSION = "Tschandl-2020-resnet34"
 SKIN_DATASET_VERSION = "HAM10000-2018-upstream-weight-lineage"
-PIPELINE_VERSION = "dermamatrix-inference-v1.2"
+PIPELINE_VERSION = "dermamatrix-inference-v1.3-pillow13"
 NAIL_MODEL_ID = "nail-convnexttiny-research"
 NAIL_MODEL_VERSION = "shibarashii-convnexttiny-gradual-unfreeze-2025"
 NAIL_DATASET_VERSION = "upstream-nail-ten-class-unverified-provenance"
-NAIL_PIPELINE_VERSION = "dermamatrix-nail-inference-v1"
+NAIL_PIPELINE_VERSION = "dermamatrix-nail-inference-v1.1-pillow13"
 CLINICAL_SKIN_MODEL_ID = "clinical-skin-efficientnet-research"
 CLINICAL_SKIN_MODEL_VERSION = "RevelaCap-clinical-skin-v1-a614ae0"
 CLINICAL_SKIN_DATASET_VERSION = "upstream-clinical-v2-mixed-public-datasets"
-CLINICAL_SKIN_PIPELINE_VERSION = "dermamatrix-clinical-skin-inference-v1"
+CLINICAL_SKIN_PIPELINE_VERSION = "dermamatrix-clinical-skin-inference-v1.1-pillow13"
 
 # These are product capability states, not clinical-validation labels.  They
 # allow the API and frontend to communicate exactly what a route can do

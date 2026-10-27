@@ -2316,9 +2316,10 @@ function assessmentComparisonKey(analysis) {
   const score = summary.assessment_risk || summary.assessment_result?.assessment_risk || {};
   const model = summary.model_metadata || {};
   if (!score.methodology_version || !model.model_version || !model.pipeline_version) return null;
+  if (summary.input_type === 'image' && !model.runtime_image_decoder) return null;
   return JSON.stringify([analysis.area, summary.input_type, summary.input_validation?.workflow,
     score.methodology_version, model.model_id, model.model_version,
-    model.dataset_version, model.pipeline_version, model.calibration_version]);
+    model.dataset_version, model.pipeline_version, model.calibration_version, model.runtime_image_decoder]);
 }
 
 function renderDashboardInsight(analyses, routines) {

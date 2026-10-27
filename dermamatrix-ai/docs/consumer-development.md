@@ -138,3 +138,20 @@ The launcher log format omits paths, query strings, identifiers, headers and
 request bodies; it records method/status/duration. No analytics or session replay
 was added. Existing old log files are preserved. Production monitoring, alert
 recipients, support service, retention and deployment remain decisions.
+
+## Dependency patch and evidence lineage
+
+The first remote CI run installed dependencies and passed regression tests, then
+correctly failed the advisory gate: Pillow 11.3.0, Werkzeug 3.1.8 and filelock
+4.0.1 had known advisories. Requirements now pin Pillow 13.0.0, Werkzeug 3.1.9 and
+filelock 4.2.1, the fixed versions identified by the dependency audit. No advisory
+was suppressed. Actual-format allowlisting precedes image decoding.
+
+Six PNG/JPEG/WEBP/AVIF/HEIC/orientation fixtures decode to identical RGB pixels
+across Pillow 11.3/13. All six ordinary/rotated adapter rank orders match. One
+rotated ordinary-Skin fixture has changed bilinear-resize output and maximum
+raw-logit difference 0.033935; other five fixture adapter outputs match exactly.
+This is bounded synthetic compatibility evidence, not medical equivalence.
+Image pipeline versions were advanced, decoder runtime is included in saved
+metadata, and the dashboard disallows numerical trends across decoder versions
+or missing decoder evidence. Original historical results remain unchanged.

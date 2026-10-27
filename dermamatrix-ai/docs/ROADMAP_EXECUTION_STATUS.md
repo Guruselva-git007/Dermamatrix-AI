@@ -1,7 +1,7 @@
 # Consumer development execution status
 
 Updated: 27 October 2026. Canonical checkpoint. Sequential implementation;
-**deployment is deferred by the owner**. No public release or Git push performed.
+**deployment is deferred by the owner**. No public release. Source branch is pushed; remote CI verification is in progress.
 
 ## Verdict and current batch
 
@@ -53,7 +53,7 @@ booking service was added without an approved requirement.
 
 ## Verification
 
-- Full integration: **225 backend tests pass**, zero failures/skips; **47 frontend
+- Full integration: **225 backend tests pass**, zero failures/skips; **48 frontend
   tests pass**, zero failures/skips. Latest account hardening also passes its
   focused 15-test SQL suite.
 - Browser: account UI 9 checks, recurring/Learn UI 14, review/offline/reflow 14,
@@ -93,3 +93,19 @@ synthetic sink for real accounts. Approve retention/erasure/backup-key ownership
 before irreversible rights execution. Complete remote CI and real-device/human
 validation when those environments/participants are available. Deployment remains
 deferred until the owner requests it. Do not restart the roadmap or retrain models.
+
+## Resumed dependency completion
+
+The initial remote development run passed pinned installation, migrations and
+regression tests, then failed the advisory gate for Pillow, Werkzeug and filelock.
+Fixed pins are now Pillow 13.0.0, Werkzeug 3.1.9 and filelock 4.2.1. No audit
+exception was added. Local post-patch integration: 225/225 backend and 48/48
+frontend tests pass. A preliminary unit command without explicit legacy-test
+configuration inherited the now-enabled local consumer setting and failed;
+final regression evidence uses the intended isolated synthetic configuration.
+
+Image adapters and score algorithms remain unchanged. Pipeline version metadata
+was deliberately advanced for Pillow 13 and saved decoder lineage added. Six
+format/orientation RGB fixtures match; one rotated Skin resize/logit sample
+changes slightly with the same rank order. No cross-decoder trend/clinical
+equivalence is claimed. The compatibility review is retained in task evidence.
