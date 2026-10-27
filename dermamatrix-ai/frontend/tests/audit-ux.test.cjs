@@ -41,11 +41,21 @@ function harness(width = 375) {
   const body = element();
   document = { body, activeElement: body, querySelector: get, querySelectorAll: selector => selector === '.assessment-steps li' ? steps : [] };
   const context = vm.createContext({ document, window: { innerWidth: width }, URL: { revokeObjectURL() {} }, AbortController, console });
-  vm.runInContext(definitions + '\nglobalThis.api = { state, updateAssessmentProgress, resetImage, syncInteractionInertness, containKeyboardFocus, setNavigationOpen, processingNoticeVersion, loadProcessingNotices, handleChangedProcessingNotice, downloadAccountData, updateAccountExportControls };', context);
+  vm.runInContext(definitions + '\nglobalThis.api = { state, setAuthTab, updateAssessmentProgress, resetImage, syncInteractionInertness, containKeyboardFocus, setNavigationOpen, processingNoticeVersion, loadProcessingNotices, handleChangedProcessingNotice, downloadAccountData, updateAccountExportControls };', context);
   return { context, api: context.api, get, steps, strip, body, document, element };
 }
 
 function current(h) { return h.steps.findIndex(item => item.getAttribute('aria-current') === 'step') + 1; }
+
+test('delayed auth autofocus respects a field already chosen by the user or autofill', () => {
+  const h=harness(),first=h.element(),email=h.element(),form=h.get('#registerForm');let queued;
+  h.context.window.requestAnimationFrame=callback=>{queued=callback;};
+  form.querySelector=()=>first;form.contains=node=>node===first||node===email;
+  h.get('#authGate').classList.add('show');
+  h.api.setAuthTab('register');email.focus();queued();assert.equal(h.document.activeElement,email);
+  h.document.activeElement=h.body;h.api.setAuthTab('register');queued();assert.equal(h.document.activeElement,first);
+  h.document.activeElement=h.body;h.api.setAuthTab('register');form.hidden=true;queued();assert.equal(h.document.activeElement,h.body);
+});
 
 test('opening optional context cannot complete an absent image; real result and retry states remain distinct', () => {
   const h = harness(); const { state } = h.api;

@@ -1,7 +1,9 @@
 # Consumer development execution status
 
 Updated: 27 October 2026. Canonical checkpoint. Sequential implementation;
-**deployment and real email-provider setup are deferred by the owner**. No public release. Source branch is `codex/consumer-evolution`; the remote verification receipts below identify checked implementations.
+**Development remains the scope until the owner explicitly requests deployment.**
+Real email-provider setup is also deferred. No public release. Source branch is
+`codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
 ## Verdict and current batch
 
@@ -58,8 +60,8 @@ booking service was added without an approved requirement.
 
 ## Verification
 
-- Latest full integration: **233 backend tests pass locally**, zero failures/skips;
-  **52 frontend tests pass**, zero failures/skips. This includes the follow-up
+- Latest backend integration: **233 tests pass**, zero failures/skips;
+  **53 frontend tests pass**, zero failures/skips. This includes the follow-up
   transport, concurrent occurrence, stale schedule and UI lifecycle regressions.
 - Browser: account UI 9 checks, recurring/Learn UI 14, review/offline/reflow 14,
   reusable smoke 3, reset request and three reset-confirm/login checks. Grouping,
@@ -139,6 +141,41 @@ Current independently implemented development is integrated and saved. Remaining
 items are the stated operator/policy/provider, real-device/human/clinical and
 future deployment decisions. The next action is their approved activation and
 verification, not a new rebuild or repetition of completed engineering.
+
+## Consumer interface and experience polish — 27 October 2026
+
+The owner explicitly rejected the confusing, cluttered interface and authorised
+fixes. Replaced six conflicting historical design layers with one product
+stylesheet, retained the working Flask/vanilla-JavaScript architecture and all
+model/scoring/evidence/consent contracts. Existing archived styles remain on disk
+but are no longer linked into the app.
+
+- Compact, aligned Home with one main start action and four concern pathways.
+- Input fields appear after concern selection; optional context and teaching
+  tools remain secondary. Final review and data-handling notices are preserved.
+- Journey separates Results, Routines and Check-ins. One searchable results list
+  replaces duplicate lists; additional filters are disclosed when needed.
+- Routine creation hands off to its steps and schedule; edit/check-in shortcuts
+  reveal the correct panel. Profile separates Preferences, Security and Privacy.
+- Header search finds health guides. Result and tracking labels explain their
+  purpose; duplicate legacy report panels remain hidden data bridges.
+- Fixed delayed autofocus stealing fast form input, stale account form/status
+  remnants, disabled/loading email actions and tiny legacy text.
+- Keyboard tabs, guest/account boundaries and the legacy account-export fallback
+  are exercised in actual Chromium against disposable synthetic SQL.
+- Local verification: 53 frontend tests; 15 browser checks covering seven screens
+  at 320/390/768/1440px, both themes, native review, actual synthetic routine,
+  schedule/check-in/result saves and sign-out. No uncaught JavaScript exceptions
+  or horizontal page overflow in those samples. CI now validates the browser
+  command's returned JSON instead of relying on the CLI exit code alone.
+
+Design decisions and prioritised future features:
+[consumer-experience-plan.md](consumer-experience-plan.md). Private screenshots,
+measurements and final CI/source receipts are under the ignored
+`local-artifacts/consumer-ui-polish-2026-10-27/` folder at the project root.
+These checks do not establish physical-device, participant, clinical or full
+accessibility validation. Future work stays in development; deployment/provider
+activation must not be inferred as the next task.
 
 ## Development follow-up — 27 October 2026
 

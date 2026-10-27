@@ -55,6 +55,7 @@ jobs:
           node --check frontend/app.js
           node --check frontend/consumer.js
           node --check frontend/engagement.js
+          node --check frontend/workspace.js
           git diff --check
       - name: Dependency and tracked-secret checks
         run: |
@@ -70,5 +71,6 @@ jobs:
           python -m gunicorn --chdir backend --bind 127.0.0.1:8001 --workers 1 app:app > /tmp/dermamatrix-ci.log 2>&1 &
           for attempt in $(seq 1 20); do curl --fail --silent http://127.0.0.1:8001/api/readiness && break; sleep 1; done
           playwright-cli -s=ci open http://127.0.0.1:8001 --browser=chrome
-          playwright-cli -s=ci run-code --filename=frontend/tests/browser-smoke.js
+          playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-smoke.js > /tmp/dermamatrix-browser.json
+          python -c "import json; d=json.load(open('/tmp/dermamatrix-browser.json')); assert len(d['checks']) >= 12 and not d['errors']; print(json.dumps(d))"
           playwright-cli -s=ci close

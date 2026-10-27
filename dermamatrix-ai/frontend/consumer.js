@@ -77,8 +77,11 @@
   async function refreshSecurity() {
     if (!owner || !el('consumerAccount')) return;
     const version = generation;
-    el('consumerAccount').hidden = !window.ConsumerClient.enabled;
+    el('consumerAccount').hidden = false;
+    el('consumerAccount').querySelectorAll('[data-consumer-feature]').forEach(panel => { panel.hidden = !window.ConsumerClient.enabled; });
     if (!window.ConsumerClient.enabled) return;
+    el('resendVerification').disabled = true;
+    el('consumerDeliveryState').textContent = 'Checking email availability…';
     try {
       const [account, privacy] = await Promise.all([requestJSON('/api/security/account'), requestJSON('/api/privacy')]);
       if (version !== generation || !owner) return;
@@ -87,6 +90,8 @@
       el('processingPaused').value = String(!privacy.processing_paused);
       el('processingPauseButton').textContent = privacy.processing_paused ? 'Resume new processing' : 'Pause new processing';
       el('consumerDeliveryState').textContent = account.delivery_mode === 'sink' ? 'Isolated development mailbox. Real email delivery is not enabled.' : account.delivery_mode === 'disabled' ? 'Email delivery is not configured. Verification and recovery cannot send messages yet.' : 'Configured email transport. Delivery confirmation is separate.';
+      el('resendVerification').disabled = account.email_verified || account.delivery_mode === 'disabled';
+      el('resendVerification').textContent = account.email_verified ? 'Email verified' : account.delivery_mode === 'disabled' ? 'Email service unavailable' : 'Send verification link';
       const sessions = el('consumerSessions'); sessions.replaceChildren();
       for (const entry of account.sessions) {
         const row = document.createElement('li');
@@ -103,7 +108,7 @@
   }
 
   window.ConsumerUI = {
-    clear() { generation++; owner = null; rightsKey = null; rightsSignature = null; el('consumerAccount')?.setAttribute('hidden', ''); el('consumerSessions')?.replaceChildren(); el('privacyRequests')?.replaceChildren(); el('consentHistory')?.replaceChildren(); document.querySelectorAll('#consumerAccount input,#consumerAccount textarea').forEach(i => { i.value = ''; }); if (el('accountActionDialog')?.open) el('accountActionDialog').close(); pendingAction = null; },
+    clear() { generation++; owner = null; rightsKey = null; rightsSignature = null; el('consumerAccount')?.setAttribute('hidden', ''); el('consumerSessions')?.replaceChildren(); el('privacyRequests')?.replaceChildren(); el('consentHistory')?.replaceChildren(); document.querySelectorAll('#consumerAccount form').forEach(form => form.reset()); for(const id of ['consumerStatus','consumerDeliveryState','emailVerificationState','processingState'])if(el(id))el(id).textContent=''; if(el('resendVerification'))el('resendVerification').disabled=true; if (el('accountActionDialog')?.open) el('accountActionDialog').close(); pendingAction = null; },
     session(profile) { generation++; owner = profile?.patient_id || null; },
     ready() { if (incomingAction) { const action = incomingAction; incomingAction = null; showAction(action); } },
     refresh: refreshSecurity,
@@ -115,12 +120,13 @@
     section.innerHTML = `
       <header><h2>Security & privacy</h2><p>Manage your account access and the information you choose to process.</p></header>
       <p id="consumerStatus" class="consumer-status" role="status" aria-live="polite"></p>
-      <section class="consumer-panel" aria-labelledby="consumerEmailTitle"><h3 id="consumerEmailTitle">Email & account security</h3><p id="emailVerificationState"></p><p id="consumerDeliveryState"></p><button id="resendVerification" class="button quiet" type="button">Send verification link</button>
+      <section class="consumer-panel" aria-labelledby="consumerEmailTitle"><h3 id="consumerEmailTitle">Email & account security</h3><p id="emailVerificationState"></p><p id="consumerDeliveryState"></p><button id="resendVerification" class="button quiet" type="button" disabled>Send verification link</button>
       <details><summary>Change password</summary><form id="changePasswordForm"><label>Current password<input name="current_password" type="password" autocomplete="current-password" required maxlength="128"></label><label>New password<input name="new_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required aria-describedby="newPasswordHelp"></label><p id="newPasswordHelp">Use 8–128 characters. Other sessions and outstanding account links will be revoked.</p><button type="submit" class="button primary">Change password</button></form></details>
       <details><summary>Change email address</summary><form id="changeEmailForm"><label>New email<input name="new_email" type="email" autocomplete="email" maxlength="254" required></label><label>Current password<input name="current_password" type="password" autocomplete="current-password" maxlength="128" required></label><p>The new address must be verified before it replaces your account email.</p><button type="submit" class="button primary">Request email change</button></form></details></section>
       <section class="consumer-panel" aria-labelledby="sessionTitle"><h3 id="sessionTitle">Active sessions</h3><ul id="consumerSessions" class="consumer-list"></ul><form id="revokeSessionForm"><input id="sessionTarget" type="hidden" name="session_id" value="others"><label>Current password<input id="sessionPassword" name="current_password" type="password" autocomplete="current-password" maxlength="128" required></label><button type="submit" class="button quiet">Revoke selected / other sessions</button></form></section>
       <section class="consumer-panel" aria-labelledby="privacyTitle"><h3 id="privacyTitle">Your health information</h3><p id="processingState"></p><p>Pausing stops new account health processing and cancels pending reminders. Existing records remain available for access and export. It does not erase records or apply to a separately chosen guest workspace.</p><form id="processingControlForm"><input id="processingPaused" name="paused" type="hidden"><label>Confirm current password<input name="current_password" type="password" autocomplete="current-password" maxlength="128" required></label><button id="processingPauseButton" type="submit" class="button quiet">Pause new processing</button></form><details><summary>Recorded consent history</summary><ul id="consentHistory" class="consumer-list"></ul></details><p>Use <strong>Download account data (JSON)</strong> below for your complete local account copy. Source photos are not retained.</p></section>
       <section class="consumer-panel" aria-labelledby="rightsTitle"><h3 id="rightsTitle">Requests & corrections</h3><p>Requests are recorded in this local workspace. No monitored support service or erasure policy has been approved. A recorded request does not mean it was reviewed or that data was deleted.</p><form id="rightsRequestForm"><label>Request type<select name="kind"><option value="correction">Correct account data</option><option value="deletion">Request data deletion</option><option value="account_closure">Request account closure</option><option value="support">Ask for help</option><option value="content_correction">Report educational content</option></select></label><label>Details<textarea name="note" maxlength="2000" aria-describedby="rightsNoteHelp"></textarea></label><small id="rightsNoteHelp">Up to 2,000 characters. Avoid adding photos or unnecessary health details.</small><label>Current password (required for deletion or closure)<input name="current_password" type="password" autocomplete="current-password" maxlength="128"></label><button type="submit" class="button primary">Record request locally</button></form><h4>Your request status</h4><ul id="privacyRequests" class="consumer-list"></ul></section>`;
+    section.querySelectorAll('.consumer-panel').forEach(panel => { panel.dataset.consumerFeature = ''; });
     el('settings')?.querySelector('.settings-groups')?.before(section);
     const dialog = document.createElement('dialog'); dialog.id = 'accountActionDialog'; dialog.className = 'consumer-dialog';
     dialog.setAttribute('aria-labelledby', 'accountActionTitle');

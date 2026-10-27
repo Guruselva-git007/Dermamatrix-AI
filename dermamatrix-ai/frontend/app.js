@@ -227,6 +227,7 @@ function selectArea(area, { userSelected = false } = {}) {
     updateImageContext();
   }
   transitionAssessment(AssessmentState.INPUT_REQUIRED, sweat ? 'QUESTIONNAIRE REQUIRED' : 'IMAGE REQUIRED');
+  window.WorkspaceUI?.assessment();
   return true;
 }
 
@@ -448,6 +449,7 @@ function clearWorkspaceEvidence() {
   window.ConsumerUI?.clear();
   window.EngagementUI?.clear();
   window.AssessmentUX?.clear();
+  window.WorkspaceUI?.clear();
   state.workspaceVersion += 1;
   if (state.assessmentInFlight) interruptAssessment();
   closeResult(); closeProfile();
@@ -609,8 +611,10 @@ function setAuthTab(tab) {
   clearAuthFieldState($('#registerForm')); clearAuthFieldState($('#loginForm'));
   setAuthMessage('');
   window.requestAnimationFrame(() => {
-    const input = (isLogin ? $('#loginForm') : $('#registerForm')).querySelector('input:not([type="checkbox"])');
-    input?.focus();
+    const form = isLogin ? $('#loginForm') : $('#registerForm');
+    const input = form.querySelector('input:not([type="checkbox"])');
+    // Do not steal focus from a person or autofill that has already moved on.
+    if (!form.hidden && $('#authGate').classList.contains('show') && !(form.contains(document.activeElement) && document.activeElement !== input)) input?.focus();
   });
 }
 
@@ -844,6 +848,7 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   if (target === 'products') loadCommerceCatalog();
   if (target === 'settings') window.ConsumerUI?.refresh();
   window.EngagementUI?.page(target);
+  window.WorkspaceUI?.page(target);
   if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
   if (scrollToTop) window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
@@ -1279,17 +1284,17 @@ function patientList(items, emptyMessage) {
 function patientMetricRow(presentation) {
   const cards = [];
   if (presentation.pirs.score !== null) {
-    cards.push(`<div><small>${presentation.isPresentationCase ? 'REPORTED PRIORITY' : 'PIRS'}</small><strong>${escapeHTML(presentation.pirs.value)}</strong><p>${escapeHTML(presentation.pirs.note)}</p></div>`);
+    cards.push(`<div><small>${presentation.isPresentationCase ? 'Reported priority' : 'Tracking priority (PIRS)'}</small><strong>${escapeHTML(presentation.pirs.value)}</strong><p>${escapeHTML(presentation.pirs.note)}</p></div>`);
   }
   if (presentation.assessmentRisk.score !== null) {
     const concernNote = presentation.isPresentationCase
       ? `${presentation.assessmentRisk.value} from image and reported inputs · ${presentation.assessmentRisk.urgency}. Independent of teaching label.`
       : `${presentation.assessmentRisk.value} assessment concern · ${presentation.assessmentRisk.urgency}`;
-    cards.push(`<div><small>${presentation.isPresentationCase ? 'INPUT-BASED CONCERN' : 'CONCERN'}</small><strong>${escapeHTML(presentation.assessmentRisk.level)}</strong><p>${escapeHTML(concernNote)}</p></div>`);
+    cards.push(`<div><small>${presentation.isPresentationCase ? 'Input-based concern' : 'Assessment concern'}</small><strong>${escapeHTML(presentation.assessmentRisk.level)}</strong><p>${escapeHTML(concernNote)}</p></div>`);
   }
   const severity = readableStatus(presentation.severity.value, 'Not assessed');
   if (severity !== 'Not assessed') {
-    cards.push(`<div><small>SEVERITY</small><strong>${escapeHTML(severity)}</strong><p>${escapeHTML(presentation.severity.note)}</p></div>`);
+    cards.push(`<div><small>Reported severity</small><strong>${escapeHTML(severity)}</strong><p>${escapeHTML(presentation.severity.note)}</p></div>`);
   }
   if (presentation.confidence.available) {
     cards.push(`<div><small>CONFIDENCE</small><strong>${escapeHTML(presentation.confidence.value)}</strong><p>${escapeHTML(presentation.confidence.note)}</p></div>`);
@@ -2249,22 +2254,23 @@ function applyTheme(theme) {
   document.body.dataset.theme = dark ? 'dark' : 'light';
   $('#themeToggle').setAttribute('aria-pressed', String(dark));
   $('#themeToggle').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
-  $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Day</b>' : '<span aria-hidden="true">☾</span><b>Night</b>';
+  $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Light</b>' : '<span aria-hidden="true">☾</span><b>Dark</b>';
   const settingsButton = $('#settingsThemeButton');
-  if (settingsButton) settingsButton.textContent = dark ? 'Use day theme' : 'Use night theme';
-  document.querySelector('meta[name="theme-color"]').content = dark ? '#08182e' : '#f4f9ff';
+  if (settingsButton) settingsButton.textContent = dark ? 'Use light theme' : 'Use dark theme';
+  document.querySelector('meta[name="theme-color"]').content = dark ? '#111315' : '#f6f8fa';
+  window.WorkspaceUI?.theme();
 }
 
 function restoreTheme() { applyTheme(localStorage.getItem('dermamatrix_theme') || 'light'); }
 
 function applyConsumerCopy() {
-  $('#workspaceSearch').placeholder = 'Search your care';
-  $('#workspaceSearch').setAttribute('aria-label', 'Search your care');
+  $('#workspaceSearch').placeholder = 'Search health guides';
+  $('#workspaceSearch').setAttribute('aria-label', 'Search health guides');
   const productEyebrow = $('#products .products-heading .eyebrow');
   const productTitle = $('#productsTitle');
   const productCopy = $('#products .products-heading p:not(.eyebrow)');
   if (productEyebrow) productEyebrow.textContent = 'PRODUCTS & PHARMACY';
-  if (productTitle) productTitle.textContent = 'Explore care products.';
+  if (productTitle) productTitle.textContent = 'Care product directory';
   if (productCopy) productCopy.textContent = 'Browse care categories and search independent pharmacies for relevant items.';
   $('#careContext strong').textContent = 'Explore at your own pace';
   $('#careContext p').textContent = 'Browse product categories and compare options online.';
@@ -2369,14 +2375,14 @@ function renderDashboard() {
     if (latestAnalysis) {
       const savedResult = latestAnalysis.summary?.assessment_result || {};
       const result = savedResult.consumer?.primary_result?.title || legacyConsumerResult(latestAnalysis.summary)?.primary_result?.title || 'Health check saved';
-      cards.push(`<article class="snapshot-card"><span>◌</span><div><small>LATEST ASSESSMENT</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div><button class="text-button" data-dashboard-nav="progress">View →</button></article>`);
-      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>PERSONAL SCORE</small><strong>${latestRisk?.score === undefined || latestRisk?.score === null ? 'No score yet' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(readableStatus(latestRisk.level || 'recorded'))}`}</strong><p>Based on your latest saved check-in.</p></div></article>`);
+      cards.push(`<article class="snapshot-card"><span>◌</span><div><small>Latest assessment</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div><button class="text-button" data-dashboard-nav="progress">View →</button></article>`);
+      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>Assessment concern</small><strong>${latestRisk?.score === undefined || latestRisk?.score === null ? 'No score yet' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(readableStatus(latestRisk.level || 'recorded'))}`}</strong><p>From your latest assessment; not a disease probability.</p></div></article>`);
     }
     if (routines.length) {
-      cards.push(`<article class="snapshot-card"><span>◔</span><div><small>ACTIVE ROUTINES</small><strong>${routines.length} ${routines.length === 1 ? 'routine' : 'routines'} in progress</strong><p>${escapeHTML(routines[0].routine_name)}${routines.length > 1 ? ` + ${routines.length - 1} more` : ''}</p></div><button class="text-button" data-dashboard-nav="progress">Manage →</button></article>`);
+      cards.push(`<article class="snapshot-card"><span>◔</span><div><small>Active routines</small><strong>${routines.length} ${routines.length === 1 ? 'routine' : 'routines'} in progress</strong><p>${escapeHTML(routines[0].routine_name)}${routines.length > 1 ? ` + ${routines.length - 1} more` : ''}</p></div><button class="text-button" data-dashboard-nav="progress">Manage →</button></article>`);
     }
     if (latestCheckin) {
-      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>LATEST CHECK-IN</small><strong>${escapeHTML(latestCheckin.reported_trend)}</strong><p>Recorded on ${escapeHTML(latestCheckin.checkin_date)}.</p></div></article>`);
+      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>Latest check-in</small><strong>${escapeHTML(latestCheckin.reported_trend)}</strong><p>Recorded on ${escapeHTML(latestCheckin.checkin_date)}.</p></div></article>`);
     }
     snapshot.innerHTML = cards.length
       ? cards.slice(0, 4).join('')
@@ -2602,7 +2608,7 @@ function renderProgress() {
   emptyJourney.hidden = hasProfile;
   const latest = checkins[0];
   $('#progressSummary').innerHTML = `<article><span>◔</span><strong>${routines.filter(routine => !routine.status || routine.status === 'active').length}</strong><small>active routines</small></article><article><span>◷</span><strong>${latest ? escapeHTML(latest.checkin_date) : '—'}</strong><small>latest check-in</small></article><article><span>⌁</span><strong>${latest ? escapeHTML(readableStatus(latest.reported_trend)) : '—'}</strong><small>current trend</small></article>`;
-  $('#openProfileFromProgress').textContent = hasProfile ? 'Profile connected' : 'Set up profile';
+  $('#openProfileFromProgress').textContent = hasProfile ? 'Health notes' : 'Set up profile';
   $('#monitoringNote').textContent = !hasProfile
     ? 'Create an account to save routines, check-ins, and past results.'
     : latest
@@ -2629,6 +2635,7 @@ function renderProgress() {
   const reportRegister = $('#reportRegister');
   if (reportRegister) reportRegister.hidden = !hasProfile;
   renderDashboard();
+  window.WorkspaceUI?.update();
 }
 
 async function loadProgress({ force = false } = {}) {
@@ -2684,6 +2691,7 @@ async function loadProgress({ force = false } = {}) {
 function editRoutine(routineId) {
   const routine = state.routines.find(item => item.routine_id === routineId);
   if (!routine) return;
+  window.WorkspaceUI?.reveal('routines');
   $('#editingRoutineId').value = routine.routine_id; $('#conditionLabel').value = routine.condition_label; $('#routineName').value = routine.routine_name;
   $('#routineStartDate').value = routine.start_date; $('#routineNotes').value = routine.notes || '';
   $('#routineFormTitle').textContent = 'Edit routine'; $('#cancelRoutineEdit').hidden = false;
@@ -2693,6 +2701,7 @@ function editRoutine(routineId) {
 function startRoutineCheckin(routineId) {
   const select = $('#checkinRoutine');
   if (!select) return;
+  window.WorkspaceUI?.reveal('checkins');
   select.value = routineId;
   $('.checkin-card')?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
   window.setTimeout(() => $('#checkinTrend')?.focus({ preventScroll: true }), 250);
@@ -2707,8 +2716,9 @@ async function saveRoutine(event) {
   const editingId = $('#editingRoutineId').value;
   submitButton.disabled = true;
   try {
-    await requestJSON(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const saved = await requestJSON(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     resetRoutineForm(); await loadProgress({ force: true }); toast(editingId ? 'Routine updated.' : 'Routine added.');
+    if (!editingId && saved.routine_id) await window.WorkspaceUI?.routineSaved(saved.routine_id);
   } catch (error) { toast(error.message || 'Could not save this routine.'); }
   finally { submitButton.disabled = false; }
 }
@@ -2842,7 +2852,7 @@ $('#workspaceSearch').onkeydown = event => {
   if (event.key !== 'Enter') return;
   const query = event.currentTarget.value.trim();
   if (!query) return;
-  $('#productSearch').value = query; showPage('products'); searchProducts();
+  $('#learnSearch').value = query; showPage('learn');
 };
 $('#notificationsToggle').onchange = event => { persistPreferences({ notifications_enabled: event.target.checked }); toast(event.target.checked ? 'Reminder preference enabled. Configure a routine schedule; delivery requires a verified email and transport.' : 'Reminder preference paused.'); };
 $('#motionToggle').onchange = event => { persistPreferences({ reduced_motion: event.target.checked }); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
