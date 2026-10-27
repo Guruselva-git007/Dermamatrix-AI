@@ -256,3 +256,16 @@ screen-reader speech and representative human usability remain external checks.
 Ignored evidence: `local-artifacts/consumer-next-2026-10-28/`. Normal loopback
 service refresh, guarded commits/push equality, final CI and task helper cleanup
 remain the closing steps. Deployment and provider activation remain deferred.
+
+### Closing reliability follow-up
+
+- `d5561aa3f2be04fc5af2a6e26341132186e15100`: integrated implementation; development CI
+  [40570702096](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40570702096)
+  passed pinned dependencies, source hygiene, SQL/JS regressions and both browser suites.
+- `f3b9fb3d0d6fff6114890939f5249d5dec6d2cd0`: category-incompatible assessment links return
+  a clear 400 and roll back partial evidence; tablet search entry is singular and
+  responsive screenshots wait for the navigation transition to finish.
+- Additional response-order regressions now bring frontend verification to
+  **58 passing tests**. Superseded Today/search/reminder failures are ignored;
+  schedule input changes invalidate old previews. Source and tests are committed
+  through the same branch; final CI/remote-equality receipt follows below.

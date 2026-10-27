@@ -42,7 +42,7 @@
           if(!state.analyses.some(r=>r.assessment_id===id)) { const detail=await requestJSON(`/api/assessments/${encodeURIComponent(id)}`);if(!current(version))return;state.analyses.push({assessment_id:id,area:data.recent_result.area,summary:detail.summary||detail.assessment||detail,created_at:data.recent_result.created_at}); }
           showSavedReport(id);
         }));
-      }catch(e){if(current(version))status('engagementStatus',e.message);}
+      }catch(e){if(current(version)&&requestVersion===todayRequestVersion)status('engagementStatus',e.message);}
       finally{if(todayFlight===flight)todayFlight=null;}
     })();todayFlight=flight;return flight;
   }

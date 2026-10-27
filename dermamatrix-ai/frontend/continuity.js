@@ -7,7 +7,7 @@
   const button = (text, fn, cls='button quiet') => {const n=el('button',text,cls);n.type='button';n.onclick=fn;return n;};
   const signed = () => Boolean(window.ConsumerClient?.enabled && state.profile?.patient_id);
   const owner = () => state.profile?.patient_id || '';
-  let epoch=0, loadedOwner='', episodes=[], links={}, bookmarks=[], loading=null, scheduleLink={}, searchCursor=null, searchQuery='', searchCategory='',briefSignature='',searchVersion=0,loadVersion=0;
+  let epoch=0, loadedOwner='', episodes=[], links={}, bookmarks=[], loading=null, scheduleLink={}, searchCursor=null, searchQuery='', searchCategory='',briefSignature='',searchVersion=0,loadVersion=0,reminderVersion=0;
   const retryKeys=new Map();
   const active = (version, account) => epoch===version && owner()===account;
   const message = (id, text) => {if($(id))$(id).textContent=text;};
@@ -34,7 +34,7 @@
       for(const id of ['assessmentEpisode','checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id),$(id).value,id==='journeyEpisodeId'?'All concerns':'No concern selected');
       if($('episodeBody')&&!$('episodeBody').options.length)for(const value of ep.body_areas)$('episodeBody').add(new Option(value,value));
       renderBookmarks();renderCheckinHistory();
-    }catch(error){if(active(version,account))message('continuityStatus',`${error.message} Your current input remains in this tab. Retry by reopening Journey.`);}
+    }catch(error){if(active(version,account)&&requestVersion===loadVersion)message('continuityStatus',`${error.message} Your current input remains in this tab. Retry by reopening Journey.`);}
     finally{if(loading===flight)loading=null;}})();loading=flight;return flight;
   }
   async function changed() {
@@ -136,11 +136,11 @@
         catch(error){message('unifiedStatus',`${error.message} The record could not be opened; start the search again.`);}
       }));$('unifiedResults').append(row);}
       searchCursor=data.next_cursor;$('unifiedMore').hidden=!searchCursor;message('unifiedStatus',data.results.length?`${$('unifiedResults').children.length} results shown. ${data.private_results?'Private results belong to this account.':'Sign in to search your private records.'}`:'No matches. Try another word or category.');
-    }catch(error){if(active(generation,account))message('unifiedStatus',`${error.message} Start this search again to refresh its results.`);}finally{$('unifiedMore').disabled=false;}
+    }catch(error){if(active(generation,account)&&requestVersion===searchVersion)message('unifiedStatus',`${error.message} Start this search again to refresh its results.`);}finally{if(active(generation,account)&&requestVersion===searchVersion)$('unifiedMore').disabled=false;}
   }
   function openSearch(query) {$('unifiedQuery').value=query||'';$('unifiedSearchDialog').showModal();$('unifiedQuery').focus();search(true);}
   function schedulePayload(){return{steps:$('routineSteps').value.split('\n').map(s=>s.trim()).filter(Boolean),days:[...document.querySelectorAll('[name=routine_day]:checked')].map(i=>Number(i.value)),times:$('routineTimes').value.split(',').map(s=>s.trim()),timezone:$('routineTimezone').value,status:$('routineScheduleStatus').value,area:$('routineScheduleArea').value,reminders:$('routineReminderOptIn').checked,quiet_start:$('quietStart').value,quiet_end:$('quietEnd').value};}
-  async function previewReminder(){const generation=epoch,account=owner();try{const data=await write('/api/reminders/preview',schedulePayload());if(!active(generation,account))return;const p=data.preview;message('reminderPreview',`${p.status==='active'?'Active schedule':'Paused or archived schedule'} · ${p.timezone}. Next eligible occurrence: ${p.next_occurrence_utc?new Date(p.next_occurrence_utc).toLocaleString(undefined,{timeZone:p.timezone})+' ('+p.timezone+')':'None in the next 15 days'}. Quiet hours: ${p.quiet_start}–${p.quiet_end}; suppressed times: ${p.suppressed_times.join(', ')||'none'}. Reminder preference ${p.opted_in?'on':'off'}. Preview only; no work queued. ${data.transport==='disabled'?'Delivery provider unavailable.':'Configured transport does not confirm delivery.'} ${p.meaning}`);}catch(error){if(active(generation,account))message('reminderPreview',`${error.message} No reminder was queued or sent.`);}}
+  async function previewReminder(){const generation=epoch,account=owner(),requestVersion=++reminderVersion;try{const data=await write('/api/reminders/preview',schedulePayload());if(!active(generation,account)||requestVersion!==reminderVersion)return;const p=data.preview;message('reminderPreview',`${p.status==='active'?'Active schedule':'Paused or archived schedule'} · ${p.timezone}. Next eligible occurrence: ${p.next_occurrence_utc?new Date(p.next_occurrence_utc).toLocaleString(undefined,{timeZone:p.timezone})+' ('+p.timezone+')':'None in the next 15 days'}. Quiet hours: ${p.quiet_start}–${p.quiet_end}; suppressed times: ${p.suppressed_times.join(', ')||'none'}. Reminder preference ${p.opted_in?'on':'off'}. Preview only; no work queued. ${data.transport==='disabled'?'Delivery provider unavailable.':'Configured transport does not confirm delivery.'} ${p.meaning}`);}catch(error){if(active(generation,account)&&requestVersion===reminderVersion)message('reminderPreview',`${error.message} No reminder was queued or sent.`);}}
   async function explain(data) {
     const root=$('patientResultContent');if(!root||!data)return;$('resultPlainExplanation')?.remove();
     const consumer=data.assessment_result?.consumer||{},primary=consumer.primary_result||{},findings=data.canonical_evidence?.image_findings||data.image_findings||{};
@@ -158,7 +158,7 @@
     $('completeJourney').before(workspace);const picker=pick('journeyEpisodeId','Concern filter');const concernControls=el('div',undefined,'concern-controls');concernControls.append(picker);workspace.querySelector('details').before(concernControls);picker.querySelector('select').onchange=()=>window.EngagementUI.filterEpisode(picker.querySelector('select').value);concernControls.append(button('Start follow-up',followup));
     $('episodeForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;submit.disabled=true;const version=epoch,account=owner();try{const data=await write('/api/episodes',{label:$('episodeLabel').value,area:$('episodeArea').value,body_area:$('episodeBody').value});if(active(version,account)){await load(true);$('journeyEpisodeId').value=data.episode_id;$('assessmentEpisode').value=data.episode_id;$('episodeForm').reset();workspace.querySelector('details').open=false;$('journeyEpisodeId').focus();window.EngagementUI.filterEpisode(data.episode_id);message('continuityStatus','Concern created. Choose it for a new check or link an existing result.');}}catch(error){if(active(version,account))message('continuityStatus',`${error.message} Creation was not confirmed. Your input remains here; retry the same details.`);}finally{submit.disabled=false;}};
     $('scheduleEditor').prepend(pick('scheduleEpisode','Linked concern (optional)'));
-    const preview=el('div');preview.append(button('Preview reminder schedule',previewReminder));const note=el('p');note.id='reminderPreview';note.setAttribute('role','status');preview.append(note);$('scheduleEditor').append(preview);
+    const preview=el('div');preview.append(button('Preview reminder schedule',previewReminder));const note=el('p');note.id='reminderPreview';note.setAttribute('role','status');preview.append(note);$('scheduleEditor').append(preview);$('scheduleEditor').addEventListener('input',()=>{reminderVersion++;message('reminderPreview','Schedule input changed. Preview again to calculate the next occurrence. No reminder was queued.');});
     $('checkinRoutine').closest('label').after(pick('checkinEpisode','Concern (confirm before saving)'));
     $('checkinRoutine').addEventListener('change',()=>{$('checkinEpisode').value=links['routine:'+$('checkinRoutine').value]?.episode_id||'';});
     const history=el('section');history.id='checkinCorrections';$('progressHistory')?.after(history);
@@ -185,9 +185,9 @@
   }
   window.ContinuityUI={enabled:()=>Boolean(window.ConsumerClient?.enabled),retryKey(path,payload){const signature=JSON.stringify([path,payload]);if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());return retryKeys.get(signature);},assessmentEpisode:()=>signed()?$('assessmentEpisode')?.value||'':'',page,changed,correctEvent,linkAssessment,reviewCheckin,guide,explain,search:openSearch,
     routineSelected(id){$('checkinEpisode').value=links['routine:'+id]?.episode_id||'';},
-    scheduleLoaded(link){scheduleLink=link;$('scheduleEpisode').value=link.episode_id||'';},scheduleLink:()=>({episode_id:$('scheduleEpisode')?.value||'',link_version:scheduleLink.version||0}),
+    scheduleLoaded(link){reminderVersion++;message('reminderPreview','');scheduleLink=link;$('scheduleEpisode').value=link.episode_id||'';},scheduleLink:()=>({episode_id:$('scheduleEpisode')?.value||'',link_version:scheduleLink.version||0}),
     progress(){page();renderCheckinHistory();},
-    clear(){epoch++;loadVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();
+    clear(){epoch++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();
       for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();
       for(const id of ['assessmentEpisode','checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id));
       for(const id of ['unifiedResults','savedGuideList','checkinCorrections','briefSelection','briefStatus','continuityStatus','feedbackStatus','reminderPreview','unifiedStatus'])$(id)?.replaceChildren();$('continuityDialog')?.replaceChildren();}
