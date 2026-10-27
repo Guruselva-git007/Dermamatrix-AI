@@ -168,6 +168,11 @@ but are no longer linked into the app.
   schedule/check-in/result saves and sign-out. No uncaught JavaScript exceptions
   or horizontal page overflow in those samples. CI now validates the browser
   command's returned JSON instead of relying on the CLI exit code alone.
+- Final [Linux development CI](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40519912083)
+  passes implementation `6b25898c923b9120fca1e4391a554630d52ca8e3`: 233 backend,
+  53 frontend and 15 browser workflow checks, migrations, pinned dependency audit
+  and tracked-source hygiene. A subsequent documentation-only checkpoint preserves
+  this runtime. No production system or real notification was activated.
 
 Design decisions and prioritised future features:
 [consumer-experience-plan.md](consumer-experience-plan.md). Private screenshots,
