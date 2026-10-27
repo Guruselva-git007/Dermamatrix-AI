@@ -1,7 +1,7 @@
 const AssessmentState = Object.freeze({
   IDLE: 'IDLE', CATEGORY_SELECTED: 'CATEGORY_SELECTED', INPUT_REQUIRED: 'INPUT_REQUIRED', UPLOADING: 'UPLOADING',
   INPUT_VALIDATING: 'INPUT_VALIDATING', PREPROCESSING: 'PREPROCESSING', ANALYZING: 'ANALYZING', GENERATING_EXPLANATION: 'GENERATING_EXPLANATION',
-  FINALIZING: 'FINALIZING', RESULT_READY: 'RESULT_READY', LOW_CONFIDENCE: 'LOW_CONFIDENCE', INVALID_IMAGE: 'INVALID_IMAGE', OOD_IMAGE: 'OOD_IMAGE', ERROR: 'ERROR'
+  FINALIZING: 'FINALIZING', RESULT_READY: 'RESULT_READY', LOW_CONFIDENCE: 'LOW_CONFIDENCE', INVALID_IMAGE: 'INVALID_IMAGE', OOD_IMAGE: 'OOD_IMAGE', CANCELLED: 'CANCELLED', ERROR: 'ERROR'
 });
 const assessmentTransitions = Object.freeze({
   IDLE: [AssessmentState.CATEGORY_SELECTED],
@@ -17,10 +17,12 @@ const assessmentTransitions = Object.freeze({
   LOW_CONFIDENCE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   INVALID_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
   OOD_IMAGE: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING],
-  ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
+  ERROR: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING, AssessmentState.CANCELLED],
+  CANCELLED: [AssessmentState.CATEGORY_SELECTED, AssessmentState.INPUT_REQUIRED, AssessmentState.UPLOADING, AssessmentState.INPUT_VALIDATING]
 });
-const state = { area: 'Skin', imageUrl: null, file: null, imageReadiness: null, imageReadinessToken: 0, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, productError: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
+const state = { area: 'Skin', areaSelected: false, questionnaireReviewed: false, reviewResultReady: false, imageUrl: null, resultImageUrl: null, resultArea: null, resultPersistence: null, submissionKey: null, submissionSignature: null, assessmentController: null, workspaceVersion: 0, file: null, imageReadiness: null, imageReadinessToken: 0, assessmentId: null, profile: null, preferences: null, isGuest: false, assessmentState: AssessmentState.IDLE, assessmentInFlight: false, assessmentRequestId: 0, productFilter: 'all', productTag: '', productSort: 'recommended', productCatalog: [], productCatalogLoaded: false, productCatalogLoadPromise: null, productCatalogQuery: '', productCatalogRequestKey: 0, productLoading: false, productError: false, routines: [], checkins: [], analyses: [], progressLoadedFor: null, progressLoadPromise: null, progressLoadContext: null, reportVisibleCount: 6, nearbySearchLocation: '', latestRisk: null, recommendedSpecialty: 'dermatologist', modelCapabilities: {} };
 const ASSESSMENT_STAGE_COUNT = 4;
+const processingNotices = {};
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const areaInputProfiles = Object.freeze({
@@ -72,7 +74,8 @@ function renderImageCaptureTips() {
 }
 
 function transitionAssessment(nextState, detail = '') {
-  const allowed = assessmentTransitions[state.assessmentState] || [];
+  const processingStates = [AssessmentState.INPUT_VALIDATING, AssessmentState.PREPROCESSING, AssessmentState.ANALYZING, AssessmentState.GENERATING_EXPLANATION, AssessmentState.FINALIZING];
+  const allowed = nextState === AssessmentState.CANCELLED && processingStates.includes(state.assessmentState) ? [nextState] : assessmentTransitions[state.assessmentState] || [];
   if (nextState !== state.assessmentState && !allowed.includes(nextState)) return false;
   state.assessmentState = nextState;
   document.body.dataset.assessmentState = nextState.toLowerCase();
@@ -81,16 +84,33 @@ function transitionAssessment(nextState, detail = '') {
   return true;
 }
 
-function updateAssessmentProgress(step) {
-  const activeStep = Math.max(1, Math.min(ASSESSMENT_STAGE_COUNT, Number(step) || 1));
+function updateAssessmentProgress() {
+  const inputReady = state.area === 'Sweat' ? state.questionnaireReviewed : Boolean(state.file);
+  const activeStep = state.reviewResultReady ? 4 : state.assessmentInFlight ? 3 : state.areaSelected ? (inputReady ? 3 : 2) : 1;
   $$('.assessment-steps li').forEach((item, index) => {
     const itemStep = index + 1;
     item.classList.toggle('active', itemStep === activeStep);
     item.classList.toggle('complete', itemStep < activeStep);
-    item.setAttribute('aria-current', itemStep === activeStep ? 'step' : 'false');
+    if (itemStep === activeStep) item.setAttribute('aria-current', 'step');
+    else item.removeAttribute('aria-current');
+    const marker = item.querySelector('span');
+    if (marker) marker.textContent = itemStep < activeStep ? '✓' : String(itemStep);
   });
   const stepCount = $('#stepCount');
   if (stepCount) stepCount.textContent = `STEP ${activeStep} OF ${ASSESSMENT_STAGE_COUNT}`;
+  const strip = $('.assessment-steps');
+  const active = strip?.querySelector('[aria-current="step"]');
+  // Scroll this strip only; do not pull a person away from the control in use.
+  if (strip && active && strip.clientWidth > 0 && strip.scrollWidth > strip.clientWidth) {
+    // The item is positioned relative to the strip; the strip itself has a
+    // different offset parent. Compare viewport rectangles, not those offsets.
+    const bounds = strip.getBoundingClientRect();
+    const activeBounds = active.getBoundingClientRect();
+    const left = bounds.left + strip.clientLeft;
+    const right = left + strip.clientWidth;
+    if (activeBounds.left < left) strip.scrollLeft += activeBounds.left - left;
+    else if (activeBounds.right > right) strip.scrollLeft += activeBounds.right - right;
+  }
 }
 
 async function requestJSON(url, options = {}, timeoutMs = 15000) {
@@ -98,10 +118,18 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
     throw Error('Open DermaMatrix through the local app server at http://127.0.0.1:8000. Opening index.html directly cannot reach its secure local API.');
   }
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => controller.abort();
+  options.signal?.addEventListener('abort', abort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  const timeout = window.setTimeout(abort, timeoutMs);
   try {
     const response = await fetch(url, { ...options, signal: controller.signal });
-    const payload = await response.json().catch(() => ({}));
+    let payload;
+    try { payload = await response.json(); } catch {
+      if (response.ok) throw Error('The server returned an unreadable response. Please retry.');
+      payload = {};
+    }
+    if (response.ok && (!payload || typeof payload !== 'object' || Array.isArray(payload))) throw Error('The server returned an incomplete response. Please retry.');
     if (!response.ok) {
       const error = Error(payload.error || `Request failed (${response.status}).`);
       error.status = response.status;
@@ -110,10 +138,16 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
     }
     return payload;
   } catch (error) {
-    if (error.name === 'AbortError') throw Error('The request took too long. Please retry.');
+    if (error.name === 'AbortError') {
+      const interrupted = Error(options.signal?.aborted ? 'Request cancelled.' : 'The request took too long. Please retry.');
+      interrupted.interrupted = true;
+      throw interrupted;
+    }
+    if (error instanceof TypeError) error.interrupted = true;
     throw error;
   } finally {
     window.clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -132,7 +166,10 @@ function selectArea(area, { userSelected = false } = {}) {
     $('#presentationCaseEnabled').checked = false;
   }
   state.area = area;
-  updateAssessmentProgress(userSelected ? 2 : 1);
+  state.areaSelected = state.areaSelected || userSelected;
+  state.reviewResultReady = false;
+  if (areaChanged) state.questionnaireReviewed = false;
+  updateAssessmentProgress();
   transitionAssessment(AssessmentState.CATEGORY_SELECTED, `${area.toUpperCase()} SELECTED`);
   $$('.area-choice button').forEach(button => {
     const selected = button.dataset.area === area;
@@ -163,17 +200,18 @@ function selectArea(area, { userSelected = false } = {}) {
   $('#moduleStatusDetail').textContent = capability?.user_message || labels.status;
   $('#moduleStatus details').open = false;
   clearAssessmentConsentError();
-  renderAreaSymptoms(area);
+  if (areaChanged || !$('#symptomChips').children.length) renderAreaSymptoms(area);
   $('#imageWorkflow').hidden = sweat;
   $('#sweatWorkflow').hidden = !sweat;
   $('.presentation-case-toggle').hidden = sweat;
   $('#uploadStepTitle').textContent = labels.upload;
   $('#uploadStepCopy').textContent = labels.copy;
-  renderImageContexts(area);
+  if (areaChanged || !$('#imageContext').options.length) renderImageContexts(area);
   renderImageCaptureTips();
   $('#consentCopy').textContent = sweat
-    ? 'I consent to this screening questionnaire and understand it is not a diagnosis.'
-    : 'I have consent to upload this image for an educational assessment, not diagnosis.';
+    ? 'I agree to local processing of my questionnaire answers for an educational summary.'
+    : 'I agree to local processing of this image and the details I provide for an educational assessment.';
+  updateAssessmentStorageCopy();
   $('#reviewStepCopy').textContent = sweat
     ? 'Review your screening summary and next steps.'
     : 'Review your image summary and next steps.';
@@ -191,7 +229,7 @@ function selectArea(area, { userSelected = false } = {}) {
 
 function previewReadinessMessage(readiness) {
   if (readiness.status === 'CHECKING') return { label: 'ON-DEVICE PHOTO CHECK', title: 'Checking lighting and image detail', message: 'This quick preview check stays on your device. The server makes the final image-quality decision.' };
-  if (readiness.status === 'READY') return { label: 'PREVIEW READY', title: 'Ready for server review', message: `${readiness.width} × ${readiness.height} px · focus and final quality are checked during assessment` };
+  if (readiness.status === 'READY') return { label: 'PREVIEW READY', title: 'Ready for server review', message: `${readiness.width} × ${readiness.height} px · focus and final quality are checked during assessment${readiness.advisory ? ` · ${readiness.advisory}` : ''}` };
   if (readiness.status === 'RETAKE_SUGGESTED') return { label: 'RETAKE SUGGESTED', title: 'A clearer photo may give a better review', message: readiness.issues.join(' ') };
   return { label: 'PHOTO PREVIEW', title: 'Photo ready for server review', message: 'The server will perform the final format and quality checks.' };
 }
@@ -242,10 +280,11 @@ async function inspectLocalImageReadiness(imageUrl) {
     }
     const brightness = luminanceTotal / pixelCount;
     const issues = [];
-    if (Math.min(width, height) < 450) issues.push('Use a higher-resolution photo if possible.');
+    if (Math.min(width, height) < 160) issues.push('The image has too few pixels for a reliable review.');
     if (brightness < 55) issues.push('The preview looks dark; use even, indirect light.');
     else if (brightness > 220) issues.push('The preview looks very bright; reduce flash glare.');
-    return { status: issues.length ? 'RETAKE_SUGGESTED' : 'READY', width, height, issues };
+    return { status: issues.length ? 'RETAKE_SUGGESTED' : 'READY', width, height, issues,
+      advisory: Math.min(width, height) < 450 && !issues.length ? 'A larger original may show finer detail' : '' };
   } catch {
     return { status: 'NOT_CHECKED' };
   }
@@ -255,8 +294,10 @@ function setImage(file) {
   if (state.assessmentInFlight) return toast('The current image is being assessed. You can replace it when this review is complete.');
   if (state.area === 'Sweat') return toast('Sweat patterns use the questionnaire instead of an image.');
   const supported = /\.(jpe?g|png|webp|avif)$/i.test(file?.name || '');
-  if (!file || !supported) return toast('Choose a JPG, PNG, WEBP, or AVIF image.');
-  if (file.size > 10 * 1024 * 1024) return toast('Choose an image smaller than 10 MB.');
+  if (!file || !supported) return setUploadError('Choose a JPG, PNG, WEBP, or AVIF image.');
+  if (file.size > 10 * 1024 * 1024) return setUploadError('Choose an image smaller than 10 MB.');
+  clearUploadError();
+  state.areaSelected = true; state.reviewResultReady = false;
   $('#imageConsent').checked = false;
   clearAssessmentConsentError();
   transitionAssessment(AssessmentState.UPLOADING, 'PREPARING IMAGE PREVIEW');
@@ -270,7 +311,7 @@ function setImage(file) {
   $('#uploadPreview').hidden = false;
   renderImageReadiness(state.imageReadiness);
   $('#analyzeButton').disabled = false;
-  updateAssessmentProgress(2);
+  updateAssessmentProgress();
   transitionAssessment(AssessmentState.INPUT_REQUIRED, 'IMAGE READY FOR REVIEW');
   void inspectLocalImageReadiness(selectedImageUrl).then(readiness => {
     if (readinessToken !== state.imageReadinessToken || state.imageUrl !== selectedImageUrl) return;
@@ -288,17 +329,162 @@ function resetImage() {
   if (preview) preview.hidden = true;
   const input = $('#imageInput');
   if (input) input.value = '';
+  state.reviewResultReady = false;
+  clearUploadError();
+  updateAssessmentProgress();
   if (state.assessmentState !== AssessmentState.IDLE) transitionAssessment(AssessmentState.CATEGORY_SELECTED, 'IMAGE REQUIRED');
 }
 
-function setAssessmentInputBusy(busy) {
-  const input = $('#imageInput');
-  const zone = $('#dropZone');
-  if (input) input.disabled = busy;
-  if (zone) {
-    zone.classList.toggle('is-busy', busy);
-    zone.setAttribute('aria-busy', String(busy));
+function clearUploadError() {
+  const error = $('#uploadError');
+  if (error) { error.hidden = true; error.textContent = ''; }
+  $('#imageInput')?.removeAttribute('aria-invalid');
+  $('#dropZone')?.classList.remove('is-invalid');
+}
+
+function setUploadError(message) {
+  const error = $('#uploadError');
+  if (error) { error.textContent = message; error.hidden = false; }
+  $('#imageInput').setAttribute('aria-invalid', 'true');
+  $('#dropZone').classList.add('is-invalid');
+  $('#imageInput').focus();
+}
+
+function updateAssessmentStorageCopy() {
+  const purpose = state.area === 'Sweat' ? 'questionnaire_assessment' : 'image_assessment';
+  const notice = processingNotices[purpose];
+  if (notice) $('#imageConsent').dataset.noticeVersion = notice.version;
+  const copy = $('#assessmentHandlingCopy');
+  if (copy) copy.textContent = notice
+    ? `${notice.summary} ${notice.retained} ${state.profile?.patient_id ? 'Signed-in assessments save derived results to your local account.' : notice.guest_behavior}`
+    : 'Source images are not retained. Signed-in assessments save derived health information; guest assessment results are not saved. Local data-handling details are loading.';
+}
+
+async function loadProcessingNotices() {
+  const controls = {
+    account: $('#registerForm input[name="account_consent"]'),
+    health_history: $('#profileForm input[name="health_data_consent"]'),
+  };
+  try {
+    const data = await requestJSON('/api/processing-notices', {}, 10000);
+    for (const purpose of ['account', 'health_history', 'image_assessment', 'questionnaire_assessment']) {
+      const notice = data.notices?.[purpose];
+      if (!notice || typeof notice.version !== 'string' || !notice.summary) throw Error('Local data-handling details are unavailable.');
+    }
+    Object.assign(processingNotices, data.notices);
+    Object.entries(processingNotices).forEach(([purpose, notice]) => {
+      const input = controls[purpose] || (purpose === (state.area === 'Sweat' ? 'questionnaire_assessment' : 'image_assessment') ? $('#imageConsent') : null);
+      if (input) input.dataset.noticeVersion = notice.version;
+    });
+    $('#accountHandlingCopy').textContent = `${processingNotices.account.summary} ${processingNotices.account.retained}`;
+    $('#profileHandlingCopy').textContent = `${processingNotices.health_history.summary} ${processingNotices.health_history.retained}`;
+    Object.values(controls).forEach(input => { input.disabled = false; });
+    $('#imageConsent').disabled = false;
+    updateAssessmentStorageCopy();
+    return true;
+  } catch {
+    $('#accountHandlingCopy').textContent = 'Local data-handling details could not be loaded. Reload before creating an account, or continue as guest.';
+    $('#profileHandlingCopy').textContent = 'Local data-handling details could not be loaded. Reload before saving health details.';
+    $('#assessmentHandlingCopy').textContent = 'Local data-handling details could not be loaded. Reload before submitting an assessment.';
+    return false;
   }
+}
+
+function processingNoticeVersion(purpose) {
+  const version = processingNotices[purpose]?.version;
+  if (!version) throw Error('Local data-handling details are unavailable. Reload and review them before continuing.');
+  return version;
+}
+
+function handleChangedProcessingNotice(error) {
+  if (error?.payload?.code !== 'UNSUPPORTED_CONSENT_NOTICE_VERSION') return;
+  [$('#registerForm input[name="account_consent"]'), $('#profileForm input[name="health_data_consent"]'), $('#imageConsent')].forEach(input => {
+    input.checked = false; input.disabled = true;
+  });
+  void loadProcessingNotices();
+}
+
+function setAssessmentInputBusy(busy) {
+  if (busy) {
+    state.busyInputs = $$('#screen input, #screen select, #screen textarea, #screen button').map(input => ({ input, disabled: input.disabled }));
+    state.busyInputs.forEach(({ input }) => { input.disabled = true; });
+  } else {
+    (state.busyInputs || []).forEach(({ input, disabled }) => { input.disabled = disabled; });
+    state.busyInputs = [];
+  }
+  const zone = $('#dropZone');
+  if (zone) { zone.classList.toggle('is-busy', busy); zone.setAttribute('aria-busy', String(busy)); }
+}
+
+function showAssessmentFeedback(message) {
+  let feedback = $('#assessmentFeedback');
+  if (!feedback) {
+    feedback = document.createElement('p'); feedback.id = 'assessmentFeedback'; feedback.className = 'assessment-feedback';
+    feedback.setAttribute('role', 'status'); feedback.setAttribute('aria-live', 'polite');
+    $('#analyzeButton').parentElement.insertAdjacentElement('afterend', feedback);
+  }
+  feedback.textContent = message; feedback.hidden = !message;
+}
+
+function interruptAssessment() {
+  state.assessmentController?.abort();
+  state.assessmentRequestId += 1; state.assessmentInFlight = false; state.reviewResultReady = false;
+  state.assessmentController = null;
+  finishProcessing(); setAssessmentInputBusy(false);
+  transitionAssessment(AssessmentState.CANCELLED, 'REQUEST INTERRUPTED');
+  showAssessmentFeedback(state.profile?.patient_id ? 'Waiting stopped. The server may still finish and save this assessment. Check My Journey or retry unchanged inputs safely.' : 'Waiting stopped. Guest results are not saved. Your inputs remain here for retry.');
+  $('#analyzeButton').disabled = state.area === 'Sweat' ? false : !state.file;
+  $('#analyzeButton').innerHTML = 'Retry assessment <span>→</span>'; $('#analyzeButton').focus();
+}
+
+function clearWorkspaceEvidence() {
+  state.workspaceVersion += 1;
+  if (state.assessmentInFlight) interruptAssessment();
+  closeResult(); closeProfile();
+  state.resultImageUrl = null; state.resultArea = null; state.resultPersistence = null;
+  state.assessmentId = null; state.submissionKey = null; state.submissionSignature = null;
+  state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; state.progressLoadPromise = null; state.progressLoadContext = null; state.reportVisibleCount = 6;
+  resetImage();
+  $$('#screen input:not([type=file]), #screen textarea, #profileForm input, #profileForm textarea, #routineForm input, #routineForm textarea, #checkinForm textarea, #checkinForm input').forEach(input => {
+    if (input.type === 'checkbox') input.checked = false;
+    else input.value = input.defaultValue || '';
+  });
+  $$('#screen select, #checkinForm select').forEach(input => { input.selectedIndex = 0; });
+  resetRoutineForm(); $('#checkinDate').value = currentDate();
+  const pipeline = $('#analysisPipeline');
+  if (pipeline) { pipeline.textContent = ''; $('[data-result-panel="evidence"] .analysis-dashboard > div')?.append(pipeline); }
+  $('#patientResultContent')?.remove();
+  $('#resultImage')?.removeAttribute('src'); $('#attentionMap')?.removeAttribute('src'); $('#segmentationOverlay')?.removeAttribute('src');
+  showAssessmentFeedback('');
+}
+
+function persistenceMessage(persistence) {
+  if (persistence === 'mysql') return 'Saved to your local account · no image retained';
+  if (persistence === 'not-persisted-guest') return 'Guest result · not stored';
+  return 'Not saved · assessment evidence is available in this tab';
+}
+
+function updateResultContinuation(data) {
+  let status = $('#resultWorkflowStatus');
+  if (!status) {
+    status = document.createElement('p'); status.id = 'resultWorkflowStatus'; status.className = 'result-workflow-status'; status.setAttribute('role', 'status');
+    $('.disclaimer-details').insertAdjacentElement('afterend', status);
+  }
+  $('#patientResultContent')?.prepend(status);
+  const code = data.assessment_result?.status?.code;
+  const label = code === 'INPUT_UNSUITABLE' ? 'Validation required — try a clearer photo.'
+    : code === 'CATEGORY_MISMATCH' ? 'Unsupported input — check the category and capture type.'
+    : code === 'UNCERTAIN' ? 'Uncertain — review the available evidence and limitations.'
+    : code === 'MODEL_UNAVAILABLE' || data.assessment_completeness?.status === 'incomplete' ? 'Completed with limitations — some analysis is unavailable.'
+    : code === 'RESEARCH_ONLY' ? 'Research assessment complete — rankings are not a diagnosis.' : code === 'QUESTIONNAIRE_ASSESSMENT' ? 'Questionnaire assessment complete.' : 'Saved assessment — review its recorded evidence and limitations.';
+  status.textContent = `${label} ${persistenceMessage(data.persistence)}${data.replayed ? ' Recovered saved result; source photo and overlays were not retained.' : ''}`;
+  $('#saveProgressButton').innerHTML = data.persistence === 'mysql' ? 'Open My Journey <span>→</span>' : state.profile?.patient_id ? 'Not saved · retry assessment' : 'Create account for future reports';
+  const saved = data.persistence === 'mysql';
+  $$('#patientResultContent [data-result-action="save"]').forEach(button => {
+    button.textContent = saved ? 'Download PDF' : state.profile?.patient_id ? 'Not saved · retry' : 'Create account for future reports';
+    if (saved) button.dataset.resultAction = 'report';
+  });
+  $$('#patientResultContent [data-result-action="report"]').forEach(button => { button.disabled = !saved; if (!saved) button.textContent = 'PDF requires a saved result'; });
 }
 
 function openProfile() {
@@ -310,6 +496,7 @@ function openProfile() {
   form.elements.email_address.value = state.profile.email_address || '';
   form.elements.past_history.value = state.profile.past_history || '';
   form.elements.current_history.value = state.profile.current_history || '';
+  form.elements.health_data_consent.checked = false;
   openDialog($('#profileModal'), 'input[name="full_name"]');
 }
 const dialogOpeners = new WeakMap();
@@ -319,6 +506,7 @@ function openDialog(dialog, initialFocus, opener = document.activeElement) {
   dialog.setAttribute('aria-hidden', 'false');
   document.body.classList.add('dialog-open');
   dialog.querySelector('.modal-card, .profile-card').scrollTop = 0;
+  syncInteractionInertness();
   dialog.querySelector(initialFocus)?.focus();
 }
 function closeDialog(dialog) {
@@ -326,6 +514,7 @@ function closeDialog(dialog) {
   dialog.classList.remove('show');
   dialog.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('dialog-open');
+  syncInteractionInertness();
   const opener = dialogOpeners.get(dialog);
   if (opener?.isConnected && !opener.disabled && opener.getClientRects().length) opener.focus({ preventScroll: true });
   dialogOpeners.delete(dialog);
@@ -339,7 +528,7 @@ function clearAssessmentConsentError() {
   error.textContent = '';
   [$('#imageConsent'), $('#dermoscopyConsent')].forEach(input => {
     input.removeAttribute('aria-invalid');
-    input.removeAttribute('aria-describedby');
+    input.setAttribute('aria-describedby', input.id === 'imageConsent' ? 'assessmentHandlingCopy' : 'dermoscopyHelp');
     input.closest('label')?.classList.remove('is-invalid');
   });
 }
@@ -349,7 +538,7 @@ function requireAssessmentConsent(input, message) {
   error.textContent = message;
   error.hidden = false;
   input.setAttribute('aria-invalid', 'true');
-  input.setAttribute('aria-describedby', 'consentError');
+  input.setAttribute('aria-describedby', `${input.id === 'imageConsent' ? 'assessmentHandlingCopy' : 'dermoscopyHelp'} consentError`);
   input.closest('label')?.classList.add('is-invalid');
   input.focus();
 }
@@ -415,13 +604,50 @@ function setAuthTab(tab) {
   });
 }
 
+let authOpener = null;
 function showAuthGate(tab = 'login') {
-  closeProfile(); closeResult(); setAuthTab(tab);
+  if (!$('#authGate').classList.contains('show')) authOpener = document.activeElement;
+  closeProfile(); closeResult(); setNavigationOpen(false); setAuthTab(tab);
   $('#authGate').classList.add('show'); $('#authGate').setAttribute('aria-hidden', 'false'); document.body.classList.add('auth-open');
+  syncInteractionInertness();
 }
 
 function hideAuthGate() {
   $('#authGate').classList.remove('show'); $('#authGate').setAttribute('aria-hidden', 'true'); document.body.classList.remove('auth-open');
+  syncInteractionInertness();
+  const fallback = $('.page-active h1') || $('#dashboardTitle');
+  const target = authOpener !== document.body && authOpener?.isConnected && !authOpener.disabled && authOpener.getClientRects().length && !authOpener.closest('[inert]') ? authOpener : fallback;
+  if (target) { if (!target.matches('a, button, input, select, textarea, [tabindex]')) target.tabIndex = -1; target.focus({ preventScroll: true }); }
+  authOpener = null;
+}
+
+function syncInteractionInertness() {
+  const authActive = $('#authGate').classList.contains('show');
+  const dialogActive = $('#resultModal').classList.contains('show') || $('#profileModal').classList.contains('show') || Boolean($('#processingModal')?.classList.contains('show'));
+  $('.app-shell').inert = authActive || dialogActive;
+  $('#authGate').inert = !authActive;
+  const sidebar = $('.sidebar');
+  const mobile = window.innerWidth <= 880;
+  const navActive = document.body.classList.contains('nav-open');
+  $('.app-shell > main').inert = mobile && navActive;
+  sidebar.inert = mobile && !navActive;
+  sidebar.setAttribute('aria-hidden', String(mobile && !navActive));
+  if (mobile && navActive) { sidebar.setAttribute('role', 'dialog'); sidebar.setAttribute('aria-modal', 'true'); }
+  else { sidebar.removeAttribute('role'); sidebar.removeAttribute('aria-modal'); }
+}
+
+function dialogFocusableElements(root) {
+  return [...root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex="0"]')]
+    .filter(element => element.getClientRects().length && !element.closest('[hidden], [inert], .result-panel:not(.active)') && (element.tagName === 'SUMMARY' || !element.closest('details:not([open])')));
+}
+
+function containKeyboardFocus(event, root) {
+  if (event.key !== 'Tab') return;
+  const focusable = dialogFocusableElements(root);
+  const first = focusable[0]; const last = focusable[focusable.length - 1];
+  if (!first) { event.preventDefault(); root.focus(); return; }
+  if (event.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && (document.activeElement === last || !root.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
 }
 
 function applyPreferences(preferences = {}) {
@@ -443,22 +669,27 @@ function applyPreferences(preferences = {}) {
 }
 
 async function persistPreferences(patch) {
+  const version = (state.preferenceRequestVersion || 0) + 1; state.preferenceRequestVersion = version;
+  const workspaceVersion = state.workspaceVersion;
   const next = { ...(state.preferences || {}), ...patch };
   applyPreferences(next);
   if (!state.profile?.patient_id) return;
   try {
     const data = await requestJSON('/api/preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
-    applyPreferences(data.preferences);
+    if (workspaceVersion === state.workspaceVersion && version === state.preferenceRequestVersion) applyPreferences(data.preferences);
   } catch (error) {
     toast(error.status === 401 ? 'Your session ended. Sign in again to save preferences.' : 'Preference changed in this browser but could not be saved to your account.');
   }
 }
 
 function applyAccount(account, preferences = null) {
+  if (state.profile?.patient_id !== account.patient_id) clearWorkspaceEvidence();
   state.profile = { ...account }; state.isGuest = false; state.progressLoadedFor = null;
   $('#profileName').textContent = account.full_name; $('#profileMeta').textContent = account.patient_id;
   if (preferences) applyPreferences(preferences);
   updateDashboardIdentity(); persistBrowserProfile();
+  updateAssessmentStorageCopy();
+  updateAccountExportControls();
 }
 
 async function enterAccount(authentication, message) {
@@ -474,9 +705,11 @@ async function registerAccount(event) {
   payload.account_consent = form.account_consent.checked;
   clearAuthFieldState(form); setAuthSubmitting(form, true, 'Creating account'); setAuthMessage('');
   try {
+    payload.consent_notice_version = processingNoticeVersion('account');
     const data = await requestJSON('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     form.reset(); await enterAccount(data, 'Account created. Add health details only when you are ready.');
   } catch (error) {
+    handleChangedProcessingNotice(error);
     const message = authErrorMessage(error, 'We could not create your account. Please check your connection and try again.');
     markAuthFields(form, message); setAuthMessage(message);
   } finally { setAuthSubmitting(form, false, 'Create account'); }
@@ -498,11 +731,15 @@ async function loginAccount(event) {
 async function continueAsGuest() {
   // Guest mode must not leave a previously authenticated server session available
   // for a later reload in the same browser.
-  try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { /* guest mode remains available offline */ }
+  try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { return setAuthMessage('Guest access could not be confirmed. Check your connection and retry.'); }
+  clearWorkspaceEvidence();
   localStorage.removeItem('dermamatrix_profile'); state.profile = null; state.isGuest = true;
   state.assessmentId = null; state.latestRisk = null; state.recommendedSpecialty = 'dermatologist'; state.nearbySearchLocation = '';
   state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; resetImage();
   $('#profileName').textContent = 'Guest workspace'; $('#profileMeta').textContent = 'Nothing saved'; updateDashboardIdentity(); renderProgress(); hideAuthGate();
+  updateAssessmentStorageCopy();
+  updateAccountExportControls();
+  showPage('dashboard');
   toast('Guest workspace opened. Create an account to save reports and routines.');
 }
 
@@ -528,9 +765,10 @@ function installImagePreview() {
 function installProcessingOverlay() {
   if ($('#processingModal')) return;
   const overlay = document.createElement('div');
-  overlay.id = 'processingModal'; overlay.className = 'processing-modal'; overlay.setAttribute('aria-hidden', 'true');
-  overlay.innerHTML = '<div class="processing-card" role="status" aria-live="polite"><div class="scan-visual" aria-hidden="true"><span class="scan-corner corner-one"></span><span class="scan-corner corner-two"></span><span class="scan-corner corner-three"></span><span class="scan-corner corner-four"></span><span class="scan-line"></span><span class="scan-glow"></span></div><p class="eyebrow">ANALYSIS IN PROGRESS</p><h2 id="processingTitle">Preparing your screening summary</h2><p id="processingCopy">Each completed stage is shown clearly. This app will not represent an unavailable model as a result.</p><ol id="processingSteps" class="processing-steps"></ol></div>';
+  overlay.id = 'processingModal'; overlay.className = 'processing-modal'; overlay.setAttribute('aria-hidden', 'true'); overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-labelledby', 'processingTitle');
+  overlay.innerHTML = '<div class="processing-card" role="status" aria-live="polite"><div class="scan-visual" aria-hidden="true"><span class="scan-corner corner-one"></span><span class="scan-corner corner-two"></span><span class="scan-corner corner-three"></span><span class="scan-corner corner-four"></span><span class="scan-line"></span><span class="scan-glow"></span></div><p class="eyebrow">ANALYSIS IN PROGRESS</p><h2 id="processingTitle">Preparing your screening summary</h2><p id="processingCopy">Each completed stage is shown clearly. This app will not represent an unavailable model as a result.</p><ol id="processingSteps" class="processing-steps"></ol><button type="button" class="button quiet" id="cancelAssessmentButton">Stop waiting</button><p class="processing-interruption-note">Stopping the wait cannot undo work already received by the server.</p></div>';
   document.body.append(overlay);
+  $('#cancelAssessmentButton').onclick = interruptAssessment;
 }
 
 function processingStages(area) {
@@ -544,7 +782,7 @@ function processingStages(area) {
 
 function openProcessing(area) {
   installProcessingOverlay();
-  updateAssessmentProgress(4);
+  updateAssessmentProgress();
   const modal = $('#processingModal');
   const stages = processingStages(area);
   $('#processingTitle').textContent = area === 'Sweat' ? 'Preparing your questionnaire summary' : 'Preparing your image summary';
@@ -554,6 +792,7 @@ function openProcessing(area) {
   $('#processingCopy').textContent = state.modelCapabilities[area]?.user_message || fallbackCopy;
   $('#processingSteps').innerHTML = stages.map((stage, index) => `<li class="${index === 0 ? 'active' : ''}"><span>${index === 0 ? '…' : index + 1}</span>${stage}</li>`).join('');
   modal.classList.add('show'); modal.setAttribute('aria-hidden', 'false');
+  syncInteractionInertness(); $('#cancelAssessmentButton').focus();
 }
 
 async function loadModelCapabilities() {
@@ -576,6 +815,7 @@ function finishProcessing(succeeded = false) {
     $$('#processingSteps li').forEach(row => { row.classList.remove('active'); row.classList.add('done'); const icon = row.querySelector('span'); if (icon) icon.textContent = '✓'; });
   }
   if (modal) { modal.classList.remove('show'); modal.setAttribute('aria-hidden', 'true'); }
+  syncInteractionInertness();
 }
 
 function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
@@ -583,6 +823,7 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings'];
   const target = allowed.includes(page) ? page : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
+  if (target === 'home') updateAssessmentProgress();
   $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
   const titles = { dashboard: 'Home', home: 'Check My Health', progress: 'My Journey', products: 'Products', support: 'Find a Doctor', settings: 'Settings' };
   $('#workspaceTitle').textContent = titles[target];
@@ -610,8 +851,9 @@ function setNavigationOpen(open) {
   scrim.hidden = !expanded;
   menuButton.setAttribute('aria-expanded', String(expanded));
   menuButton.setAttribute('aria-label', expanded ? 'Close navigation' : 'Open navigation');
+  syncInteractionInertness();
   if (expanded && !wasOpen) sidebar.querySelector('.nav-links .active')?.focus();
-  if (!expanded && wasOpen && (sidebar.contains(document.activeElement) || document.activeElement === scrim)) menuButton.focus();
+  if (!expanded && window.innerWidth <= 880 && (sidebar.contains(document.activeElement) || document.activeElement === scrim)) menuButton.focus();
 }
 
 function showCarePlan(plan) {
@@ -906,8 +1148,8 @@ function renderAnalysisDashboard(data) {
       ? `${prediction.label} · ${Math.round(prediction.calibratedProbability * 100)}% calibrated likelihood`
       : `${prediction.label} · research ranking only`
     : 'Not run';
-  const visualExplanation = attentionImage && state.imageUrl
-    ? `<section class="technical-visual-explanation"><h4>Visual explanation</h4><p>Highlighted areas indicate regions that contributed to this research-model output. They are not a lesion boundary or diagnosis.</p><div class="explainability-comparison"><figure><img data-technical-src="${escapeHTML(state.imageUrl)}" alt="Original submitted image" /><figcaption>Original submitted image</figcaption></figure><figure><img data-technical-src="${escapeHTML(attentionImage)}" alt="Grad-CAM research attention map" /><figcaption>Grad-CAM attention map</figcaption></figure></div></section>`
+  const visualExplanation = attentionImage && state.resultImageUrl
+    ? `<section class="technical-visual-explanation"><h4>Visual explanation</h4><p>Highlighted areas indicate regions that contributed to this research-model output. They are not a lesion boundary or diagnosis.</p><div class="explainability-comparison"><figure><img data-technical-src="${escapeHTML(state.resultImageUrl)}" alt="Original submitted image" /><figcaption>Original submitted image</figcaption></figure><figure><img data-technical-src="${escapeHTML(attentionImage)}" alt="Grad-CAM research attention map" /><figcaption>Grad-CAM attention map</figcaption></figure></div></section>`
     : '<p class="technical-unavailable">Visual explanation is not available for this assessment.</p>';
   const featureRows = questionnaireFeatures.map(feature => `${feature.feature}: ${feature.value} (${feature.points} points)`).join(' · ');
   const technicalGroups = [
@@ -1070,7 +1312,7 @@ function legacyConsumerResult(data = {}) {
   const limited = quality.status === 'LOW_QUALITY' || result.result_state === 'poor_quality';
   const recommendations = result.guidance?.recommendations || data.recommendations || {};
   const area = result.area || data.area || 'Skin';
-  const title = limited ? 'Image quality limits assessment' : modelSupported ? condition.name
+  const title = limited ? 'A closer photo would help' : modelSupported ? condition.name
     : findings.available ? `${area === 'Nails' ? 'Nail' : area} photo review` : 'Image review is limited';
   return {
     state: limited ? 'quality_limited' : modelSupported ? 'supported_model_prediction' : findings.available ? 'image_observation' : 'insufficient_evidence',
@@ -1113,7 +1355,9 @@ function renderUnifiedConsumerResult(data) {
     metric('PIRS', score(consumer.pirs?.score), 'Prototype intake priority; separate from image concern.'),
     metric('CONCERN', label(consumer.concern?.label), `${consumer.concern?.urgency || 'Care priority from available evidence.'} Not a disease-risk score.`),
     metric('SEVERITY', label(consumer.severity?.label), 'Reported symptom level; a photo cannot measure symptoms.'),
-    primary.confidence_kind === 'calibrated_probability' && Number.isFinite(primary.confidence)
+    data.presentation_case?.matched
+      ? metric('SOURCE MATCH', 'Exact file', 'Pre-labelled teaching reference; no condition probability.')
+      : primary.confidence_kind === 'calibrated_probability' && Number.isFinite(primary.confidence)
       ? metric('CONFIDENCE', `${primary.confidence}%`, 'Calibrated research estimate; not a diagnosis.')
       : metric('CONFIDENCE / EVIDENCE', primary.evidence_strength || 'Limited', 'Raw research scores and evidence scope are in Technical Details.'),
   ].join('');
@@ -1121,13 +1365,15 @@ function renderUnifiedConsumerResult(data) {
   const attentionImage = data.research_classifier?.available ? data.research_classifier.attention_map?.image : null;
   const visualExplanation = segmentationOverlay || attentionImage
     ? `<details class="patient-visual-details" data-deferred-visual><summary>View model visual explanation</summary>${segmentationOverlay ? `<figure><img data-patient-src="${escapeHTML(segmentationOverlay)}" alt="Model segmentation overlay" /><figcaption>Model segmentation</figcaption></figure>` : ''}${attentionImage ? `<figure><img data-patient-src="${escapeHTML(attentionImage)}" alt="Model attention map" /><figcaption>Model attention map</figcaption></figure>` : ''}</details>` : '';
-  const image = state.imageUrl
-    ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>`
+  const image = state.resultImageUrl
+    ? `<div class="patient-image-frame"><img src="${escapeHTML(state.resultImageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>`
     : '<div class="patient-visual-empty"><strong>Image not retained</strong><p>Saved assessments keep their result and measurements, but not the original photo.</p></div>';
   const products = (consumer.products || []).map(product => `<article class="patient-product"><div class="patient-product-top">${productPreviewMarkup(product, 'patient-product-preview')}<div><span>${escapeHTML(product.category || 'Personal care')}</span><h4>${escapeHTML(product.name || 'Care category')}</h4><p>${escapeHTML(product.purpose || '')}</p></div></div><small>${escapeHTML(product.key_property || '')}</small><small>${escapeHTML(product.precautions || '')}</small>${commerceDestinationMarkup(product, 'patient-product-destination')}</article>`).join('');
   const findings = (consumer.visible_findings || []).map(item => `<li><strong>${escapeHTML(item.name || 'Measured detail')}</strong><span>${escapeHTML(item.detail || '')}</span></li>`).join('');
   const alternatives = (consumer.possible_conditions || []).map(item => `<li><strong>${escapeHTML(item.name || '')}</strong><span>${escapeHTML(item.explanation || (item.basis === 'research_model_ranking' ? 'Research model alternative; an examination is needed to distinguish it.' : 'An examination can help distinguish this pattern.'))}</span></li>`).join('');
   const topic = consumer.condition_information || {};
+  const referenceFeatures = consumer.reference_features || [];
+  const referenceCase = data.presentation_case?.matched === true;
   const monitoring = consumer.monitoring || {};
   const medication = consumer.medication_information || {};
   const routine = consumer.routine || {};
@@ -1167,6 +1413,7 @@ function renderUnifiedConsumerResult(data) {
       ${retakeSuggested ? '<button type="button" class="patient-text-link" data-result-action="reassess">Use a clearer photo →</button>' : ''}
     </div><div class="consumer-hero-image">${image}</div></section>
     <section class="patient-quick-summary patient-metric-row consumer-metrics" aria-label="Assessment metrics">${metrics}</section>
+    ${referenceCase ? `<section class="consumer-panel consumer-wide consumer-reference"><p class="eyebrow">SUPPLIED TEACHING CASE</p><h3>Features to discuss in this reference</h3>${patientList(referenceFeatures, 'The supplied reference includes a pre-labelled educational pattern.')}<small>Matched to the original supplied file. These teaching features are reference information; a new photo needs its own assessment.</small></section>` : ''}
     ${data.urgent_notice ? `<section class="patient-urgent-alert" role="alert"><strong>Prompt medical attention may be needed</strong><p>${escapeHTML(data.urgent_notice)}</p><button type="button" class="button primary" data-result-action="doctor">Find a doctor <span>→</span></button></section>` : ''}
     <p class="consumer-section-heading">ASSESSMENT</p>
     <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">VISIBLE FINDINGS</p>${findings ? `<ul class="consumer-findings">${findings}</ul><small>These frame measurements do not establish a condition or cause.</small>` : '<p>No specific feature could be established from this photo. Reported context and image quality still inform the result.</p>'}<div class="consumer-basis"><strong>Why this result</strong>${patientList(consumer.why_this_result, 'Available image and reported context were reviewed.')}</div>${retakeSuggested ? `<div class="consumer-retake"><strong>For a better photo</strong>${patientList(consumer.image_quality?.retake_guidance, '')}</div>` : ''}</article>
@@ -1175,7 +1422,7 @@ function renderUnifiedConsumerResult(data) {
       <article class="consumer-panel"><p class="eyebrow">CAUSES &amp; TRIGGERS</p>${causes ? `<div class="consumer-guidance-groups">${causes}</div>` : patientList(consumer.possible_causes, 'The cause cannot be determined from this photo.')}</article></section>
     <p class="consumer-section-heading">WHAT YOU CAN DO</p>
     <section class="consumer-panel consumer-wide consumer-treatment"><p class="eyebrow">TREATMENT PLAN</p>${topic.description ? `<p class="consumer-topic-intro"><strong>${escapeHTML(topic.name || 'Pattern context')}</strong> · ${escapeHTML(topic.description)}</p>` : ''}<div class="consumer-guidance-groups">${treatmentGuidance || patientList(consumer.care_steps, 'Keep care gentle and monitor meaningful changes.')}</div><div class="consumer-escalate"><strong>When to seek support</strong><p>${escapeHTML(carePlan.next_step || doctor.appointment || 'Arrange a review for persistent, changing, painful, or worrying concerns.')}</p></div></section>
-    <section class="consumer-grid"><article class="consumer-panel"><p class="eyebrow">ACTIVE &amp; MEDICINAL OPTIONS</p><p class="consumer-scope">Educational options only; suitability depends on the actual cause and your health context.</p>${medicationTopics ? `<ul class="consumer-topic-list">${medicationTopics}</ul>` : '<p>No medicine is indicated by this assessment. Focus on appropriate supportive care and monitoring.</p>'}<small>${escapeHTML(medication.consultation_notice || '')}</small></article>
+    <section class="consumer-care-flow"><article class="consumer-panel"><p class="eyebrow">ACTIVE &amp; MEDICINAL OPTIONS</p><p class="consumer-scope">Educational options only; suitability depends on the actual cause and your health context.</p>${medicationTopics ? `<ul class="consumer-topic-list">${medicationTopics}</ul>` : '<p>No medicine is indicated by this assessment. Focus on appropriate supportive care and monitoring.</p>'}<small>${escapeHTML(medication.consultation_notice || '')}</small></article>
       <article class="consumer-panel"><p class="eyebrow">${escapeHTML(String(area).toUpperCase())} CARE</p>${care ? `<div class="consumer-guidance-groups">${care}</div>` : patientList(consumer.care_steps, 'Use a gentle category-appropriate routine.')}</article></section>
     <section class="consumer-panel consumer-wide"><p class="eyebrow">DAILY ROUTINE</p><h3>${escapeHTML(String(area))} care through the week</h3>${routineCards ? `<div class="consumer-guidance-groups">${routineCards}</div>` : `<div class="patient-routine-columns"><div><strong>Morning or wash day</strong>${patientList(routine.morning, '')}</div><div><strong>Evening or non-wash day</strong>${patientList(routine.evening, '')}</div></div>`}</section>
     <p class="consumer-section-heading">SUPPORTING RECOVERY &amp; MAINTENANCE</p>
@@ -1207,15 +1454,15 @@ function renderUnifiedConsumerResult(data) {
       if (action === 'doctor') { closeResult(); showPage('support'); }
       if (action === 'save') saveProgress();
       if (action === 'report') {
-        if (!state.profile?.patient_id) { showAuthGate('register'); toast('Create an account to save and download reports.'); return; }
+        if (!state.profile?.patient_id) { closeResult(); showAuthGate('register'); toast('Create an account to save and download reports.'); return; }
         downloadSavedReport(state.assessmentId);
       }
       if (action === 'products') { closeResult(); showPage('products'); }
       if (action === 'progress') {
-        if (!state.profile?.patient_id) { showAuthGate('register'); toast('Create an account to save assessments and check-ins.'); return; }
+        if (!state.profile?.patient_id) { closeResult(); showAuthGate('register'); toast('Create an account to save assessments and check-ins.'); return; }
         closeResult(); showPage('progress');
       }
-      if (action === 'reassess') { closeResult(); resetImage(); selectArea(state.area); showPage('home'); $('#imageInput')?.focus(); }
+      if (action === 'reassess') { closeResult(); resetImage(); selectArea(state.resultArea || state.area); showPage('home'); $('#imageInput')?.focus(); }
     };
   });
   $('#resultModal').classList.add('has-patient-result');
@@ -1269,7 +1516,7 @@ function renderPatientResult(data) {
   const conditionFinding = presentation.finding || {};
   const visualReviewCard = renderImageFindingsCard(presentation.imageFindings);
   const hasVisualExplanation = Boolean(attentionImage || (segmentation.available && segmentation.overlay));
-  const hasImage = Boolean(!presentation.questionnaire && state.imageUrl);
+  const hasImage = Boolean(!presentation.questionnaire && state.resultImageUrl);
   const reportedSymptoms = contextFactors.filter(factor => factor.type === 'reported_symptom').map(factor => factor.label);
   const questionnaireObservations = questionnaireFeatures.map(feature => `${feature.feature}: ${feature.value}`);
   const observations = [
@@ -1297,7 +1544,7 @@ function renderPatientResult(data) {
   const visualMarkup = presentation.questionnaire
     ? '<div class="patient-visual-empty"><span aria-hidden="true">◌</span><strong>Questionnaire assessment</strong><p>No image is used for sweat-pattern assessments.</p></div>'
     : hasImage
-      ? `<div class="patient-image-frame"><img src="${escapeHTML(state.imageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>${hasVisualExplanation ? `<details class="patient-visual-details" data-deferred-visual><summary>View AI analysis</summary><div>${segmentation.available && segmentation.overlay ? `<figure><img data-patient-src="${escapeHTML(segmentation.overlay)}" alt="Model segmentation output" /><figcaption>Model segmentation output</figcaption></figure>` : ''}${attentionImage ? `<figure><img data-patient-src="${escapeHTML(attentionImage)}" alt="Grad-CAM research attention map" /><figcaption>AI attention map</figcaption></figure>` : ''}</div></details>` : '<p class="patient-visual-note">AI visual explanation is not available for this input.</p>'}`
+      ? `<div class="patient-image-frame"><img src="${escapeHTML(state.resultImageUrl)}" alt="Uploaded assessment image" /><span>Uploaded image</span></div>${hasVisualExplanation ? `<details class="patient-visual-details" data-deferred-visual><summary>View AI analysis</summary><div>${segmentation.available && segmentation.overlay ? `<figure><img data-patient-src="${escapeHTML(segmentation.overlay)}" alt="Model segmentation output" /><figcaption>Model segmentation output</figcaption></figure>` : ''}${attentionImage ? `<figure><img data-patient-src="${escapeHTML(attentionImage)}" alt="Grad-CAM research attention map" /><figcaption>AI attention map</figcaption></figure>` : ''}</div></details>` : '<p class="patient-visual-note">AI visual explanation is not available for this input.</p>'}`
       : '<div class="patient-visual-empty"><span aria-hidden="true">◌</span><strong>Image not retained</strong><p>Saved reports retain assessment metadata but not the original image or visual overlays.</p></div>';
   let root = $('#patientResultContent');
   if (!root) {
@@ -1342,7 +1589,7 @@ function renderPatientResult(data) {
       button.onclick = () => {
         if (button.dataset.resultAction === 'doctor') { closeResult(); showPage('support'); return; }
         if (button.dataset.resultAction === 'progress') {
-          if (!state.profile?.patient_id) { showAuthGate('register'); return toast('Create an account to save assessments and future check-ins.'); }
+          if (!state.profile?.patient_id) { closeResult(); showAuthGate('register'); return toast('Create an account to save assessments and future check-ins.'); }
           closeResult(); showPage('progress'); return;
         }
         if (button.dataset.resultAction === 'edit-questionnaire') {
@@ -1357,7 +1604,7 @@ function renderPatientResult(data) {
           return;
         }
         if (button.dataset.resultAction === 'reassess') {
-          closeResult(); resetImage(); selectArea(state.area); showPage('home');
+          closeResult(); resetImage(); selectArea(state.resultArea || state.area); showPage('home');
           $('#imageInput')?.focus();
           toast('Use the photo coach to check a new image before you submit it.');
           return;
@@ -1415,7 +1662,7 @@ function renderPatientResult(data) {
       if (button.dataset.resultAction === 'doctor') { closeResult(); showPage('support'); return; }
       if (button.dataset.resultAction === 'products') { closeResult(); showPage('products'); return; }
       if (button.dataset.resultAction === 'reassess') {
-        closeResult(); resetImage(); selectArea(state.area); showPage('home');
+        closeResult(); resetImage(); selectArea(state.resultArea || state.area); showPage('home');
         $('#imageInput')?.focus();
         return;
       }
@@ -1429,6 +1676,7 @@ function renderPatientResult(data) {
 }
 
 async function analyze() {
+  if (state.assessmentInFlight) return;
   const sweat = state.area === 'Sweat';
   if (!sweat && !state.imageUrl) return;
   if (!$('#imageConsent').checked) return requireAssessmentConsent($('#imageConsent'), sweat ? 'Please confirm questionnaire consent to continue.' : 'Please confirm image consent to continue.');
@@ -1436,7 +1684,16 @@ async function analyze() {
   clearAssessmentConsentError();
   const button = $('#analyzeButton');
   const requestId = ++state.assessmentRequestId;
+  const workspaceVersion = state.workspaceVersion;
+  const signature = JSON.stringify([state.area, state.file?.name, state.file?.size, state.file?.lastModified, ...$$('#screen input:not([type=file]), #screen select, #screen textarea').map(input => [input.id || input.name, input.type === 'checkbox' ? input.checked : input.value])]);
+  if (state.submissionSignature !== signature || !state.submissionKey) {
+    state.submissionKey = crypto.randomUUID(); state.submissionSignature = signature;
+  }
+  const controller = new AbortController(); state.assessmentController = controller;
+  state.assessmentId = null; state.resultImageUrl = null; state.resultPersistence = null;
+  showAssessmentFeedback('');
   state.assessmentInFlight = true;
+  state.reviewResultReady = false;
   setAssessmentInputBusy(true);
   button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
   transitionAssessment(AssessmentState.INPUT_VALIDATING, 'VALIDATING INPUT');
@@ -1447,21 +1704,23 @@ async function analyze() {
     transitionAssessment(AssessmentState.ANALYZING, 'ASSESSMENT RUNNING');
     if (sweat) {
       const payload = {
-        questionnaire_consent: true, urgent_concern: $('#urgentConcern').checked,
+        questionnaire_consent: true, consent_notice_version: processingNoticeVersion('questionnaire_assessment'), urgent_concern: $('#urgentConcern').checked,
         pattern: $('#sweatPattern').value, frequency: $('#sweatFrequency').value, duration: $('#sweatDuration').value,
         body_location: $('#sweatLocation').value, stress: $('#sweatStress').value, heat: $('#sweatHeat').value,
         medication_change: $('#sweatMedication').checked, daily_impact: $('#sweatImpact').checked,
       };
-      data = await requestJSON('/api/sweat-assessments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      data = await requestJSON('/api/sweat-assessments', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': state.submissionKey }, body: JSON.stringify(payload), signal: controller.signal });
     } else {
       const form = new FormData();
+      form.append('consent_notice_version', processingNoticeVersion('image_assessment'));
       [['image', state.file], ['area', state.area], ['duration', $('#duration').value], ['discomfort', $('#discomfort').value], ['change', $('#change').value], ['image_context', $('#imageContext').value], ['image_consent', String($('#imageConsent').checked)], ['presentation_case_enabled', String($('#presentationCaseEnabled').checked)], ['urgent_concern', String($('#urgentConcern').checked)], ['dermoscopy_attestation', String($('#dermoscopyConsent').checked)], ['previous_treatment', $('#previousTreatment').value]].forEach(([key, value]) => form.append(key, value));
       $$('input[name="symptoms"]:checked').forEach(input => form.append('symptoms', input.value));
-      data = await requestJSON('/api/assessments', { method: 'POST', body: form }, 60000);
+      data = await requestJSON('/api/assessments', { method: 'POST', headers: { 'Idempotency-Key': state.submissionKey }, body: form, signal: controller.signal }, 60000);
     }
     // A future request may complete first. Never allow an older response to
     // overwrite the image/result state the person is currently reviewing.
-    if (requestId !== state.assessmentRequestId) return;
+    if (requestId !== state.assessmentRequestId || workspaceVersion !== state.workspaceVersion) return;
+    if (!data.assessment_id || !data.assessment_result || !data.area) throw Error('The assessment response was incomplete. Please retry; no successful result is shown.');
     transitionAssessment(AssessmentState.GENERATING_EXPLANATION, 'PREPARING EXPLANATION');
     transitionAssessment(AssessmentState.FINALIZING, 'FINALIZING RESULT');
     const inputStatus = data.input_validation?.status;
@@ -1480,6 +1739,8 @@ async function analyze() {
     finishProcessing(true);
     transitionAssessment(finalState, finalState === AssessmentState.INVALID_IMAGE ? 'IMAGE NEEDS IMPROVEMENT' : finalState === AssessmentState.OOD_IMAGE ? 'IMAGE OUTSIDE SUPPORTED SCOPE' : finalState === AssessmentState.LOW_CONFIDENCE ? 'RESULT UNCERTAIN' : 'RESULT READY');
     state.assessmentId = data.assessment_id;
+    state.resultArea = data.area; state.resultPersistence = data.persistence;
+    state.resultImageUrl = data.input_type === 'questionnaire' ? null : state.imageUrl;
     const responseRisk = data.risk || {};
     const score = Number.isFinite(responseRisk.score) ? responseRisk.score : null;
     const questionnaire = data.input_type === 'questionnaire';
@@ -1494,10 +1755,11 @@ async function analyze() {
     $('#findingTitle').textContent = presentation.primaryTitle; $('#findingText').textContent = presentation.primaryDescription; renderResultOverview(data);
     $('#qualityScore').textContent = Number.isFinite(data.quality?.score) ? `${data.quality.score}% · ${data.quality.label}` : data.quality?.label || 'Not applicable';
     $('#modelStatus').textContent = presentation.scope;
-    $('#clinicalStatus').textContent = data.persistence === 'mysql' ? 'Saved to your local account · no image retained' : 'Guest result · not stored';
+    $('#clinicalStatus').textContent = persistenceMessage(data.persistence);
     $('#saveProgressButton').innerHTML = data.persistence === 'mysql' ? 'Refresh saved reports <span>→</span>' : 'Create account to save <span>→</span>';
     setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan); updateDoctorSupport(data.assessment_risk || data.assessment_result?.assessment_risk || data.risk, data.condition_intelligence?.doctor); renderPatientResult(data);
-    if (data.persistence === 'mysql' && state.profile?.patient_id) await loadProgress({ force: true });
+    // History refresh must not delay a completed result or turn it into an error.
+    if (data.persistence === 'mysql' && state.profile?.patient_id) void loadProgress({ force: true });
     if (questionnaire) {
       $('#attentionLabel').textContent = 'Questionnaire summary';
       $('.result-footnote').textContent = 'Questionnaire inputs use a transparent contribution summary. Grad-CAM and image-region visualisation do not apply to tabular input.';
@@ -1507,10 +1769,16 @@ async function analyze() {
     const note = $('#concernNote').value.trim();
     const comparison = data.progress_comparison?.summary || 'Analysis metadata is saved for a registered profile. Uploaded images are not stored.';
     $('#progressText').textContent = note ? `Tracking note: “${note}” ${comparison}` : comparison;
+    updateResultContinuation(data);
+    state.submissionKey = null; state.submissionSignature = null;
+    state.reviewResultReady = true;
+    updateAssessmentProgress();
     showResultTab('summary'); openDialog($('#resultModal'), '.modal-close', button);
   } catch (error) {
-    if (requestId !== state.assessmentRequestId) return;
+    if (requestId !== state.assessmentRequestId || workspaceVersion !== state.workspaceVersion) return;
     finishProcessing(false);
+    state.reviewResultReady = false;
+    handleChangedProcessingNotice(error);
     const rejectedResultState = String(error?.payload?.assessment_result?.result_state || '').toLowerCase();
     const rejectionState = rejectedResultState === 'poor_quality'
       ? AssessmentState.INVALID_IMAGE
@@ -1525,15 +1793,23 @@ async function analyze() {
           ? 'IMAGE OUTSIDE SUPPORTED SCOPE'
           : 'ASSESSMENT UNAVAILABLE',
     );
+    if (error.interrupted) {
+      transitionAssessment(AssessmentState.CANCELLED, 'REQUEST INTERRUPTED');
+      showAssessmentFeedback(state.profile?.patient_id ? 'The response was interrupted. The server may have saved this assessment. Check My Journey or retry unchanged inputs; the same retry key prevents another saved record.' : 'The response was interrupted. Your inputs remain here for retry and guest results are not saved.');
+      return;
+    }
+    showAssessmentFeedback(error.status === 401 ? 'Your session ended. Sign in again before saving. Your current inputs remain in this tab.' : error.message || 'Assessment unavailable. Check your inputs and try again.');
     const message = error?.message || '';
     console.error('DermaMatrix assessment request or result rendering failed.', error);
     const internalFailure = /\b(?:ReferenceError|TypeError|SyntaxError)\b|is not defined|Failed to fetch|NetworkError/i.test(message);
     toast(internalFailure ? 'The assessment could not be completed. Reload the app, confirm it is open at http://127.0.0.1:8000, then try again.' : message || 'We couldn’t complete this assessment. Check your information and try again.');
   } finally {
-    if (requestId !== state.assessmentRequestId) return;
-    state.assessmentInFlight = false;
+    if (requestId !== state.assessmentRequestId || workspaceVersion !== state.workspaceVersion) return;
+    state.assessmentInFlight = false; state.assessmentController = null;
+    updateAssessmentProgress();
     setAssessmentInputBusy(false);
     button.disabled = sweat ? false : !state.file;
+    if (!state.reviewResultReady) button.focus();
     button.innerHTML = sweat ? 'Review questionnaire <span>→</span>' : 'Review image <span>→</span>';
   }
 }
@@ -1541,11 +1817,18 @@ async function analyze() {
 async function saveProgress() {
   if (!state.assessmentId) return toast('Complete a screen before saving progress.');
   if (!state.profile?.patient_id) {
-    showAuthGate('register');
+    closeResult(); showAuthGate('register');
     return toast('Guest results are not stored. Create an account to save future reports and routines.');
   }
+  if (state.resultPersistence !== 'mysql') {
+    closeResult(); showPage('home');
+    showAssessmentFeedback('This assessment was not saved. Your inputs remain here; review them and retry.');
+    $('#analyzeButton').focus(); return;
+  }
   try {
-    await loadProgress({ force: true });
+    const refreshed = await loadProgress({ force: true });
+    if (!refreshed) return;
+    closeResult(); showPage('progress');
     $('#clinicalStatus').textContent = 'Saved to your local account · no image retained';
     toast('Saved assessment metadata is available in My Journey. Uploaded images are not kept.');
   } catch (error) {
@@ -1646,12 +1929,13 @@ async function saveProfile(event) {
   payload.health_data_consent = form.get('health_data_consent') === 'on';
   const button = event.currentTarget.querySelector('[type="submit"]'); button.disabled = true;
   try {
+    payload.consent_notice_version = processingNoticeVersion('health_history');
     const data = await requestJSON('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const profile = data.profile;
     state.profile = { ...state.profile, ...profile };
     persistBrowserProfile();
     $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); toast('Profile saved in the local project database.');
-  } catch (error) { toast(error.message || 'Unable to save profile.'); }
+  } catch (error) { handleChangedProcessingNotice(error); toast(error.message || 'Unable to save profile.'); }
   button.disabled = false;
 }
 
@@ -1977,17 +2261,24 @@ function applyConsumerCopy() {
 
 async function clearLocalProfile() {
   setNavigationOpen(false);
-  try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch { /* local sign-out still continues */ }
+  try { await requestJSON('/api/auth/logout', { method: 'POST' }); } catch {
+    toast('Sign-out could not be confirmed. Check your connection and try again.'); return;
+  }
+  clearWorkspaceEvidence();
   localStorage.removeItem('dermamatrix_profile'); state.profile = null; state.isGuest = false;
   $('#profileName').textContent = 'Guest workspace'; $('#profileMeta').textContent = 'Sign in to save';
   state.assessmentId = null; state.latestRisk = null; state.recommendedSpecialty = 'dermatologist'; state.nearbySearchLocation = '';
   state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; resetImage(); updateDashboardIdentity(); renderProgress();
+  updateAccountExportControls();
   showAuthGate('login'); setAuthMessage('You have been signed out.', true);
 }
 
 const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
 
-function currentDate() { return new Date().toISOString().slice(0, 10); }
+function currentDate() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
 function updateDashboardIdentity() {
   const hour = new Date().getHours();
@@ -2116,17 +2407,26 @@ function renderReportRegister() {
     return;
   }
   const analyses = state.analyses || [];
-  const cards = analyses.length ? analyses.slice(0, 6).map(item => {
+  const visibleCount = Math.min(analyses.length, state.reportVisibleCount || 6);
+  const cards = analyses.length ? analyses.slice(0, visibleCount).map(item => {
     const summary = item.summary || {};
     const assessmentRisk = summary.assessment_risk || summary.assessment_result?.assessment_risk || summary.risk || {};
-    const concern = assessmentRisk.score === undefined || assessmentRisk.score === null ? 'Check saved' : `${readableStatus(assessmentRisk.level || 'recorded')} concern`;
-    return `<article class="report-compact-card"><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time><div><span>${escapeHTML(item.area)} check</span><strong>${escapeHTML(reportClassification(summary))}</strong><small>${escapeHTML(concern)}</small></div><div class="report-card-actions"><button class="text-button" data-view-report="${escapeHTML(item.assessment_id)}">View result</button><button class="text-button" data-download-report="${escapeHTML(item.assessment_id)}">PDF</button></div></article>`;
+    const concern = item.unavailable ? 'Original record preserved · unavailable for interpretation' : assessmentRisk.score === undefined || assessmentRisk.score === null ? 'Check saved' : `${readableStatus(assessmentRisk.level || 'recorded')} concern`;
+    return `<article class="report-compact-card"><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time><div><span>${escapeHTML(item.area)} check</span><strong>${escapeHTML(item.unavailable ? 'Saved evidence unavailable' : reportClassification(summary))}</strong><small>${escapeHTML(concern)}</small></div><div class="report-card-actions"><button class="text-button" data-view-report="${escapeHTML(item.assessment_id)}">View result</button><button class="text-button" data-download-report="${escapeHTML(item.assessment_id)}">PDF</button></div></article>`;
   }).join('') : '<p class="empty-state">Your saved results will appear here after a check.</p>';
-  register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">PAST RESULTS</p><h3>Your previous checks</h3><p>Open a saved result whenever you want to look back.</p></div><span>${analyses.length} saved</span><div class="report-register-actions"></div></div><div class="report-compact-list">${cards}</div>${analyses.length > 6 ? `<p class="report-list-note">Showing your six most recent results.</p>` : ''}`;
+  register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">PAST RESULTS</p><h3>Your previous checks</h3><p>Open a saved result whenever you want to look back.</p></div><span>${analyses.length} saved</span><div class="report-register-actions"></div></div><div class="report-compact-list">${cards}</div>${analyses.length > 6 ? `<div class="report-list-navigation"><p class="report-list-note" role="status">Showing ${visibleCount} of ${analyses.length} recent saved results.</p>${visibleCount < analyses.length ? `<button type="button" class="button quiet" data-show-more-reports>Show ${Math.min(6, analyses.length - visibleCount)} more results</button>` : ''}</div>` : ''}`;
   if (downloadButton) {
     downloadButton.hidden = false;
     register.querySelector('.report-register-actions')?.append(downloadButton);
   }
+  const more = register.querySelector('[data-show-more-reports]');
+  if (more) more.onclick = () => {
+    state.reportVisibleCount = Math.min(analyses.length, visibleCount + 6);
+    renderReportRegister();
+    const firstNew = register.querySelectorAll('[data-view-report]')[visibleCount];
+    firstNew?.focus({ preventScroll: true });
+    firstNew?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+  };
   $$('[data-view-report]').forEach(button => { button.onclick = () => showSavedReport(button.dataset.viewReport); });
   $$('[data-download-report]').forEach(button => { button.onclick = () => downloadSavedReport(button.dataset.downloadReport); });
 }
@@ -2134,10 +2434,12 @@ function renderReportRegister() {
 function showSavedReport(assessmentId) {
   const item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
   if (!item) return toast('This saved report is no longer available.');
-  const data = { ...item.summary, research_classifier: item.summary?.classification || {} };
+  if (item.unavailable) return toast('This saved record is unreadable. Its original data has not been changed.');
+  const data = { ...(item.summary || {}), research_classifier: item.summary?.classification || {} };
   const questionnaire = data.input_type === 'questionnaire';
   const presentation = normaliseAssessmentPresentation(data);
   state.assessmentId = assessmentId;
+  state.resultArea = item.area; state.resultPersistence = 'mysql'; state.resultImageUrl = null;
   $('.segmentation-stage').classList.toggle('sweat-summary', questionnaire);
   $('#resultImage').hidden = true; $('#resultImage').removeAttribute('src'); $('#segmentationOverlay').hidden = true; $('#attentionMap').hidden = true;
   $('#resultRisk').textContent = presentation.primaryLabel.toUpperCase();
@@ -2152,12 +2454,16 @@ function showSavedReport(assessmentId) {
   setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.assessment_risk || data.assessment_result?.assessment_risk || data.risk || {}, data.condition_intelligence?.doctor); renderPatientResult(data);
   $('#progressText').textContent = `Saved ${String(item.created_at).slice(0, 10)}. This report can support a clinician discussion; it does not confirm a diagnosis or treatment response.`;
   $('.result-footnote').textContent = 'This is a saved metadata report. The original image, visual candidate overlay, and Grad-CAM image were intentionally not retained.';
+  updateResultContinuation({ ...data, persistence: 'mysql' });
   showResultTab('summary'); openDialog($('#resultModal'), '.modal-close');
 }
 
 async function downloadSavedReport(assessmentId) {
   const item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
-  if (!item) return toast('This saved report is no longer available.');
+  if (!item && !(state.assessmentId === assessmentId && state.resultPersistence === 'mysql')) return toast('This saved report is no longer available.');
+  const owner = state.profile?.patient_id;
+  const workspaceVersion = state.workspaceVersion;
+  const current = () => state.profile?.patient_id === owner && state.workspaceVersion === workspaceVersion;
   try {
     const response = await fetch(`/api/reports/${encodeURIComponent(assessmentId)}/download`);
     if (!response.ok) {
@@ -2165,11 +2471,13 @@ async function downloadSavedReport(assessmentId) {
       throw Error(payload.error || 'Unable to generate the PDF report.');
     }
     const blob = await response.blob();
+    if (!current()) return;
     const url = URL.createObjectURL(blob); const link = document.createElement('a');
-    link.href = url; link.download = `dermamatrix-discussion-brief-${String(item.created_at).slice(0, 10)}.pdf`; link.click();
+    link.href = url; link.download = `dermamatrix-discussion-brief-${String(item?.created_at || currentDate()).slice(0, 10)}.pdf`; link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     toast('PDF discussion brief downloaded.');
   } catch (error) {
+    if (!current()) return;
     toast(error.message || 'Unable to generate the PDF report.');
   }
 }
@@ -2179,6 +2487,9 @@ async function downloadHistory() {
     showAuthGate('register');
     return toast('Create or sign in to an account before downloading saved history.');
   }
+  const owner = state.profile?.patient_id;
+  const workspaceVersion = state.workspaceVersion;
+  const current = () => state.profile?.patient_id === owner && state.workspaceVersion === workspaceVersion;
   try {
     const response = await fetch('/api/history/download');
     if (!response.ok) {
@@ -2186,12 +2497,62 @@ async function downloadHistory() {
       throw Error(payload.error || 'Unable to generate the history export.');
     }
     const blob = await response.blob();
+    if (!current()) return;
     const url = URL.createObjectURL(blob); const link = document.createElement('a');
     link.href = url; link.download = `dermamatrix-personal-history-${currentDate()}.pdf`; link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    toast('Personal history PDF downloaded.');
+    toast('Recent history PDF downloaded (up to 50 assessments, 50 routines and 100 check-ins).');
   } catch (error) {
+    if (!current()) return;
     toast(error.message || 'Unable to generate the history export.');
+  }
+}
+
+function updateAccountExportControls() {
+  const signedIn = Boolean(state.profile?.patient_id);
+  $('#accountExportRow').hidden = !signedIn;
+  $('#downloadAccountDataButton').disabled = !signedIn || Boolean(downloadAccountData.inFlight);
+}
+
+async function downloadAccountData() {
+  if (!state.profile?.patient_id) {
+    showAuthGate('login');
+    return toast('Sign in to download your local account data.');
+  }
+  if (downloadAccountData.inFlight) return;
+  const owner = state.profile.patient_id;
+  const button = $('#downloadAccountDataButton');
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 60000);
+  downloadAccountData.inFlight = true;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = 'Preparing account data…';
+  try {
+    const response = await fetch('/api/account-data/download', { credentials: 'same-origin', signal: controller.signal });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      const error = Error(payload.error || 'Unable to download local account data.');
+      error.status = response.status;
+      throw error;
+    }
+    if (!String(response.headers.get('Content-Type') || '').toLowerCase().includes('application/json')) throw Error('The server did not return an account-data JSON file. Please try again.');
+    const blob = await response.blob();
+    if (state.profile?.patient_id !== owner) return toast('The account changed before the download was ready. Sign in to the intended account and try again.');
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = `dermamatrix-local-account-data-${currentDate()}.json`; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    toast('Local account-data download started.');
+  } catch (error) {
+    if (error.status === 401) showAuthGate('login');
+    toast(error.name === 'AbortError' ? 'The account-data download took too long. Please try again.' : error.message || 'Unable to download local account data.');
+  } finally {
+    window.clearTimeout(timeout);
+    downloadAccountData.inFlight = false;
+    button.removeAttribute('aria-busy');
+    button.textContent = 'Download account data (JSON)';
+    updateAccountExportControls();
   }
 }
 
@@ -2227,7 +2588,9 @@ function renderProgress() {
     const lastUpdate = lastCheckin ? `Last check-in: ${lastCheckin.checkin_date}` : `Started ${routine.start_date}`;
     return `<article class="routine-item"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}</p>${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">Delete</button></div></article>`;
   }).join('');
+  const selectedRoutine = $('#checkinRoutine').value;
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
+  if (routines.some(routine => String(routine.routine_id) === selectedRoutine)) $('#checkinRoutine').value = selectedRoutine;
   const medicalHistory = hasProfile && (state.profile.past_history || state.profile.current_history) ? `<details class="journey-history-details"><summary>Your saved health notes</summary><div>${state.profile.past_history ? `<p><strong>Past:</strong> ${escapeHTML(state.profile.past_history)}</p>` : ''}${state.profile.current_history ? `<p><strong>Current:</strong> ${escapeHTML(state.profile.current_history)}</p>` : ''}</div></details>` : '';
   const timeline = !hasProfile ? '<p class="empty-state">Your updates will be available after profile setup.</p>' : !checkins.length ? '<p class="empty-state">Save your first check-in to begin tracking progress.</p>' : checkins.slice(0, 6).map(item => `<article class="history-item"><div><strong>${escapeHTML(readableStatus(item.reported_trend))}</strong><p>${escapeHTML(item.condition_label)} · ${escapeHTML(item.routine_name)}</p>${item.note ? `<small>${escapeHTML(item.note)}</small>` : ''}</div><time>${escapeHTML(item.checkin_date)}</time></article>`).join('');
   $('#progressHistory').innerHTML = medicalHistory + timeline;
@@ -2241,28 +2604,53 @@ function renderProgress() {
 }
 
 async function loadProgress({ force = false } = {}) {
-  if (!state.profile?.patient_id) { renderProgress(); return; }
+  if (!state.profile?.patient_id) { renderProgress(); return false; }
   const patientId = state.profile.patient_id;
-  if (!force && state.progressLoadedFor === patientId) { renderProgress(); return; }
-  if (state.progressLoadPromise) return state.progressLoadPromise;
-  state.progressLoadPromise = (async () => {
+  const workspaceVersion = state.workspaceVersion;
+  const current = () => state.profile?.patient_id === patientId && state.workspaceVersion === workspaceVersion;
+  const pending = state.progressLoadContext;
+  if (state.progressLoadPromise && pending?.patientId === patientId && pending.workspaceVersion === workspaceVersion) {
+    if (force) pending.refreshRequested = true;
+    return state.progressLoadPromise;
+  }
+  if (!force && state.progressLoadedFor === patientId) { renderProgress(); return true; }
+  const context = { patientId, workspaceVersion, refreshRequested: false };
+  const promise = Promise.resolve().then(async () => {
     try {
-      const [routineData, checkinData, analysisData] = await Promise.all([
-        requestJSON('/api/routines'),
-        requestJSON('/api/progress-checkins'),
-        requestJSON('/api/analysis-history'),
-      ]);
-      if (state.profile?.patient_id !== patientId) return;
-      state.routines = routineData.routines; state.checkins = checkinData.checkins; state.analyses = analysisData.analyses;
-      state.progressLoadedFor = patientId;
-      renderProgress();
-    } catch (error) {
-      toast(error.message || 'Progress data is unavailable right now.');
+      do {
+        context.refreshRequested = false;
+        try {
+          const [routineData, checkinData, analysisData] = await Promise.all([
+            requestJSON('/api/routines'), requestJSON('/api/progress-checkins'), requestJSON('/api/analysis-history'),
+          ]);
+          if (!current()) return false;
+          // A save may finish after this batch started. Await one fresh batch
+          // for all callers rather than cache its older snapshot or duplicate it.
+          if (context.refreshRequested) continue;
+          if (![routineData.routines, checkinData.checkins, analysisData.analyses].every(Array.isArray)) throw Error('The saved history response was incomplete. Please try again.');
+          state.routines = routineData.routines; state.checkins = checkinData.checkins; state.analyses = analysisData.analyses;
+          state.progressLoadedFor = patientId;
+          renderProgress();
+          return true;
+        } catch (error) {
+          if (!current()) return false;
+          if (context.refreshRequested) continue;
+          state.progressLoadedFor = null;
+          toast(error.message || 'Progress data is unavailable right now.');
+          return false;
+        }
+      } while (current());
+      return false;
     } finally {
-      state.progressLoadPromise = null;
+      // A response from a previous account must not clear its successor's work.
+      if (state.progressLoadPromise === promise) {
+        state.progressLoadPromise = null; state.progressLoadContext = null;
+      }
     }
-  })();
-  return state.progressLoadPromise;
+  });
+  state.progressLoadContext = context;
+  state.progressLoadPromise = promise;
+  return promise;
 }
 
 function editRoutine(routineId) {
@@ -2336,7 +2724,13 @@ $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(b
 $$('[data-dashboard-area]').forEach(button => { button.onclick = () => startAreaAssessment(button.dataset.dashboardArea); });
 $('#imageInput').onchange = event => setImage(event.target.files[0]);
 $('#imageContext').onchange = updateImageContext;
-$('#screenDetails').addEventListener('toggle', event => { if (event.currentTarget.open) updateAssessmentProgress(3); });
+$('#screenDetails').addEventListener('toggle', updateAssessmentProgress);
+[$('#screenDetails'), $('#sweatWorkflow'), $('.clinical-checks')].forEach(container => container.addEventListener('change', () => {
+  if (state.assessmentInFlight) return;
+  state.reviewResultReady = false;
+  if (state.area === 'Sweat') state.questionnaireReviewed = true;
+  updateAssessmentProgress();
+}));
 const drop = $('#dropZone');
 ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
@@ -2376,26 +2770,27 @@ $$('[data-close-modal]').forEach(button => { button.onclick = closeResult; });
 $$('[data-close-profile]').forEach(button => { button.onclick = closeProfile; });
 $('.menu-button').onclick = () => setNavigationOpen(!document.body.classList.contains('nav-open'));
 $('#navScrim').onclick = () => setNavigationOpen(false);
-window.addEventListener('resize', () => { if (window.innerWidth > 880) setNavigationOpen(false); });
+$('#closeNavButton').onclick = () => setNavigationOpen(false);
+window.addEventListener('resize', () => { setNavigationOpen(document.body.classList.contains('nav-open')); updateAssessmentProgress(); });
 document.addEventListener('keydown', event => {
+  const authGate = $('#authGate');
+  if (authGate.classList.contains('show')) {
+    containKeyboardFocus(event, authGate);
+    if (event.key === 'Escape') event.preventDefault();
+    return;
+  }
+  if (state.assessmentInFlight && $('#processingModal')?.classList.contains('show')) {
+    if (event.key === 'Escape') { event.preventDefault(); interruptAssessment(); }
+    else if (event.key === 'Tab') containKeyboardFocus(event, $('#processingModal'));
+    return;
+  }
   const activeDialog = $('#resultModal').classList.contains('show') ? $('#resultModal') : $('#profileModal').classList.contains('show') ? $('#profileModal') : null;
   if (activeDialog && event.key === 'Tab') {
-    const focusable = [...activeDialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary')]
-      .filter(element => element.getClientRects().length && !element.closest('[hidden], .result-panel:not(.active)') && (element.tagName === 'SUMMARY' || !element.closest('details:not([open])')));
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (first && last) {
-      if (event.shiftKey && (document.activeElement === first || !activeDialog.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || !activeDialog.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
-    }
+    containKeyboardFocus(event, activeDialog);
     return;
   }
   if (document.body.classList.contains('nav-open') && event.key === 'Tab') {
-    const focusable = [...$('.sidebar').querySelectorAll('a[href], button:not([disabled])')];
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    containKeyboardFocus(event, $('.sidebar'));
   }
   if (event.key === 'Escape') {
     if (activeDialog) { event.preventDefault(); closeDialog(activeDialog); }
@@ -2423,6 +2818,7 @@ $('#workspaceSearch').onkeydown = event => {
 $('#notificationsToggle').onchange = event => { persistPreferences({ notifications_enabled: event.target.checked }); toast(event.target.checked ? 'Care reminders enabled.' : 'Care reminders disabled.'); };
 $('#motionToggle').onchange = event => { persistPreferences({ reduced_motion: event.target.checked }); toast(event.target.checked ? 'Reduced motion enabled.' : 'Reduced motion disabled.'); };
 $('#clearProfileButton').onclick = clearLocalProfile;
+$('#downloadAccountDataButton').onclick = downloadAccountData;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
 $('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; persistPreferences({ theme: next }); };
 $('#settingsThemeButton').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; persistPreferences({ theme: next }); };
@@ -2442,6 +2838,8 @@ async function initialiseApp() {
   }
   installImagePreview();
   installProcessingOverlay();
+  syncInteractionInertness();
+  void loadProcessingNotices();
   restoreProfile();
   restoreSettings();
   restoreTheme();

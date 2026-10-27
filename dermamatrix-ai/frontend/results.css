@@ -67,3 +67,14 @@ body[data-theme="dark"] .consumer-possibilities li{background:rgba(105,185,238,.
 @media(max-width:1050px){.consumer-wide .patient-products{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.consumer-hero{grid-template-columns:1fr;padding:18px}.consumer-hero-image{order:-1}.consumer-grid,.consumer-findings{grid-template-columns:1fr}.consumer-panel{padding:18px}.consumer-result{gap:14px}.consumer-wide .consumer-guidance-groups{grid-template-columns:1fr}}
 @media(max-width:520px){.consumer-wide .patient-products{grid-template-columns:1fr}.consumer-hero-image,.consumer-hero-image .patient-image-frame,.consumer-hero-image .patient-visual-empty{min-height:200px}.consumer-hero-image .patient-image-frame img{min-height:200px}}
+
+/* Full-width care sections keep short option cards beside their peers rather
+   than leaving a half-empty column next to a much longer skin-care card. */
+.consumer-care-flow{grid-column:1/-1;display:grid;gap:18px}
+.consumer-care-flow .consumer-topic-list{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.consumer-care-flow .consumer-guidance-groups{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.consumer-reference{border-color:#a8cfed;background:linear-gradient(135deg,#f1f9ff,#fff)}
+.consumer-reference .patient-result-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 20px}
+.consumer-reference .patient-result-list li{margin:0}
+body[data-theme="dark"] .consumer-reference{background:linear-gradient(135deg,#113753,#102b43);border-color:#386486}
+@media(max-width:760px){.consumer-care-flow .consumer-topic-list,.consumer-care-flow .consumer-guidance-groups,.consumer-reference .patient-result-list{grid-template-columns:1fr}}

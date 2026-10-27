@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" href="data:," />
+    <title>Local data handling | DermaMatrix AI</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="design-system.css" />
+    <link rel="stylesheet" href="studio.css" />
+  </head>
+  <body>
+    <main class="data-notice-page">
+      <header>
+        <p class="eyebrow">DERMAMATRIX AI · LOCAL PROTOTYPE</p>
+        <h1>Local data handling</h1>
+        <p>These are technical facts about the current local research and presentation application. They are not approved legal terms or a complete service privacy policy.</p>
+        <p class="notice-boundary">The service operator, approved privacy contact, intended audience, retention periods and rights-request process still require operator review. No approved contact or online rights-request channel is configured here.</p>
+      </header>
+      <nav aria-label="Data-handling topics"><a href="#account">Account</a> · <a href="#health-history">Health history</a> · <a href="#assessments">Assessments</a> · <a href="#external">External links</a> · <a href="#rights">Records and rights</a></nav>
+      <section id="account" aria-labelledby="accountTitle">
+        <h2 id="accountTitle">Creating a local account</h2>
+        <p>Account creation stores your name, email address, optional phone number and a salted password hash in the local project database. Your password is not stored in readable form. A signed, HTTP-only browser session cookie identifies your account. Appearance and other workspace preferences can be saved to that account.</p>
+        <p>Account permission covers creating and using that account. It does not supply separate permission for an image assessment or optional health-history storage.</p>
+      </section>
+      <section id="health-history" aria-labelledby="historyTitle">
+        <h2 id="historyTitle">Optional profile and health history</h2>
+        <p>The profile form asks separately before storing the details and optional past/current health history you submit. Those records support educational assessment context and your account workspace. Signing out does not delete them. Avoid entering information that is unnecessary for your local project use.</p>
+      </section>
+      <section id="assessments" aria-labelledby="assessmentsTitle">
+        <h2 id="assessmentsTitle">Images, answers and derived results</h2>
+        <p>Choosing an image creates a preview and a small local browser readiness check. Submitting the assessment sends the image and your selected symptoms, image type and other answers to the local app server. The server requires image-processing permission before reading image contents into its processing helpers. Receiving a multipart request still brings its bytes to the server.</p>
+        <p>Accepted images are decoded, checked for quality and processed using available local image measurements and research adapters. Sweat uses questionnaire answers instead of an image. These educational results are not diagnoses, prescriptions or proof of clinical validation.</p>
+        <p><strong>Source image pixels, previews, attention overlays and masks are not retained with assessments.</strong> Signed-in assessments do save derived health information: submitted context, measurements, available research output, concern/priority scores and guidance. Optional routines and self-reported check-ins are also saved when you submit them.</p>
+        <p>Guest assessments do not create an account, health history or saved assessment record. The current result and preview remain in the open browser workspace until replaced or the workspace is closed. Basic appearance preferences may remain in browser storage. This application does not provide a guarantee about operating-system, browser or infrastructure-level records.</p>
+        <p>Consent evidence records the applicable purpose, notice version and acceptance time for supported retained activities. Older records are not treated as acceptance of a newly displayed notice.</p>
+        <h2>Exact-file teaching-case matching</h2>
+        <p>This optional demo feature compares the supplied file fingerprint with original teaching files. An exact match adds pre-written educational reference information. Similar, edited and re-encoded images do not qualify. A teaching match does not establish a diagnosis or show that a model generalises to other images. Ordinary assessments use the available local evidence and research pathways.</p>
+      </section>
+      <section id="external" aria-labelledby="externalTitle">
+        <h2 id="externalTitle">Optional external destinations</h2>
+        <p>Doctor/maps, product and pharmacy links open external services only when you choose them. Those services can receive the destination search text and ordinary browser/network information. Using device location to open Maps can include coordinates in that external request; this app does not persist those coordinates. Confirm the external service's terms and privacy information before continuing. Local assessment does not require an external AI provider.</p>
+      </section>
+      <section id="rights" aria-labelledby="rightsTitle">
+        <h2 id="rightsTitle">Saved records, reports and unresolved rights controls</h2>
+        <p>The recent history PDF contains up to 50 assessments, 50 routines and 100 check-ins. It is a bounded discussion brief, not a complete account-data export. Individual report PDFs contain stored assessment information and exclude the source image.</p>
+        <p>Signed-in users can choose <strong>Download account data (JSON)</strong> in Settings to copy all their stored records from the app's account tables, including full saved assessment results, all health-history entries, routines, check-ins, consent records, review requests, report metadata and preferences. It includes safe account metadata, but excludes password hashes, session secrets, system logs and source photos. It does not include operating-system or infrastructure backups.</p>
+        <p>This local technical copy is separate from the bounded PDF and does not submit a legal rights request. Automated retention, consent withdrawal and account erasure are not implemented. Retention periods, deletion exceptions, backup handling and an approved monitored request channel still need operator decisions. Downloading a copy, signing out or closing the browser does not remove saved local records.</p>
+        <p>No clinician assignment, consultation or completed review is created by an educational assessment. A review request, where available, is only a request until a real qualified clinician is assigned and conducts a review.</p>
+      </section>
+      <p><a href="/">Return to DermaMatrix AI</a></p>
+    </main>
+  </body>
+</html>

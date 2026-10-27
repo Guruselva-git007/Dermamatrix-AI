@@ -238,7 +238,7 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
         Paragraph(f"<b>General product discovery:</b><br/>{_bullets(product_discovery)}<br/>{_text(product_scope, 'No product need was established from this assessment.')}", body),
         Paragraph(f"<b>Ongoing query:</b> {_text(journey.get('journey_id'), 'Not saved as an ongoing query')} · baseline {_text(journey.get('baseline_date'))}", note),
         Paragraph("Important safety notice", heading),
-        Paragraph("This educational college-project prototype is not a medical device. It does not diagnose disease, prescribe medicine, or replace a registered medical practitioner. Discuss new routines, products, supplements, symptoms, and treatment decisions with a qualified clinician or pharmacist.", body),
+        Paragraph("This educational research prototype does not diagnose disease, prescribe medicine, or replace a registered medical practitioner. A saved review request does not mean that a clinician has been assigned or has reviewed this assessment. Research disclaimers do not establish regulatory classification or clinical readiness. Discuss new routines, products, supplements, symptoms, and treatment decisions with a qualified clinician or pharmacist.", body),
     ]
     document.build(story)
     return buffer.getvalue()
@@ -247,9 +247,9 @@ def build_assessment_report_pdf(*, account: dict, assessment: dict) -> bytes:
 def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: list[dict], checkins: list[dict]) -> bytes:
     """Create one account-scoped, metadata-only history PDF.
 
-    This is intentionally a history export, not a longitudinal diagnostic or
-    healing report. It records what the person entered and what the prototype
-    stored; it never claims to monitor someone between check-ins.
+    This bounded printable summary is not a complete account-data export or a
+    longitudinal diagnostic/healing report. It records recent saved metadata;
+    it never claims to monitor someone between check-ins.
     """
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
@@ -259,7 +259,7 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
         leftMargin=18 * mm,
         topMargin=16 * mm,
         bottomMargin=16 * mm,
-        title="DermaMatrix AI personal history export",
+        title="DermaMatrix AI personal history PDF",
         author="DermaMatrix AI",
     )
     styles = getSampleStyleSheet()
@@ -326,8 +326,9 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
 
     story = [
         Paragraph("DERMAMATRIX AI", eyebrow),
-        Paragraph("Personal history export", title),
-        Paragraph("This export contains account-scoped metadata. Uploaded photos, visual overlays, and any passive monitoring data are not retained by this prototype.", note),
+        Paragraph("Personal history PDF", title),
+        Paragraph("This bounded printable summary includes up to 50 saved assessments, 50 routines, and 100 check-ins, plus the current profile history. It is not a complete account-data export: older records, historical profile entries, consent records, account preferences, and review-request/report metadata are not all included.", note),
+        Paragraph("Uploaded photos, visual overlays, and any passive monitoring data are not retained by this prototype. Derived assessment and reported health information may be retained for a signed-in account.", note),
         Spacer(1, 4 * mm),
         profile_table,
         Paragraph("Saved screening summaries", heading),
@@ -341,7 +342,7 @@ def build_history_report_pdf(*, account: dict, analyses: list[dict], routines: l
         Spacer(1, 1.5 * mm),
         compact_table(["Date", "Routine", "Reported trend", "Priority"], checkin_rows, [28 * mm, 64 * mm, 43 * mm, 35 * mm]),
         Paragraph("Important safety notice", heading),
-        Paragraph("This educational college-project prototype is not a medical device. It does not continuously observe a patient, diagnose disease, prescribe medicine, or replace a registered medical practitioner. Use this export to support a clinician conversation and seek timely care for severe, rapidly changing, or worrying symptoms.", body),
+        Paragraph("This educational research prototype does not continuously observe a patient, diagnose disease, prescribe medicine, or replace a registered medical practitioner. A saved review request does not mean that a clinician has been assigned or has reviewed this information. Use this summary to support a clinician conversation and seek timely care for severe, rapidly changing, or worrying symptoms.", body),
     ]
     document.build(story)
     return buffer.getvalue()

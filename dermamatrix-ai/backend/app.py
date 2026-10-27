@@ -14,10 +14,10 @@ import os
 import re
 import uuid
 import warnings
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pymysql
-from flask import Flask, jsonify, request, send_file, send_from_directory, session
+from flask import Flask, g, has_request_context, jsonify, request, send_file, send_from_directory, session
 from PIL import Image, ImageFilter, ImageOps, ImageStat
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -43,6 +43,11 @@ from sweat_service import sweat_questionnaire_result
 from native_image_findings import analyze_native_image, validate_assessment_completeness
 from canonical_evidence import build_image_evidence
 from condition_evidence_service import assess_condition_evidence
+from processing_notices import UnsupportedConsentNotice, consent_notice_version, consent_record_purpose, public_processing_notices
+from session_configuration import session_configuration
+from account_data_export import AccountDataExportError, begin_account_data_snapshot, collect_account_data, encode_account_data
+from request_security import request_security_configuration, request_security_error
+from assessment_submission import guard_assessment_submission
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -510,8 +515,10 @@ def _image_quality_from_decoded(image: Image.Image, image_format: str, width: in
     edge_variance = ImageStat.Stat(image.filter(ImageFilter.FIND_EDGES).convert("L")).var[0]
     issues = []
     blocking_issues = []
-    if min(width, height) < 224:
-        blocking_issues.append("The image is too small; retake it at a higher resolution.")
+    # A sharp 200px teaching/photo crop still has reviewable visible detail.
+    # Reserve the hard stop for genuinely tiny inputs; keep the advisory below.
+    if min(width, height) < 160:
+        blocking_issues.append("The image has too few pixels for a reliable review.")
     elif min(width, height) < 450:
         issues.append("A higher-resolution close-up may show more detail.")
     if brightness < 25:
@@ -636,6 +643,15 @@ def assessment_concern_indicator(*, area: str, classifier: dict, severity: dict,
     )
 
 
+def read_saved_summary(value) -> dict | None:
+    """Unreadable historical evidence stays unavailable; never rewrite it."""
+    try:
+        summary = json.loads(value)
+    except (TypeError, ValueError):
+        return None
+    return summary if isinstance(summary, dict) else None
+
+
 def stored_analysis_summary(response: dict) -> dict:
     """Persist reproducible result metadata without retaining image pixels or base64 assets."""
     classifier = response.get("research_classifier", {})
@@ -652,7 +668,12 @@ def stored_analysis_summary(response: dict) -> dict:
         "image_findings": response.get("image_findings"),
         "canonical_evidence": response.get("canonical_evidence"),
         "assessment_completeness": response.get("assessment_completeness"),
+        "urgent_notice": response.get("urgent_notice"),
+        "clinical_status": response.get("clinical_status"),
+        "medical_disclaimer": response.get("medical_disclaimer"),
+        "commerce_eligibility": response.get("commerce_eligibility"),
         "image_stored": False,
+        "submission_fingerprint": getattr(g, "assessment_submission_fingerprint", None) if has_request_context() else None,
     }
 
 
@@ -700,6 +721,14 @@ def clinician_first_care_plan(risk_score: int | None) -> dict:
         "diet_guidance": "For general wellbeing, aim for regular meals with protein, fruits or vegetables, and hydration. Do not use supplements or diet changes to self-treat a suspected condition.",
         "diagnosis_notice": "The app reports screening support and may show a local research-model ranking for supported Skin or Nail images—not a verified diagnosis.",
     }
+
+
+@app.before_request
+def enforce_request_origin():
+    """Reject untrusted hosts and unsafe browser-origin requests before routes."""
+    code = request_security_error(request, app.config)
+    if code:
+        return jsonify({"error": "Open DermaMatrix at its configured app address and retry this request.", "code": code}), 403
 
 
 @app.get("/")
@@ -793,7 +822,9 @@ def auth_me():
 @app.post("/api/auth/register")
 def register_account():
     """Create a local account. Only a salted password hash is persisted."""
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
     full_name = str(payload.get("full_name", payload.get("name", ""))).strip()[:150]
     email_address = str(payload.get("email_address", payload.get("email", ""))).strip().lower()[:254]
     phone_number = str(payload.get("phone_number", "")).strip()[:30]
@@ -807,8 +838,12 @@ def register_account():
         return jsonify({"error": "Use a password with at least 8 characters."}), 400
     if password != confirm_password:
         return jsonify({"error": "Password confirmation does not match."}), 400
-    if not payload.get("account_consent"):
+    if payload.get("account_consent") is not True:
         return jsonify({"error": "Confirm the account and privacy acknowledgement to continue."}), 400
+    try:
+        notice_version = consent_notice_version("account", payload)
+    except UnsupportedConsentNotice as error:
+        return unsupported_consent_notice(error)
 
     patient_id = f"DMX-{datetime.now(timezone.utc).strftime('%y%m%d')}-{os.urandom(3).hex().upper()}"
     timestamp = now()
@@ -827,12 +862,17 @@ def register_account():
             user_id = cursor.lastrowid
             cursor.execute("INSERT INTO auth_accounts (user_id, email_address, password_hash, created_at) VALUES (%s, %s, %s, %s)", (user_id, email_address, password_hash, timestamp))
             cursor.execute("INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)", (user_id, "", "", timestamp))
-            cursor.execute("INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)", (user_id, "local-auth-v1", "Local account authentication and secure session", timestamp))
+            cursor.execute("INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)", (user_id, notice_version, consent_record_purpose("account"), timestamp))
             cursor.execute("INSERT INTO user_preferences (user_id, theme, notifications_enabled, reduced_motion, updated_at) VALUES (%s, %s, %s, %s, %s)", (user_id, "light", True, False, timestamp))
         connection.commit()
         session.clear(); session["user_id"] = user_id; session["patient_id"] = patient_id; session.permanent = True
         user = current_user(connection)
         return jsonify(authenticated_response(connection, user)), 201
+    except pymysql.IntegrityError as error:
+        connection.rollback()
+        if error.args[0] == 1062:
+            return jsonify({"error": "An account already exists for this email. Sign in instead."}), 409
+        raise
     except Exception:
         connection.rollback()
         raise
@@ -842,7 +882,9 @@ def register_account():
 
 @app.post("/api/auth/login")
 def login_account():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
     email_address = str(payload.get("email_address", "")).strip().lower()[:254]
     password = str(payload.get("password", ""))
     if not valid_email(email_address) or not password:
@@ -878,6 +920,8 @@ def logout_account():
 
 def update_profile_record(connection: pymysql.Connection, user: dict, payload: dict, legacy_required: bool = False) -> dict:
     """Update only the active account's profile; identifiers come from the session."""
+    if not isinstance(payload, dict):
+        raise ValueError("Send a JSON object.")
     full_name = str(payload.get("full_name", user["full_name"])).strip()[:150]
     phone_number = str(payload.get("phone_number", user["phone_number"])).strip()[:30]
     email_address = str(payload.get("email_address", user["email_address"])).strip().lower()[:254]
@@ -892,8 +936,9 @@ def update_profile_record(connection: pymysql.Connection, user: dict, payload: d
     has_health_fields = "past_history" in payload or "current_history" in payload
     if legacy_required and (not has_health_fields or not str(payload.get("past_history", "")).strip() or not str(payload.get("current_history", "")).strip()):
         raise ValueError("Please provide your past and current health history.")
-    if has_health_fields and not payload.get("health_data_consent"):
+    if has_health_fields and payload.get("health_data_consent") is not True:
         raise ValueError("Explicit consent is required before storing health information.")
+    notice_version = consent_notice_version("health_history", payload) if has_health_fields else None
     timestamp = now()
     with connection.cursor() as cursor:
         cursor.execute("UPDATE users SET full_name=%s, phone_number=%s, updated_at=%s WHERE id=%s", (full_name, phone_number, timestamp, user["id"]))
@@ -902,9 +947,10 @@ def update_profile_record(connection: pymysql.Connection, user: dict, payload: d
                 "INSERT INTO medical_histories (user_id, past_history, current_history, updated_at) VALUES (%s, %s, %s, %s)",
                 (user["id"], str(payload.get("past_history", "")).strip()[:5000], str(payload.get("current_history", "")).strip()[:5000], timestamp),
             )
+            history_id = cursor.lastrowid
             cursor.execute(
                 "INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)",
-                (user["id"], "india-prototype-v1", "MySQL storage of profile and health-history data for screening support", timestamp),
+                (user["id"], notice_version, consent_record_purpose("health_history", history_id=history_id), timestamp),
             )
     connection.commit()
     updated = current_user(connection)
@@ -921,7 +967,9 @@ def profile():
         if request.method == "GET":
             return jsonify(account_response(user, account_history(connection, user["id"])))
         try:
-            updated = update_profile_record(connection, user, request.get_json(silent=True) or {})
+            updated = update_profile_record(connection, user, request.get_json(silent=True))
+        except UnsupportedConsentNotice as error:
+            return unsupported_consent_notice(error)
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
         return jsonify({"profile": updated, "message": "Profile updated."})
@@ -935,7 +983,7 @@ def profile():
 @app.post("/api/profiles")
 def create_profile():
     """Legacy profile-save alias retained for existing local browser clients."""
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
     connection = database()
     try:
         user = current_user(connection)
@@ -943,6 +991,8 @@ def create_profile():
             return jsonify({"error": "Sign in before saving health details."}), 401
         try:
             return jsonify(update_profile_record(connection, user, payload, legacy_required=True))
+        except UnsupportedConsentNotice as error:
+            return unsupported_consent_notice(error)
         except ValueError as error:
             return jsonify({"error": str(error)}), 400
     except Exception:
@@ -975,7 +1025,9 @@ def preferences():
             return jsonify({"error": "Sign in before updating account preferences."}), 401
         if request.method == "GET":
             return jsonify({"preferences": account_preferences(connection, user["id"])})
-        payload = request.get_json(silent=True) or {}
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Send a JSON object."}), 400
         allowed = {"theme", "notifications_enabled", "reduced_motion"}
         if any(key not in allowed for key in payload):
             return jsonify({"error": "Unsupported preference field."}), 400
@@ -988,11 +1040,14 @@ def preferences():
         if not isinstance(notifications, bool) or not isinstance(reduced_motion, bool):
             return jsonify({"error": "Preference switches must be boolean values."}), 400
         with connection.cursor() as cursor:
-            cursor.execute(
-                """UPDATE user_preferences SET theme=%s, notifications_enabled=%s,
-                          reduced_motion=%s, updated_at=%s WHERE user_id=%s""",
-                (theme, notifications, reduced_motion, now(), user["id"]),
-            )
+            # Only submitted presentation fields change. Concurrent theme and
+            # motion updates cannot overwrite each other's newer values.
+            values = {"theme": theme, "notifications_enabled": notifications, "reduced_motion": reduced_motion}
+            fields = sorted(payload)
+            if fields:
+                assignments = ", ".join(f"{field}=%s" for field in fields)
+                cursor.execute(f"UPDATE user_preferences SET {assignments}, updated_at=%s WHERE user_id=%s",
+                               tuple(values[field] for field in fields) + (now(), user["id"]))
         connection.commit()
         return jsonify({"preferences": account_preferences(connection, user["id"]), "message": "Preferences updated."})
     except Exception:
@@ -1133,10 +1188,10 @@ def list_analysis_history():
             records = cursor.fetchall()
         analyses = []
         for record in records:
-            summary = json.loads(record["result_json"])
+            summary = read_saved_summary(record["result_json"])
             analyses.append({
                 "assessment_id": record["assessment_id"], "area": record["area"], "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
-                "image_stored": bool(record["image_stored"]), "summary": summary,
+                "image_stored": bool(record["image_stored"]), "summary": summary or {}, "unavailable": summary is None,
             })
         return jsonify({"analyses": analyses, "assessments": analyses, "image_policy": "Analysis metadata is stored for registered profiles. Uploaded image bytes are not stored in this prototype."})
     finally:
@@ -1159,10 +1214,9 @@ def get_assessment(assessment_id: str):
             record = cursor.fetchone()
         if not record:
             return jsonify({"error": "Saved assessment not found."}), 404
-        try:
-            summary = json.loads(record["result_json"])
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return jsonify({"error": "Saved assessment metadata is unreadable."}), 500
+        summary = read_saved_summary(record["result_json"])
+        if summary is None:
+            return jsonify({"error": "Saved assessment metadata is unreadable. The original record has not been changed."}), 409
         return jsonify({
             "assessment_id": record["assessment_id"], "area": record["area"],
             "created_at": record["created_at"].isoformat() if hasattr(record["created_at"], "isoformat") else str(record["created_at"]),
@@ -1189,9 +1243,8 @@ def download_assessment_report(assessment_id: str):
             record = cursor.fetchone()
         if not record:
             return jsonify({"error": "Saved assessment not found in your local account."}), 404
-        try:
-            summary = json.loads(record["result_json"])
-        except (TypeError, ValueError, json.JSONDecodeError):
+        summary = read_saved_summary(record["result_json"])
+        if summary is None:
             return jsonify({"error": "The saved assessment record is incomplete and cannot be exported."}), 409
         assessment = {
             "assessment_id": record["assessment_id"],
@@ -1285,6 +1338,37 @@ def download_history_export():
         connection.close()
 
 
+@app.get("/api/account-data/download")
+def download_account_data():
+    """Download all known local account records, separately from the bounded PDF."""
+    if not session.get("user_id"):
+        return jsonify({"error": "Sign in to download your local account data."}), 401
+    connection = database()
+    try:
+        begin_account_data_snapshot(connection)
+        user = current_user(connection)
+        if not user:
+            return jsonify({"error": "Sign in to download your local account data."}), 401
+        payload = collect_account_data(connection, user["id"])
+        output = encode_account_data(payload)
+        return send_file(
+            io.BytesIO(output),
+            mimetype="application/json",
+            as_attachment=True,
+            download_name=f"dermamatrix-local-account-data-{datetime.now(timezone.utc).date().isoformat()}.json",
+            max_age=0, conditional=False, etag=False,
+        )
+    except AccountDataExportError:
+        # Do not log private rows or return a silently incomplete document.
+        return jsonify({"error": "Your local account data could not be completely exported. No stored records were changed."}), 500
+    finally:
+        try:
+            # End the read-only snapshot on success and every failure path.
+            connection.rollback()
+        finally:
+            connection.close()
+
+
 @app.post("/api/progress-checkins")
 def create_progress_checkin():
     payload = request.get_json(silent=True) or {}
@@ -1327,7 +1411,9 @@ def create_progress_checkin():
 
 @app.post("/api/clinical-review-requests")
 def request_clinical_review():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
     assessment_id = str(payload.get("assessment_id", "")).strip()
     if not assessment_id:
         return jsonify({"error": "An assessment ID is required."}), 400
@@ -1342,9 +1428,22 @@ def request_clinical_review():
                 return jsonify({"error": "Assessment not found in your local account."}), 404
             cursor.execute("INSERT INTO clinical_review_requests (user_id, assessment_id, status, requested_at) VALUES (%s, %s, %s, %s)", (user["id"], assessment_id, "awaiting_rmp_review", now()))
         connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
-    return jsonify({"assessment_id": assessment_id, "status": "awaiting_rmp_review", "notice": "An RMP must independently review the patient before issuing any diagnosis, counselling, or prescription."}), 201
+    return jsonify({"assessment_id": assessment_id, "status": "awaiting_rmp_review", "review_state": "request_recorded_unassigned", "clinician_assigned": False, "clinician_reviewed": False, "notice": "A local review request was recorded only. No clinician has been assigned or reviewed this assessment. Arrange professional care independently; this is not a consultation or medical approval."}), 201
+
+
+def unsupported_consent_notice(error: UnsupportedConsentNotice):
+    return jsonify({"error": str(error), "code": "UNSUPPORTED_CONSENT_NOTICE_VERSION", "consent_purpose": error.purpose, "current_notice_version": error.current_version}), 400
+
+
+@app.get("/api/processing-notices")
+def processing_notices():
+    """Public factual processing information, available before consent."""
+    return jsonify(public_processing_notices())
 
 
 @app.get("/api/products")
@@ -1417,7 +1516,17 @@ def knowledge_condition(topic_id: str):
 
 
 @app.post("/api/assessments")
+@guard_assessment_submission(database=lambda: database(), current_user=lambda connection: current_user(connection), purpose="image_assessment")
 def create_assessment():
+    # Multipart receipt/parsing still occurs at the server. No application
+    # image read, decode, matching, inference or persistence is allowed until
+    # the single, explicit form acknowledgement is valid.
+    if request.form.getlist("image_consent") != ["true"]:
+        return jsonify({"error": "Confirm that you have consent to upload this image for screening support."}), 400
+    try:
+        notice_version = consent_notice_version("image_assessment", request.form)
+    except UnsupportedConsentNotice as error:
+        return unsupported_consent_notice(error)
     area = request.form.get("area", "Skin").strip()[:30] or "Skin"
     image_file = request.files.get("image")
     if not image_file or not image_file.filename:
@@ -1451,8 +1560,6 @@ def create_assessment():
     except ValueError:
         return jsonify({"error": "Invalid assessment details."}), 400
 
-    if request.form.get("image_consent") != "true":
-        return jsonify({"error": "Confirm that you have consent to upload this image for screening support."}), 400
     urgent_concern = request.form.get("urgent_concern") == "true"
     image_context = request.form.get("image_context", "general_photo").strip()
     dermoscopy_attested = request.form.get("dermoscopy_attestation") == "true"
@@ -1605,7 +1712,7 @@ def create_assessment():
         attempted=component_attempts, failed=component_failures,
     )
     cdss = clinical_decision_support(area=area, risk=priority, severity=severity, input_validation=validation, classifier=research_classifier, context=patient_context, urgent_selected=urgent_concern, assessment_risk=assessment_risk, assessment_state=assessment_state)
-    assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
+    assessment_id = getattr(g, "assessment_submission_id", None) or f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
     user_id = None
     persistence = "mysql"
     response = {
@@ -1706,6 +1813,10 @@ def create_assessment():
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
                 (assessment_id, user_id, area, json.dumps(stored_analysis_summary(response)), timestamp),
             )
+            cursor.execute(
+                "INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)",
+                (user_id, notice_version, consent_record_purpose("image_assessment", assessment_id=assessment_id), timestamp),
+            )
         connection.commit()
     except pymysql.MySQLError:
         if connection:
@@ -1719,16 +1830,26 @@ def create_assessment():
 
 
 @app.post("/api/sweat-assessments")
+@guard_assessment_submission(database=lambda: database(), current_user=lambda connection: current_user(connection), purpose="questionnaire_assessment")
 def create_sweat_assessment():
     """Keep tabular sweat inputs out of the image-model route."""
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Send a JSON object."}), 400
     if payload.get("questionnaire_consent") is not True:
         return jsonify({"error": "Confirm questionnaire consent before continuing."}), 400
+    try:
+        notice_version = consent_notice_version("questionnaire_assessment", payload)
+    except UnsupportedConsentNotice as error:
+        return unsupported_consent_notice(error)
+    for field in ("urgent_concern", "medication_change", "daily_impact"):
+        if field in payload and not isinstance(payload[field], bool):
+            return jsonify({"error": f"{field.replace('_', ' ').capitalize()} must be true or false."}), 400
     pattern = str(payload.get("pattern", "usual")).strip().lower()
     if pattern not in {"usual", "excessive", "reduced"}:
         return jsonify({"error": "Choose the reported sweating pattern."}), 400
     sweat = sweat_questionnaire_result(payload)
-    assessment_id = f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
+    assessment_id = getattr(g, "assessment_submission_id", None) or f"dmx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{os.urandom(2).hex()}"
     urgent_concern = bool(payload.get("urgent_concern"))
     risk_score = max(sweat["risk_score"], 65) if urgent_concern else sweat["risk_score"]
     priority = reported_priority("Sweat", risk_score, urgent_concern)
@@ -1841,6 +1962,10 @@ def create_sweat_assessment():
                 "INSERT INTO analysis_records (assessment_id, user_id, area, result_json, image_stored, created_at) VALUES (%s, %s, %s, %s, FALSE, %s)",
                 (assessment_id, user["id"], "Sweat", json.dumps(stored_analysis_summary(response)), timestamp),
             )
+            cursor.execute(
+                "INSERT INTO consent_records (user_id, consent_version, purpose, accepted_at) VALUES (%s, %s, %s, %s)",
+                (user["id"], notice_version, consent_record_purpose("questionnaire_assessment", assessment_id=assessment_id), timestamp),
+            )
         connection.commit()
     except pymysql.MySQLError:
         if connection:
@@ -1884,7 +2009,7 @@ def protect_local_responses(response):
     response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
     if request.path.startswith("/api/") or request.path in {"/", "/index.html"}:
         # Account and assessment data must never enter a browser or proxy cache.
-        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Cache-Control"] = "private, no-store, max-age=0" if request.path == "/api/account-data/download" else "no-store, max-age=0"
     elif request.path.endswith((".css", ".js")):
         # Public app assets have ETags. Revalidate them after each navigation
         # instead of downloading the entire stylesheet and script again.
@@ -1893,17 +2018,8 @@ def protect_local_responses(response):
 
 
 load_local_env()
-try:
-    session_days = max(1, min(int(os.getenv("FLASK_SESSION_DAYS", "14")), 30))
-except ValueError:
-    session_days = 14
-app.config.update(
-    SECRET_KEY=os.getenv("FLASK_SECRET_KEY") or os.urandom(32),
-    PERMANENT_SESSION_LIFETIME=timedelta(days=session_days),
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=os.getenv("FLASK_SESSION_SECURE", "false").lower() == "true",
-)
+app.config.update(session_configuration(os.environ))
+app.config.update(request_security_configuration(os.environ))
 initialise_database()
 
 if __name__ == "__main__":

@@ -234,7 +234,7 @@ class MlContractTests(unittest.TestCase):
         image.save(payload, format="PNG")
         response = app.test_client().post(
             "/api/assessments",
-            data={"image": (BytesIO(payload.getvalue()), "misleading.jpg")},
+            data={"image": (BytesIO(payload.getvalue()), "misleading.jpg"), "image_consent": "true"},
             content_type="multipart/form-data",
         )
         self.assertEqual(response.status_code, 422)
@@ -251,7 +251,7 @@ class MlContractTests(unittest.TestCase):
         image.save(payload, format="PNG")
         response = app.test_client().post(
             "/api/assessments",
-            data={"image": (BytesIO(payload.getvalue()), "large.png")},
+            data={"image": (BytesIO(payload.getvalue()), "large.png"), "image_consent": "true"},
             content_type="multipart/form-data",
         )
         self.assertEqual(response.status_code, 422)

@@ -2,7 +2,7 @@
 
 An educational prototype for integumentary-health screening workflows. It covers skin-and-sweat, hair/scalp, and nail concerns with image upload, consent, usability checks, reported-concern priority, and separate local research image paths for ordinary Skin photos, dermatoscopic lesions, and Nail close-ups.
 
-> **Safety note:** This app is not a medical device and cannot diagnose disease. It is a college-project prototype designed to support, not replace, a qualified clinician.
+> **Safety note:** This educational research prototype cannot diagnose disease or replace a qualified clinician. Its disclaimers do not determine regulatory classification or establish clinical readiness.
 
 The India-aligned guardrails and production requirements are documented in `docs/india-compliance-guardrails.md`. The app never issues a verified diagnosis or prescription; registered medical practitioner review remains mandatory.
 
@@ -128,7 +128,9 @@ The Products page can load structured educational guides for common concerns inc
 
 Completed assessments are persisted only for the authenticated account. Guest assessments are returned for the current screen only; neither uploaded images nor guest assessment metadata are retained. Uploaded image pixels are never stored.
 
-Registered users can open **My reports** and download a server-generated, account-scoped PDF discussion brief. The PDF contains stored assessment metadata and care-discussion guidance, but intentionally excludes images and overlays because the app does not retain them. **Download history PDF** exports that account's saved screening metadata, routines, self-reported check-ins, and profile history in one printable document.
+Registered users can open **My reports** and download a server-generated, account-scoped PDF discussion brief. The PDF contains stored assessment metadata and care-discussion guidance, but intentionally excludes images and overlays because the app does not retain them. **Download history PDF** is a bounded printable summary of up to **50 assessments, 50 routines and 100 check-ins**, plus the current profile history. It is **not a complete account-data export**: older records, historical profile entries, consent records, preferences and review-request/report metadata are not all included. Derived health information remains saved for signed-in accounts even though source photos are not stored.
+
+**Download local account data (JSON)** is a separate signed-in action at `GET /api/account-data/download`. It reads all owned rows from the eleven known account tables without the PDF limits, including older health histories, consent records, preferences and detailed saved results. A read-only consistent database snapshot preserves their original versions and JSON content. The download excludes password hashes/secrets, other accounts, source images/overlays, logs, backups and configuration. It changes no stored data or consent; it is a technical copy of the declared local account scope, not a complete legal rights-request, retention, withdrawal or erasure service. See [scope and remaining decisions](docs/audit-upgrade-decisions.md#dm-06--stored-data-inventory-and-rights-design).
 
 The progress page is **input-driven monitoring**, not passive or continuous medical monitoring: it refreshes when the person saves a new screening or self-reported check-in. It does not claim healing, treatment effectiveness, or observation between entries.
 

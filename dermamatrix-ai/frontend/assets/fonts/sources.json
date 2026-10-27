@@ -1,0 +1,336 @@
+{
+  "recorded_on": "2026-10-22",
+  "purpose": "Unmodified self-hosted copies of the existing interface fonts and all previously supplied subsets.",
+  "source_stylesheet": "https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap",
+  "license_repository_revision": "45e3d5269e4a17d823f6d84470bc084dc5ae46f6",
+  "license_sources": {
+    "dmsans": "https://raw.githubusercontent.com/google/fonts/45e3d5269e4a17d823f6d84470bc084dc5ae46f6/ofl/dmsans/OFL.txt",
+    "ibmplexsans": "https://raw.githubusercontent.com/google/fonts/45e3d5269e4a17d823f6d84470bc084dc5ae46f6/ofl/ibmplexsans/OFL.txt",
+    "ibmplexmono": "https://raw.githubusercontent.com/google/fonts/45e3d5269e4a17d823f6d84470bc084dc5ae46f6/ofl/ibmplexmono/OFL.txt"
+  },
+  "files": [
+    {
+      "file": "dm-sans-latin-ext.woff2",
+      "family": "DM Sans",
+      "style": "normal",
+      "weights": [
+        500,
+        600,
+        700,
+        800
+      ],
+      "subset": "latin-ext",
+      "source_url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu6-K6z9mXgjU0.woff2",
+      "sha256": "219b02c7d8884817d3d6ad4c8771f2c000ce4c5669a67ef4e2e5617ffa25c4cc",
+      "bytes": 18192,
+      "license_file": "OFL-DM-Sans.txt"
+    },
+    {
+      "file": "dm-sans-latin.woff2",
+      "family": "DM Sans",
+      "style": "normal",
+      "weights": [
+        500,
+        600,
+        700,
+        800
+      ],
+      "subset": "latin",
+      "source_url": "https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K6z9mXg.woff2",
+      "sha256": "468d56b6b25b05b70190b6c233d773f6f1770e8579827ce022a57f03fa8002fb",
+      "bytes": 36980,
+      "license_file": "OFL-DM-Sans.txt"
+    },
+    {
+      "file": "ibm-plex-mono-cyrillic-ext-400.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        400
+      ],
+      "subset": "cyrillic-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iIq131nj-otFQ.woff2",
+      "sha256": "c6f09ee0e0a24b7c85ecb2a601eb99332f65b1f6b37c31e0bbe73fb307625eca",
+      "bytes": 4348,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-cyrillic-400.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        400
+      ],
+      "subset": "cyrillic",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1isq131nj-otFQ.woff2",
+      "sha256": "7b59d6bf7f8b8408ac28f27d01dca9a890abeae77045d343b1d8ccb089a92e54",
+      "bytes": 5476,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-vietnamese-400.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        400
+      ],
+      "subset": "vietnamese",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iAq131nj-otFQ.woff2",
+      "sha256": "0a8b854cc18641bd1b8222afa7ec82a75e59bc6501f777744ec87db1b6cd7a2c",
+      "bytes": 4000,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-latin-ext-400.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        400
+      ],
+      "subset": "latin-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iEq131nj-otFQ.woff2",
+      "sha256": "f1050dc5317b43434c0aeda599d4624c774ffc162e87a8cf204b949b6a85816d",
+      "bytes": 8860,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-latin-400.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        400
+      ],
+      "subset": "latin",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1i8q131nj-o.woff2",
+      "sha256": "c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac",
+      "bytes": 10052,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-cyrillic-ext-500.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        500
+      ],
+      "subset": "cyrillic-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl1FgsAXHNlYzg.woff2",
+      "sha256": "311098be73eac339128f0b5a6e33d72645b6f87488541fdf467c402152d297fd",
+      "bytes": 4336,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-cyrillic-500.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        500
+      ],
+      "subset": "cyrillic",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlRFgsAXHNlYzg.woff2",
+      "sha256": "d524dc8ff6dbf7ed69772f3b2ff4affaf5a89b5762b270e36c3f21da0d4e39f5",
+      "bytes": 5500,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-vietnamese-500.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        500
+      ],
+      "subset": "vietnamese",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl9FgsAXHNlYzg.woff2",
+      "sha256": "b2529fba93fd07a50ffb8fc3d103eb04b0c298d4f6564d2833c44fde286de7e4",
+      "bytes": 4036,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-latin-ext-500.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        500
+      ],
+      "subset": "latin-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl5FgsAXHNlYzg.woff2",
+      "sha256": "77f03e26f981c582bdba3a7abed4baa2d3149211c01366bb3ab3ba7622ec4ae5",
+      "bytes": 8848,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-latin-500.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        500
+      ],
+      "subset": "latin",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlBFgsAXHNk.woff2",
+      "sha256": "a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0",
+      "bytes": 10060,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-cyrillic-ext-600.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        600
+      ],
+      "subset": "cyrillic-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl1FgsAXHNlYzg.woff2",
+      "sha256": "f746246b6b0b641f99d9e26e0bf4e42197bde692126857857f0195a94362d52a",
+      "bytes": 4320,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-cyrillic-600.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        600
+      ],
+      "subset": "cyrillic",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlRFgsAXHNlYzg.woff2",
+      "sha256": "b814a03d7e57b0626a906f76911b9361d173a1aabc5544c40f72d6a35a1e4940",
+      "bytes": 5548,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-vietnamese-600.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        600
+      ],
+      "subset": "vietnamese",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl9FgsAXHNlYzg.woff2",
+      "sha256": "69744cabbccc9faf77516ce9b744361e1e6be7f8081400006035a153797d2965",
+      "bytes": 4116,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-latin-ext-600.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        600
+      ],
+      "subset": "latin-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl5FgsAXHNlYzg.woff2",
+      "sha256": "1b6b18fd0fd240bc6d5850f4df621484722d4b5d3650ebdd1e3a8bbd81c75854",
+      "bytes": 8960,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-mono-latin-600.woff2",
+      "family": "IBM Plex Mono",
+      "style": "normal",
+      "weights": [
+        600
+      ],
+      "subset": "latin",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlBFgsAXHNk.woff2",
+      "sha256": "ad4580d8cb4b5f627c2d18457656732f7f7b070f7837fbc380e08054157e6f6c",
+      "bytes": 10120,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-sans-cyrillic-ext.woff2",
+      "family": "IBM Plex Sans",
+      "style": "normal",
+      "weights": [
+        400,
+        500,
+        600,
+        700
+      ],
+      "subset": "cyrillic-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxTKYbSB4ZhRNU.woff2",
+      "sha256": "c01b3de8c8058462caadd044a6b874a9f4d7098d7d71d6c70e6a278096b8640e",
+      "bytes": 19684,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-sans-cyrillic.woff2",
+      "family": "IBM Plex Sans",
+      "style": "normal",
+      "weights": [
+        400,
+        500,
+        600,
+        700
+      ],
+      "subset": "cyrillic",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxaKYbSB4ZhRNU.woff2",
+      "sha256": "5bac72520e0a9a5669e08b15fa1e15be6f4da74aa0b2d4315a97c11e1465120a",
+      "bytes": 25408,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-sans-greek.woff2",
+      "family": "IBM Plex Sans",
+      "style": "normal",
+      "weights": [
+        400,
+        500,
+        600,
+        700
+      ],
+      "subset": "greek",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxdKYbSB4ZhRNU.woff2",
+      "sha256": "a29d4e6345cdb7e2b6daabf4961a6dcafcbc7ed1eac26186ca4a004cd32d64d8",
+      "bytes": 16296,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-sans-vietnamese.woff2",
+      "family": "IBM Plex Sans",
+      "style": "normal",
+      "weights": [
+        400,
+        500,
+        600,
+        700
+      ],
+      "subset": "vietnamese",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxRKYbSB4ZhRNU.woff2",
+      "sha256": "526a4dd36c3af41f73a623e852302d8947d7fd4c00ee3026d82ef1f24a412fcd",
+      "bytes": 9612,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-sans-latin-ext.woff2",
+      "family": "IBM Plex Sans",
+      "style": "normal",
+      "weights": [
+        400,
+        500,
+        600,
+        700
+      ],
+      "subset": "latin-ext",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxQKYbSB4ZhRNU.woff2",
+      "sha256": "ae1d854fefa1167a79071f1afe01d4d51b60c5840c1be36dd74bd5fe7375b405",
+      "bytes": 25868,
+      "license_file": "OFL-IBM-Plex.txt"
+    },
+    {
+      "file": "ibm-plex-sans-latin.woff2",
+      "family": "IBM Plex Sans",
+      "style": "normal",
+      "weights": [
+        400,
+        500,
+        600,
+        700
+      ],
+      "subset": "latin",
+      "source_url": "https://fonts.gstatic.com/s/ibmplexsans/v23/zYXzKVElMYYaJe8bpLHnCwDKr932-G7dytD-Dmu1syxeKYbSB4Zh.woff2",
+      "sha256": "056e4e2459f57a0033c8c9c844ff19d6e42ac8602027803d4345823bcc939818",
+      "bytes": 40240,
+      "license_file": "OFL-IBM-Plex.txt"
+    }
+  ]
+}

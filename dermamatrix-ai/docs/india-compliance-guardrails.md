@@ -5,7 +5,7 @@ This implementation is a **compliance-oriented product prototype**, not a legal 
 ## Product boundaries implemented
 
 - The AI produces a screening-support result, never a verified diagnosis.
-- Every result is explicitly marked **Awaiting RMP review**. A separate review-request record may be created, but it is not a diagnosis, counselling, or prescription.
+- Results do not establish clinician review. A signed-in person may save a separate review-request record, but a queued request does not assign a clinician, arrange a consultation, confirm a diagnosis, or issue a prescription. The prototype has no completed clinician-review service.
 - The product catalogue contains only generic cosmetic/personal-care categories. It does not recommend prescription medicines, doses, treatment regimens, brands, or paid rankings.
 - Higher-risk screens block product discovery and point to clinician review.
 - Profile and medical-history collection requires a clear, purpose-specific consent checkbox. The local database tracks profile, history, consent record, and review request separately.
@@ -20,7 +20,16 @@ This implementation is a **compliance-oriented product prototype**, not a legal 
 
 ## Required before real deployment
 
+These are review dependencies, not proof that every possible rule applies to
+this prototype. Intended purpose, population, markets and actual operating
+model require a qualified decision; an educational disclaimer alone does not
+determine medical-device classification or legal compliance. Keep local
+research/presentation use distinct from offering a clinical service.
+
 1. Contract and credential each RMP; validate registration against the NMR/State Medical Council before listing.
 2. Add authenticated roles, encrypted storage, access logging, consent withdrawal/deletion, retention limits, breach response, and a privacy notice.
 3. Use a licensed pharmacy partner, product registration/label checks, pharmacist review, adverse-event workflow, and no pay-to-rank results.
 4. Validate models prospectively for each intended use, population and skin tone; assess CDSCO medical-device classification and obtain professional legal/regulatory advice.
+
+The specific unanswered decisions, technical data inventory and licensing
+evidence are tracked in [audit-upgrade-decisions.md](audit-upgrade-decisions.md).

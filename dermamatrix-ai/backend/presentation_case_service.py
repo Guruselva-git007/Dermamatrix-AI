@@ -44,6 +44,7 @@ PRESENTATION_CASES = {
         "case_id": "skin-inflammatory-acne", "area": "Skin", "topic_id": "acne",
         "teaching_label": "Inflammatory acne — teaching case",
         "teaching_summary": "This pre-labelled example is used to discuss inflamed papules and pustules compatible with acne. It is not a prescription or a diagnosis for any other face image.",
+        "visual_features": ["Multiple small red inflamed bumps across the cheek", "Several bumps with pale centres consistent with pustules", "Background redness and residual pink marks"],
     },
     "d191ee0272c0c85db4a1ff073883791208fe37d4cd09ce7f55079a4c8dd956d8": {
         "case_id": "skin-scaly-plaque", "area": "Skin", "topic_id": "psoriasis",
@@ -161,7 +162,7 @@ def presentation_case_for_digest(digest: str, area: str) -> dict | None:
         "red_flags": topic["red_flags"],
         "doctor_specialty": topic["doctor_specialty"],
         "references": topic["evidence_references"],
-        "visual_features": topic.get("visual_features", []),
+        "visual_features": record.get("visual_features") or topic.get("visual_features", []),
         "common_symptoms": topic.get("common_symptoms", []),
         "common_contributors": topic.get("common_contributors", []),
         "differential_diagnoses": topic.get("differential_diagnoses", []),

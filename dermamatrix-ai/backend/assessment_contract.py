@@ -226,6 +226,8 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         measurements.get("adjacent_pixel_change", 100) < 2)
     reported = (response.get("canonical_evidence") or {}).get("reported_context") or {}
     quality_limited = terminal["state"] == "poor_quality"
+    reference = response.get("presentation_case") or {}
+    exact_reference = bool(reference.get("matched"))
     calibrated = (classifier.get("condition_likelihood") or {}).get("available") is True
     likelihood = (classifier.get("condition_likelihood") or {}).get("estimated_likelihood")
     raw_score = (classifier.get("top_prediction") or {}).get("relative_score")
@@ -245,7 +247,7 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
     if classifier.get("model_id") in {"clinical-skin-efficientnet-research", "nail-convnexttiny-research"}:
         evidence = "Low"
     if quality_limited:
-        state, title = "quality_limited", "Image quality limits assessment"
+        state, title = "quality_limited", "A closer photo would help"
         summary = "A clearer photo is needed to review visible detail. Your reported concerns still inform care priority."
     elif terminal["state"] == "healthy":
         state, title = "normal_or_low_concern", "No significant abnormal pattern identified"
@@ -311,6 +313,13 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         summary = "This pattern comes from the symptoms you selected. The photograph has not established its cause."
     elif model_supported and not broad_review_class and topic.get("source") == "exact_reference_file" and topic.get("name", "").casefold() not in str(model_title or "").casefold():
         why.append("The exact supplied reference topic differs from the model's closest research match; neither establishes a diagnosis.")
+    if exact_reference:
+        # The teaching identity is established by the file fingerprint, even
+        # when its pixel count is too small for image-model inference.
+        state = "reference_pattern"
+        title = reference.get("teaching_label") or f"{topic.get('name', 'Teaching case')} — supplied reference"
+        summary = reference.get("teaching_summary") or "This exact supplied file has a pre-labelled educational scenario."
+        why.insert(0, "The original supplied teaching file matched exactly by SHA-256; the label is reference metadata, not a new image diagnosis.")
     # Alternative research logits remain in technical details. They are not a
     # clinical differential merely because they ranked second or third.
     knowledge_alternatives = [{"name": name, "score": None, "basis": "educational_differential",
@@ -336,7 +345,8 @@ def _consumer_result(response: dict, *, terminal: dict, condition: dict, quality
         "image_quality": {"usable": not quality_limited, "label": quality.get("label") or "Not assessed",
                           "issues": quality.get("issues") or [],
                           "retake_guidance": ["Use bright indirect light and avoid flash glare.",
-                                              "Hold the camera steady and fill the frame with the area of concern."] if quality_limited or little_measurable_detail else []},
+                                              "Hold the camera steady and fill the frame with the area of concern."] if (quality_limited or little_measurable_detail) and not exact_reference else []},
+        "reference_features": list(reference.get("visual_features") or []) if exact_reference else [],
         "pirs": {"score": pirs_score, "label": pirs.get("band")},
         "concern": {"score": score, "label": assessment_risk.get("level"),
                     "urgency": assessment_risk.get("urgency_label")},

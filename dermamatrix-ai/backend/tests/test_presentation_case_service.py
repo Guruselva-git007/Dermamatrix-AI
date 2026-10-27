@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image, ImageDraw
@@ -20,6 +21,27 @@ from clinical_skin_classifier import weights_available as clinical_skin_weights_
 
 
 class PresentationCaseTests(unittest.TestCase):
+    def test_supplied_small_sharp_acne_image_keeps_its_teaching_result(self):
+        from app import app
+
+        source = Path(BACKEND_DIR).parents[1] / "DERMA PRESENTATION" / "WhatsApp Image 2026-09-06 at 19.16.18.jpeg"
+        if not source.is_file():
+            self.skipTest("Local presentation source is unavailable")
+        with app.test_client() as client, source.open("rb") as image:
+            response = client.post("/api/assessments", data={
+                "image": (image, source.name), "area": "Skin", "image_context": "face_skin",
+                "image_consent": "true", "presentation_case_enabled": "true",
+            }, content_type="multipart/form-data")
+        self.assertEqual(response.status_code, 200)
+        result = response.get_json()
+        self.assertEqual(result["presentation_case"]["case_id"], "skin-inflammatory-acne")
+        self.assertEqual(result["quality"]["status"], "ACCEPTABLE")
+        consumer = result["assessment_result"]["consumer"]
+        self.assertEqual(consumer["primary_result"]["source"], "exact_reference_file")
+        self.assertIn("acne", consumer["primary_result"]["title"].casefold())
+        self.assertTrue(consumer["reference_features"])
+        self.assertFalse(consumer["image_quality"]["retake_guidance"])
+
     def test_unmapped_photo_with_presentation_enabled_stays_a_standard_assessment(self):
         from app import app
 
@@ -95,7 +117,8 @@ class PresentationCaseTests(unittest.TestCase):
         self.assertEqual(result["assessment_risk"]["condition_profile"]["condition_source"], "No condition label used")
         self.assertTrue(result["assessment_result"]["presentation"]["is_reference_case"])
         self.assertEqual(result["recommendations"]["medication_information"]["status"], "NO_MEDICATION_RECOMMENDATION")
-        self.assertNotIn("teaching", result["assessment_result"]["consumer"]["primary_result"]["title"].lower())
+        self.assertIn("acne", result["assessment_result"]["consumer"]["primary_result"]["title"].lower())
+        self.assertEqual(result["assessment_result"]["consumer"]["primary_result"]["source"], "exact_reference_file")
         self.assertTrue(result["assessment_result"]["consumer"]["technical_details"]["reference_case"])
         self.assertTrue(result["recommendations"]["diet"])
 

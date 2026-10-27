@@ -606,6 +606,93 @@ body[data-theme="dark"] .catalog-card--product::after { opacity: .17; }
   body:not(.reduce-motion) .dashboard-heading::after { animation: sky-float 8s ease-in-out infinite; }
 }
 @keyframes sky-float { 50% { transform: translateY(-8px); } }
+
+/* Journey: give each section one consistent card layout and field rhythm. */
+.progress-section .progress-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: stretch;
+  gap: 18px !important;
+}
+.progress-section .routine-list-card,
+.progress-section .routine-form-card,
+.progress-section .checkin-card,
+.progress-section .history-card {
+  min-width: 0;
+  padding: 24px !important;
+  border: 1px solid var(--dm-line) !important;
+  border-radius: var(--dm-radius-lg) !important;
+}
+.progress-section .routine-list-card {
+  display: flex;
+  flex-direction: column;
+}
+.progress-section .routine-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.progress-section .routine-list > .empty-state {
+  margin: auto 0;
+  padding: 32px 12px;
+}
+.progress-section .routine-form-card {
+  border-right: 1px solid var(--dm-line) !important;
+}
+.progress-section .routine-form-card form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 16px;
+  margin-top: 24px;
+}
+.progress-section .routine-form-card form > label,
+.progress-section .checkin-form label {
+  min-width: 0;
+  margin: 0;
+}
+.progress-section .routine-form-card .form-actions {
+  grid-column: 1 / -1;
+}
+.progress-section .routine-form-card textarea,
+.progress-section .checkin-form textarea {
+  min-height: 80px;
+}
+.progress-section .checkin-card,
+.progress-section .history-card {
+  margin-top: 18px !important;
+  padding-top: 24px !important;
+}
+.progress-section .checkin-card {
+  display: block;
+}
+.progress-section .checkin-card .section-label {
+  position: static;
+}
+.progress-section .checkin-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px 16px;
+  margin-top: 24px;
+}
+.progress-section .checkin-form .checkin-note {
+  grid-column: span 2;
+}
+.progress-section .checkin-form > .button {
+  min-height: 48px;
+  margin: 0;
+}
+.progress-section .history-card {
+  min-height: 0;
+}
+.progress-section .progress-history .empty-state {
+  padding: 24px 12px;
+}
+@media (max-width: 1150px) {
+  .progress-section .progress-layout { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 700px) {
+  .progress-section .routine-form-card form,
+  .progress-section .checkin-card .checkin-form { grid-template-columns: 1fr; }
+  .progress-section .checkin-form .checkin-note { grid-column: auto; }
+  .progress-section .checkin-form > .button { justify-self: stretch; }
+}
 @media (prefers-reduced-motion: reduce) {
   .auth-story, .auth-card, .dashboard-heading, .health-snapshot, .dashboard-recent,
   .screen-card, .dashboard-action, .catalog-card, .dashboard-action::after,
@@ -632,3 +719,80 @@ body.reduce-motion .dashboard-action:hover, body.reduce-motion .catalog-card--pr
 body[data-theme="dark"] .pharmacy-search-link { border-color: #377e81; background: #123f49; color: #b8eae4; }
 @media (max-width: 820px) { #productCatalog { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { #productCatalog { grid-template-columns: minmax(0, 1fr); } .pharmacy-search-link { flex: 1 1 120px; } }
+
+/* Audit repairs: preserve the workspace while exposing its real interaction state. */
+/* White 15px action text needs the existing deeper blue in the light theme. */
+body:not([data-theme="dark"]) .button.primary,
+body:not([data-theme="dark"]) .auth-primary { background: var(--dm-blue-strong); }
+/* Keep the light action's text contrast stable while its hover effect runs. */
+body:not([data-theme="dark"]) .auth-primary::before { background: none; }
+:focus-visible { outline: 3px solid var(--dm-blue-strong); outline-offset: 3px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.drop-zone { position: relative; }
+.drop-zone:focus-within { outline: 3px solid var(--dm-blue-strong); outline-offset: 4px; border-color: var(--dm-blue-strong); }
+.switch input:focus-visible + span { outline: 3px solid var(--dm-blue-strong); outline-offset: 4px; }
+.drop-zone.has-image input { display: block; }
+.drop-zone.is-invalid { border-color: var(--dm-danger); }
+.assessment-steps { position: relative; }
+.assessment-steps li.complete { color: var(--dm-success); }
+.assessment-steps li.complete span { border-color: var(--dm-success); color: var(--dm-success); background: var(--dm-surface); }
+.handling-copy, .history-export-note { color: var(--dm-muted); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.handling-copy { margin: 8px 0; }
+.handling-link, .data-notice-page a { color: var(--dm-blue-strong); font-size: 13px; text-underline-offset: 3px; }
+.assessment-handling { margin-top: 24px; padding: 14px 16px; border: 1px solid var(--dm-line); border-radius: 12px; background: var(--dm-blue-wash); }
+.clinical-checks { display: grid; gap: 16px; padding: 16px; }
+.clinical-checks label { display: flex; align-items: flex-start; line-height: 1.5; }
+.clinical-checks input[type="checkbox"] { flex: 0 0 18px; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--dm-blue); }
+.presentation-case-option { padding-top: 14px; border-top: 1px solid var(--dm-line); }
+.presentation-case-option .handling-copy { margin-left: 27px; font-size: 12px; }
+.presentation-case-option:has(.presentation-case-toggle[hidden]) { display: none; }
+.auth-form .handling-copy { margin: 0; font-size: 12px; }
+.auth-form .handling-link { margin-top: -6px; }
+.nav-close { display: none; }
+.data-notice-page { max-width: 780px; margin: 0 auto; padding: 36px 24px 64px; }
+.data-notice-page > header { margin-bottom: 28px; }
+.data-notice-page h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.1; }
+.data-notice-page h2 { margin-top: 30px; font-size: 21px; }
+.data-notice-page p, .data-notice-page li { line-height: 1.65; }
+.data-notice-page .notice-boundary { padding: 16px; border: 1px solid var(--dm-line); border-radius: 12px; background: var(--dm-blue-wash); }
+body[data-theme="dark"] .assessment-handling { background: var(--dm-surface); }
+@media (max-width: 880px) {
+  .nav-close { display: flex; justify-content: space-between; align-items: center; gap: 14px; min-height: 40px; margin: -8px 0 12px auto; padding: 8px 12px; border: 1px solid var(--dm-line); border-radius: 9px; background: var(--dm-surface); color: var(--dm-ink); cursor: pointer; }
+  .nav-close span { font-size: 22px; }
+  .nav-open .nav-scrim:not([hidden]) { display: block; }
+}
+@media (max-width: 640px) {
+  .clinical-checks { padding: 14px 12px; }
+  .assessment-handling { padding: 12px; }
+  .assessment-steps li.active { font-weight: 700; }
+}
+
+/* Workflow feedback stays beside its action and uses the existing colour roles. */
+.assessment-feedback, .result-workflow-status {
+  color: var(--dm-ink);
+  background: var(--dm-bg-soft);
+  border-left: 3px solid var(--dm-blue);
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.processing-card .button { margin-top: 16px; }
+.processing-card .processing-interruption-note { margin-top: 10px; }
+.processing-modal { overflow-y: auto; }
+.processing-card { max-height: none; margin: auto; }
+@media (max-width: 680px) {
+  /* A saved report's missing-photo notice must not precede its finding. */
+  .consumer-hero-image:has(.patient-visual-empty) { order: 2; }
+  .consumer-hero-image .patient-visual-empty { min-height: 0; padding: 16px; gap: 8px; }
+}
+.report-list-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+.report-list-navigation .report-list-note { margin: 0; }

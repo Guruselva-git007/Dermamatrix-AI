@@ -1,5 +1,8 @@
 # DermaMatrix AI — canonical workspace
 
+For saved guidance, local tools, records and SSD transfer instructions, start
+with [`START HERE.md`](START%20HERE.md) and [`TRANSFER GUIDE.md`](TRANSFER%20GUIDE.md).
+
 This repository's active application is in [`dermamatrix-ai/`](dermamatrix-ai/).
 That folder contains the Flask backend, browser frontend, tests, evaluation
 records, and the detailed project README.
@@ -48,3 +51,10 @@ Railway is the selected deployment target: it hosts the Flask app and its
 managed MySQL database together, while GitHub remains the shared source-code
 repository. The deployment configuration and one-time account setup are in
 [`dermamatrix-ai/docs/railway-deployment.md`](dermamatrix-ai/docs/railway-deployment.md).
+
+## Imported local project records
+
+Dedicated cleanup evidence and associated chat history previously kept with
+PHONE SSD MAC now live in this project’s ignored local-artifacts area. Read
+[local-artifacts/PROJECT RECORDS.md](local-artifacts/PROJECT%20RECORDS.md) for their
+canonical locations, verification and future record-routing rules.

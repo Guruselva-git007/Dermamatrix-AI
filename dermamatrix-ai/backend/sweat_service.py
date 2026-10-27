@@ -16,7 +16,7 @@ FREQUENCY_LABELS = {
 def _bounded_int(value: object, minimum: int, maximum: int) -> int:
     try:
         return max(minimum, min(maximum, int(value)))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return minimum
 
 

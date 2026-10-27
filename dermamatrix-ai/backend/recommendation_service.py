@@ -68,11 +68,11 @@ def _education_topic(area: str, classifier: dict, evidence: dict, reference: dic
     label = (classifier.get("top_prediction") or {}).get("condition")
     topic_id = None
     source = ""
-    if classifier.get("available") and not classifier.get("non_condition_top_class"):
-        topic_id, source = MODEL_TOPICS.get(label), "research_model_ranking"
-    elif reference and reference.get("matched"):
+    if reference and reference.get("matched"):
         topic_id = "scalp-psoriasis" if area == "Hair" and reference.get("topic_id") == "psoriasis" else reference.get("topic_id")
         source = "exact_reference_file"
+    elif classifier.get("available") and not classifier.get("non_condition_top_class"):
+        topic_id, source = MODEL_TOPICS.get(label), "research_model_ranking"
     if not topic_id and area == "Hair":
         symptoms = set(((evidence.get("reported_context") or {}).get("symptoms") or []))
         if "scalp_scaling" in symptoms or "scalp_itching" in symptoms:

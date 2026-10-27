@@ -25,10 +25,12 @@
 | 4 | Skin → dermatoscopic single lesion | `../research-assets/original-sources/DermamatrixResearchData/skin-lesion-zip-v1/presentation-samples/ISIC_0000035_downsampled.jpg` | Leave Presentation case matching off. Confirm the dermatoscope attestation only for this genuine dermoscopic sample. The installed ResNet-34 research adapter can show a ranking and Grad-CAM. No calibrated condition likelihood or diagnosis is available. |
 | 5 | Sweating | Answer the questionnaire | Show the transparent rule-contribution summary; no sweat image or trained tabular diagnosis model is used. |
 
-The first three files were checked against the actual image-quality gate:
-Skin and Hair are `GOOD`; Nails is `ACCEPTABLE`. Several other small teaching
-files are legitimately marked `LOW_QUALITY`. Do not bypass that gate just to
-make an older reference look successful.
+The exact twenty mapped teaching files were checked against the current
+image-quality gate: all are `GOOD` or `ACCEPTABLE`. The 320 × 213 inflammatory
+acne original is sharp enough for `ACCEPTABLE`; its exact teaching label is
+shown as reference metadata. Genuinely tiny, dark, overexposed, or severely
+blurred uploads still receive a quality warning, and an exact teaching-file
+match never becomes a diagnosis or a validated model prediction.
 
 Five newer personal photos in `../DERMA PRESENTATION/` are not verified teaching
 cases. They were tested as ordinary Skin photos and received **no** teaching

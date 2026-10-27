@@ -40,7 +40,7 @@ class LocalLauncherTests(unittest.TestCase):
     def test_assessment_progress_uses_the_four_rendered_stages(self):
         frontend = (APP_ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
         markup = (APP_ROOT / "frontend" / "index.html").read_text(encoding="utf-8")
-        for stage in ("Choose area", "Upload or answer", "Add context", "Review result"):
+        for stage in ("Choose area", "Add image or answers", "Review &amp; consent", "Result"):
             self.assertIn(stage, markup)
         self.assertIn("STEP 1 OF 4", markup)
         self.assertNotIn("STEP 1 OF 3", markup)

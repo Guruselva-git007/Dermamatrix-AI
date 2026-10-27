@@ -161,15 +161,16 @@ class ResultContentNeverShrinks(unittest.TestCase):
         self.assertFalse(ordinary["possible_conditions"])
         self.assertFalse(any(raw in sentence for sentence in ordinary["why_this_result"]))
 
-    def test_conflicting_reference_does_not_drive_care_for_a_specific_model_class(self):
+    def test_exact_reference_keeps_its_teaching_topic_when_research_rank_differs(self):
         response = fixture("Skin", label="Eczema / dermatitis", reference_topic="acne")
         response["recommendations"] = build_recommendations(
             "Skin", response["research_classifier"], assessment_state="CONDITION",
             canonical_evidence=response["canonical_evidence"], presentation_case=response["presentation_case"],
         )
         consumer = build_assessment_result(response)["consumer"]
-        self.assertEqual(consumer["condition_information"]["id"], "atopic-dermatitis")
-        self.assertEqual(consumer["primary_result"]["title"], "Eczema / dermatitis")
+        self.assertEqual(consumer["condition_information"]["id"], "acne")
+        self.assertEqual(consumer["primary_result"]["source"], "exact_reference_file")
+        self.assertTrue(any("differs from the model" in sentence for sentence in consumer["why_this_result"]))
         self.assertTrue(all(product["domain"] == "Skin" for product in consumer["products"]))
 
     def test_history_summary_keeps_the_same_consumer_contract(self):
