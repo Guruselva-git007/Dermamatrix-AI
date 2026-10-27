@@ -100,3 +100,12 @@ not establish the configuration of any public host.
 acceptance checks for deployment, rights handling and eligibility. These notes
 do not add retention automation, erasure, guardian verification, or a clinical
 service, and no existing health records should be deleted to demonstrate them.
+
+## Opt-in consumer development extension — 27 October 2026
+
+After explicit migration and activation, the account/session/token/CSRF, shared
+request-budget, processing-pause, local rights-request and bounded inference
+controls described in [consumer development](consumer-development.md) apply.
+Email uses a configurable disabled-by-default transport; the isolated test sink
+is not real delivery. Retention/erasure and operating/support decisions remain
+open. Consumer readiness must not be inferred from these local controls.

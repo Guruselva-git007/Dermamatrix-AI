@@ -78,6 +78,7 @@ python3 -m venv .venv
 .venv/bin/python backend/scripts/install_nail_research_model.py
 # Create backend/.env from backend/.env.example, then set a local MYSQL_PASSWORD.
 bash backend/scripts/run_local_mysql.sh
+PYTHONPATH=backend .venv/bin/python backend/scripts/migrate_database.py --apply
 .venv/bin/python backend/app.py
 ```
 
@@ -161,3 +162,12 @@ The existing `.ml-venv` can be used in place of `.venv` in this workspace. In VS
 - `backend/risk_service.py`, `backend/pirs_service.py`, `backend/report_service.py` – shared priority/PIRS/PDF-report domain boundaries.
 - `backend/assessment_contract.py` – versioned patient-result contract that keeps model likelihood, symptom severity, assessment concern score, care priority, disease-risk availability, and urgency separate.
 - `docs/` – model and safety documentation.
+
+## Consumer development
+
+[Execution status](docs/ROADMAP_EXECUTION_STATUS.md) records the active consumer
+work. [Local development and verification](docs/consumer-development.md) describes
+explicit additive migrations, feature activation, account recovery/session
+security, privacy controls, routine schedules/reminders and their boundaries.
+Normal worker startup no longer initializes schema; fresh databases require the
+explicit migration command. Deployment remains deferred.
