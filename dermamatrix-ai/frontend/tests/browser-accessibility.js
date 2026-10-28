@@ -3,6 +3,7 @@ async (page, options = {}) => {
   const checks = [], errors = [], snapshots = {}, samples = [];
   const assert = (value, message) => { if (!value) throw Error(message); };
   page.on('pageerror', error => errors.push(error.message));
+  try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.context().clearCookies();
   await page.goto('http://127.0.0.1:8001/?accessibility-probe=' + Date.now());
@@ -60,13 +61,22 @@ async (page, options = {}) => {
     assert(sample.focus === 'assessmentReviewTitle' && sample.top >= sample.dialogTop && sample.bottom <= sample.dialogBottom && sample.scrollWidth <= sample.clientWidth + 1, 'Review begins below its explanation: ' + JSON.stringify(sample));
     snapshots['review-' + size.width] = await page.locator('#assessmentReviewDialog').ariaSnapshot();
     if (options.artifactRoot) await page.screenshot({ path: options.artifactRoot + 'review-' + size.width + '.png' });
-    await page.keyboard.press('Tab');
-    assert(await page.evaluate(() => document.activeElement.id) === 'backToAssessment', 'Review reading order skips Back');
-    await page.keyboard.press('Tab');
-    assert(await page.evaluate(() => document.activeElement.id) === 'confirmAssessmentReview', 'Review confirmation is not keyboard reachable');
+    // Safari's all-controls traversal can use Option-Tab under Mac preferences.
+    let traversal;
+    for (const key of ['Tab', 'Alt+Tab']) {
+      for (let press = 0; press < 4; press++) {
+        await page.keyboard.press(key);
+        if (await page.evaluate(() => document.activeElement.id) === 'backToAssessment') { traversal = key; break; }
+      }
+      if (traversal) break;
+    }
+    assert(traversal, 'Review Back is not keyboard reachable');
+    samples[samples.length - 1].traversal = traversal;
+    await page.keyboard.press(traversal);
+    assert(await page.evaluate(() => document.activeElement.id) === 'confirmAssessmentReview', 'Review confirmation is not keyboard reachable after Back');
     await page.keyboard.press('Escape');
     assert(!await page.locator('#assessmentReviewDialog').evaluate(d => d.open), 'Escape did not close review');
-    assert(await page.evaluate(() => document.activeElement.id) === 'analyzeButton', 'Escape lost the review opener');
+    await page.waitForFunction(()=>document.activeElement.id==='analyzeButton');
   }
   checks.push('narrow reviews initially expose the heading and opening explanation');
   checks.push('review keyboard reading order and Escape restore the invoking action');
@@ -97,4 +107,9 @@ async (page, options = {}) => {
   assert(!errors.length, errors.join('; '));
   checks.push('guest reload returns to account entry with no retained private evidence or uncaught errors');
   return { checks, errors, samples, snapshots, limits: ['Targeted DOM/keyboard checks do not establish actual screen-reader speech, native camera behavior or WCAG conformance.'] };
+  } catch(error) {
+    let context = {url: page.url()};
+    try {context = await page.evaluate(()=>({url:location.href,focus:document.activeElement.id,area:state.area,guest:state.isGuest,inFlight:state.assessmentInFlight,status:document.querySelector('#assessmentStatus').textContent,toast:document.querySelector('#toast').textContent,consentError:document.querySelector('#consentError').textContent,reviewOpen:document.querySelector('#assessmentReviewDialog').open,processing:document.querySelector('#processingCopy')?.textContent}));} catch {}
+    throw Error(error.message+' | Completed: '+checks.join('; ')+' | Context: '+JSON.stringify(context));
+  }
 }

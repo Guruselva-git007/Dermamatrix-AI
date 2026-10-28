@@ -565,3 +565,12 @@ physical iPhone handoffs. No duplicate runner/framework/provider/public tunnel.
 The existing CI runner now includes the 12 targeted checks in each engine; final
 exact regression/commit receipt remains pending. Private source/test evidence is
 `local-artifacts/consumer-validation-2026-10-28/`.
+
+First CI `40746936098` passed 256 backend/74 frontend and all 53 browser checks
+in Chrome/Firefox; WebKit passed existing37 then failed the new result wait.
+Focused local WebKit exposed native Option-Tab traversal and Escape restoring
+workspace heading instead of the invoking review button. Added explicit guarded
+review return focus, cleared on workspace reset; the test supports the observed
+native Option-Tab path while requiring Back/Confirm reachability and returned
+focus. Local WebKit now passes12/12. Added diagnostic context; no result check
+was bypassed. Final exact CI receipt follows the rerun below.
