@@ -122,6 +122,7 @@ async (page, options = {}) => {
     await guideButton.click();await page.locator('#learn.is-reading').waitFor();
     assert(!await page.locator('#learnList').isVisible()&&!await page.locator('#learnForm').isVisible(), 'Catalogue competes with reading');
     assert(await page.locator('#guideTitle').evaluate(e=>e===document.activeElement), 'Guide heading did not receive focus');
+    assert(await page.locator('.guide-toolbar > button').first().evaluate(e=>e.getBoundingClientRect().width<e.parentElement.getBoundingClientRect().width),'Guide toolbar actions stretch across the reading column');
     await page.locator('#learnDetail').getByRole('button',{name:'Back to guides'}).click();
     assert(await page.locator('#learnSearch').inputValue()==='Acne'&&await guideButton.evaluate(e=>e===document.activeElement), 'Back lost the search or invoking control');
     checks.push('guide reader and Back preserve filtered matches and keyboard focus');

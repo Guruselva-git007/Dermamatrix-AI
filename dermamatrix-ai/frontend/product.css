@@ -399,6 +399,7 @@ small { font-size: 13px; }
 #learnDetail ul { padding-left: 22px; }
 #learnDetail li + li { margin-top: 8px; }
 .guide-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 20px; }
+.guide-toolbar > button { width: auto; max-width: 100%; }
 .guide-toolbar .text-button { min-height: 44px; }
 .guide-notice { padding: 12px 16px; border-left: 3px solid var(--dm-line-strong); background: var(--dm-bg-soft); }
 .guide-intro { color: var(--dm-ink); }
