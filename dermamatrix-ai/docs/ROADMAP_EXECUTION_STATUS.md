@@ -10,12 +10,13 @@ authorized development scope.** The bounded refinement preserves completed A–L
 See the final section for findings, before/after evidence and the final CI receipt. Earlier
 “exact next action” paragraphs describe their closed batches, not this new task.
 
-**Latest continuation — remaining development verification:** the owner asked to
-finish pending development. Production code remains unchanged at the verified
-runtime; the remaining desktop-engine coverage is being completed with existing
-workflows, strict per-engine receipts and a separate live offline test. See the
-last section for current cross-browser progress. Provider/deployment deferral is
-unchanged; this does not reopen completed visual/features work.
+**Latest continuation — remaining development verification: complete.** Desktop
+Chrome/Firefox/WebKit each pass 41 checks in exact CI `40736195397`, alongside
+256 backend and 72 frontend tests. Production runtime remains unchanged; the
+remaining engineering gap was closed through test infrastructure and actual
+origin-outage/recovery evidence. See the final receipt below. Physical-device,
+assistive-technology speech, human and policy validation remain external.
+Provider activation and deployment remain deferred.
 
 ## Verdict and current batch
 
@@ -489,3 +490,46 @@ connection refusal, same-origin recovery and blocked account/health writes. All
 ten runner tests pass locally. Chrome and WebKit each pass all four origin-outage
 checks with real worker provenance. CI now has a 15-minute upper bound. Final
 three-engine receipt pending.
+
+### Final verified receipt — remaining development verification
+
+- Test implementation `cf0c6a7a2a62179eed44c4793b0f914c08d74c46` is committed and
+  pushed on `codex/consumer-evolution`. [Development CI 40736195397](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40736195397)
+  completed successfully on that exact commit: **256 backend, 72 frontend and
+  123 browser checks (41 each in Chrome/Firefox/WebKit)**, explicit synthetic
+  migrations, source hygiene and pinned dependency audit with no known
+  vulnerabilities in the audited environment. This does not attest the unmerged
+  default branch or public-release readiness.
+- Every engine passes the same 37 connected workflows plus four worker/cache/
+  actual-origin-outage/reconnection checks. The final test closes and verifies
+  its own loopback listening socket, requires the real worker's cached
+  explanation and failed health-data access, restarts the same origin and
+  verifies clean account entry. Chrome/WebKit additionally passed browser
+  offline emulation locally and in the earlier CI receipts. Origin unavailability
+  and physical network disconnection are distinct test conditions.
+- The three new relay regressions and seven evidence-parser regressions pass.
+  The final local Chrome/WebKit outage screenshots are byte-identical to the
+  inspected mobile offline screens. Existing WebKit dark mobile catalogue and
+  desktop result samples were also visually inspected. Existing five-width,
+  two-theme, focus/zoom and historical-data evidence remains applicable because
+  no production source, schema, classifier/scoring/model or dependency changed.
+- No new product P0/P1 defect was reproduced. Earlier Firefox failures are
+  preserved as failed emulation evidence; they were resolved by testing an
+  actually unavailable origin, without suppressing the fallback/data assertions.
+  The Mac Firefox test-runtime profile error remains a local tooling limitation;
+  Linux Firefox passes all 41. Actual Safari remains unverified.
+- The owned synthetic app/database/browser sessions and relay sockets are closed;
+  normal service remains ready with source-identical assets. No real account
+  records were accessed, historical evidence rewritten, raw photos retained,
+  provider activated, model trained or deployment performed.
+- A documentation-only closing commit follows this tested implementation. Final
+  local/remote equality, private journal/readable archive and release of the owned
+  sleep hold are recorded in `local-artifacts/development-closure-2026-10-28/completion.json`.
+
+**Exact next action:** independent authorized development work is finished.
+Preserve the verified state and stop cosmetic/feature iteration. Remaining work
+requires physical phones, actual Safari/local Firefox-runtime resolution,
+assistive-technology speech, representative consumer sessions or approved
+clinical/operator/retention/erasure decisions. Provider setup and deployment stay
+deferred until the owner explicitly requests them. No blanket clinical,
+accessibility-conformance or public-readiness certification is claimed.
