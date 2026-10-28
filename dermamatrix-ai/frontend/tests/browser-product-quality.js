@@ -146,13 +146,16 @@ async (page, options = {}) => {
     await page.locator('.area-choice [data-area=Skin]').click();
     assert(await page.getByRole('button',{name:'Take photo',exact:true}).isVisible()&&await page.getByRole('button',{name:'Choose photo',exact:true}).isVisible(), 'Capture actions remain hidden in help');
     let assessmentPosts=0;const captureRequest=request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/assessments')assessmentPosts++;};page.on('request',captureRequest);
-    for(const [name,capture] of [['Take photo','environment'],['Choose photo',null]]){
-      const chooserPromise=page.waitForEvent('filechooser');await page.getByRole('button',{name,exact:true}).click();const chooser=await chooserPromise;
-      assert(await page.locator('#imageInput').getAttribute('capture')===capture,'Wrong capture intent');await chooser.setFiles([]);
-    }
+    // The CLI pauses a run-code cell on a native file dialog. Record the native
+    // input handoff without opening that dialog; real device capture stays external.
+    await page.evaluate(()=>{const input=document.querySelector('#imageInput');window.captureIntentProbe={click:input.click,intents:[]};input.click=()=>window.captureIntentProbe.intents.push(input.getAttribute('capture'));});
+    try{for(const name of ['Take photo','Choose photo'])await page.getByRole('button',{name,exact:true}).click();}
+    finally{await page.evaluate(()=>{document.querySelector('#imageInput').click=window.captureIntentProbe.click;});}
+    assert(await page.evaluate(()=>JSON.stringify(window.captureIntentProbe.intents)==='["environment",null]'),'Wrong camera or gallery handoff');
+    await page.evaluate(()=>delete window.captureIntentProbe);
     page.removeListener('request',captureRequest);
     assert(assessmentPosts===0&&!await page.locator('#imageConsent').isChecked(),'Opening/cancelling a picker submitted or consented');
-    checks.push('visible gallery and camera intents cancel without assessment or consent');
+    checks.push('visible gallery and camera controls forward the right intent without assessment or consent');
 
     await nav('progress');await page.locator('#journeyTabs-routines').click();
     if(!await page.locator('#routineEditorDisclosure').evaluate(e=>e.open))await page.locator('#routineEditorDisclosure summary').click();
