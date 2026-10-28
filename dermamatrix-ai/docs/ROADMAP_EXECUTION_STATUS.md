@@ -45,6 +45,28 @@ existing actual-device/speech/consumer-study handoff when available; provider
 activation and deployment remain deferred. Closing Markdown and private Git/
 sleep-release receipts follow the exact green runtime above.
 
+**Latest requested batch — user-centred frontend refinement (29 October): complete.**
+The requested internet-informed consumer pass adds focused guide reading/Back/
+retry, discoverable camera/gallery actions, readable notes and navigation through
+existing result sections. It preserves the ledger, IBM Plex, medical evidence,
+consent, account boundaries and existing records. [Exact CI 40774346102](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40774346102)
+passes source `5f77bc58ef05491c7b010bb34b6aa0b963ac9e4f`: **258 backend,
+77 frontend and 177 browser checks (59 each Chrome/Firefox/WebKit)**. Local
+Chrome/WebKit also pass 59 each. Responsive evidence covers seven routes × four
+widths × two themes, plus eight final reader samples and a 200% computed-text
+simulation. A pure synthetic long-result fixture preserves all evidence text
+through section navigation; it is not model inference or a real assessment.
+All backend source, main assessment renderer and index remain byte-identical.
+No persistence migration, provider activation, deployment or medical capability
+was added. Owned local test resources are closed; normal8000 serves all four
+updated frontend assets without restart. See
+`consumer-experience-refinement-2026-10-29.md` and ignored completion receipts.
+No selected P0/P1 defect remains in the affected verified flows. Next development
+work should follow the existing physical-device, actual speech and consumer-study
+handoff when available. Do not restart completed work or infer another cosmetic
+pass, provider setup or deployment. Closing docs/private sync/sleep receipts
+follow the exact tested runtime above.
+
 ## Verdict and current batch
 
 **October 28 continuity batch:** All independent A–L development enhancements
