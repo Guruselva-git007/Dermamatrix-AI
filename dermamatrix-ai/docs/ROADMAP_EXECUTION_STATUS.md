@@ -5,9 +5,9 @@ Updated: 28 October 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current task — professional product maturity (28 October):** the new owner
-prompt authorizes a bounded evidence-led refinement, preserving completed A–L.
-See the final section for the current findings and quality-gate status. Earlier
+**Current task — professional product maturity (28 October): complete within the
+authorized development scope.** The bounded refinement preserves completed A–L.
+See the final section for findings, before/after evidence and the final CI receipt. Earlier
 “exact next action” paragraphs describe their closed batches, not this new task.
 
 ## Verdict and current batch
@@ -376,7 +376,7 @@ Private evidence: `local-artifacts/product-maturity-2026-10-28/`.
   checks**. Tests exercise account switching with held responses and CSRF preparation,
   unchanged-input response-loss retry, concern comparisons/corrections/history,
   bookmarks/search, PDF download and original account isolation. Final runtime CI
-  must verify these same suites before closing the remote receipt.
+  verifies these same suites on the exact runtime commit, as recorded below.
 - Comparable baseline/final screen samples: 70 each, seven destinations at
   320/390/768/1280/1440 in both themes. Zero document overflow/unlabelled visible
   inputs; directory control clipping fell from 77–83 to zero. Screenshots and the
@@ -401,9 +401,28 @@ Private evidence: `local-artifacts/product-maturity-2026-10-28/`.
   usability and approved retention/erasure/operator/clinical decisions remain
   external checks. No device/participant/conformance certification is invented.
 
-**Next closing step:** commit/push only scoped source, obtain the exact runtime
-development-CI receipt, verify the ordinary loopback assets without opening real
-health records, update private journal/chats, close owned synthetic resources and
-release this task's keep-awake helper. Stop cosmetic iteration: selected changes
-meet local gates and no verified unresolved P0 remains in the tested scope.
-No deployment, provider activation, extra language, model change or real erasure.
+### Final verified receipt — professional product maturity
+
+- Runtime commit `739e11da8d2c901b15cfff3d23024ed68eb090ef`, safely pushed on the
+  existing branch. [Development CI 40659217520](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40659217520)
+  **completed successfully** on that exact commit: **246 backend, 72 frontend and
+  15 + 12 + 10 browser checks**, explicit synthetic migrations, source hygiene and
+  pinned dependency audit with no known vulnerabilities in that audited environment.
+  This does not attest the unmerged default branch or production security.
+- Same-record and five-width/two-theme checks verify the selected P0/P1/P2 fixes.
+  All three installed image adapters actually run locally. No verified unresolved
+  P0 remains in the tested scope; all selected P1 changes are verified. No material
+  performance regression observed in the bounded comparable samples above.
+- Normal loopback service remains ready and serves source-identical assets;
+  no restart or real-user record access was needed. The owned synthetic app,
+  database and browser are closed; ports 8001/3308 were verified closed.
+- A documentation-only closing commit follows the verified runtime. Final
+  local/remote equality, readable archive/journal and task sleep-hold release are
+  recorded in ignored `local-artifacts/product-maturity-2026-10-28/completion.json`.
+
+**Exact next action:** this development task is finished. Preserve this verified
+state and stop cosmetic iteration. New work requires an observed defect, a specific
+owner request or the documented external device/human/policy evidence. Do not
+reopen A–L, activate providers, deploy, localize, retrain or execute real erasure
+as an inferred continuation. Physical phones/screen-reader speech/human usability
+and approved operational/clinical/retention decisions remain external checks.
