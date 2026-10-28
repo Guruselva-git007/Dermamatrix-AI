@@ -114,6 +114,52 @@ async (page, options = {}) => {
     }
     checks.push('one accurate current-page navigation cue across all destinations');
 
+    await nav('learn');
+    await page.locator('#learnSearch').fill('Acne');
+    await page.locator('#learnForm [type=submit]').click();
+    await page.waitForFunction(() => document.querySelector('#learnStatus').textContent === '1 guide found.');
+    const guideButton=page.locator('#learnList button').first();
+    await guideButton.click();await page.locator('#learn.is-reading').waitFor();
+    assert(!await page.locator('#learnList').isVisible()&&!await page.locator('#learnForm').isVisible(), 'Catalogue competes with reading');
+    assert(await page.locator('#guideTitle').evaluate(e=>e===document.activeElement), 'Guide heading did not receive focus');
+    await page.locator('#learnDetail').getByRole('button',{name:'Back to guides'}).click();
+    assert(await page.locator('#learnSearch').inputValue()==='Acne'&&await guideButton.evaluate(e=>e===document.activeElement), 'Back lost the search or invoking control');
+    checks.push('guide reader and Back preserve filtered matches and keyboard focus');
+
+    await page.route('**/api/knowledge/conditions/acne',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic temporary guide failure'})}));
+    await guideButton.click();await page.locator('#learnRetry').waitFor();
+    assert((await page.locator('#learnStatus').textContent()).includes('could not be opened'), 'Guide failure has no recovery feedback');
+    await page.unroute('**/api/knowledge/conditions/acne');
+    await page.locator('#learnRetry').click();await page.locator('#learn.is-reading').waitFor();
+    await page.locator('#learnDetail').getByRole('button',{name:'Back to guides'}).click();
+    checks.push('interrupted guide opens through the visible retry without losing the search');
+
+    let releaseGuide,guideCaptured;
+    const guideGate=new Promise(resolve=>{releaseGuide=resolve;}),guideReady=new Promise(resolve=>{guideCaptured=resolve;});
+    await page.route('**/api/knowledge/conditions/acne',async route=>{const response=await route.fetch();guideCaptured();await guideGate;await route.fulfill({response});});
+    await guideButton.click();await guideReady;await nav('home');
+    const guideResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/knowledge/conditions/acne');releaseGuide();await (await guideResponse).finished();await page.waitForTimeout(50);
+    await page.unroute('**/api/knowledge/conditions/acne');
+    assert(!await page.locator('#learnDetail').isVisible()&&await page.evaluate(()=>document.activeElement.id!=='guideTitle'), 'Late guide stole focus from the next task');
+    checks.push('late guide response cannot reopen the reader after navigation');
+
+    await page.locator('.area-choice [data-area=Skin]').click();
+    assert(await page.getByRole('button',{name:'Take photo',exact:true}).isVisible()&&await page.getByRole('button',{name:'Choose photo',exact:true}).isVisible(), 'Capture actions remain hidden in help');
+    let assessmentPosts=0;const captureRequest=request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/assessments')assessmentPosts++;};page.on('request',captureRequest);
+    for(const [name,capture] of [['Take photo','environment'],['Choose photo',null]]){
+      const chooserPromise=page.waitForEvent('filechooser');await page.getByRole('button',{name,exact:true}).click();const chooser=await chooserPromise;
+      assert(await page.locator('#imageInput').getAttribute('capture')===capture,'Wrong capture intent');await chooser.setFiles([]);
+    }
+    page.removeListener('request',captureRequest);
+    assert(assessmentPosts===0&&!await page.locator('#imageConsent').isChecked(),'Opening/cancelling a picker submitted or consented');
+    checks.push('visible gallery and camera intents cancel without assessment or consent');
+
+    await nav('progress');await page.locator('#journeyTabs-routines').click();
+    if(!await page.locator('#routineEditorDisclosure').evaluate(e=>e.open))await page.locator('#routineEditorDisclosure summary').click();
+    assert(await page.locator('#routineNotes').evaluate(e=>getComputedStyle(e).fontSize==='16px'&&getComputedStyle(e).fontFamily.includes('IBM Plex Sans')),'Routine notes retain the legacy tiny font');
+    checks.push('routine notes use readable IBM Plex control typography');
+
+    await nav('products');
     await page.waitForSelector('#productCatalog .catalog-card--product');
     assert(await page.locator('#productCatalog .catalog-card--product').count() > 3, 'Catalogue fixture is too small to exercise wrapping');
     for (const theme of ['light', 'dark']) {
@@ -175,6 +221,15 @@ async (page, options = {}) => {
       if ([390, 1440].includes(width)) await page.screenshot({ path: root + `quality-result-${width}.png` });
     }
     checks.push('supported finding and next action lead while all four explanations and technical evidence remain');
+    await page.locator('.result-contents').getByRole('button',{name:'Meaning & limits',exact:true}).click();
+    assert(await page.locator('#resultPlainExplanation h3').evaluate(e=>e===document.activeElement),'Result section jump lost focus');
+    await page.locator('#resultModal .modal-card').evaluate(e=>e.scrollTop=0);
+    await page.locator('.result-contents').getByRole('button',{name:'Technical details',exact:true}).click();
+    assert(await page.locator('#patientTechnicalSlot details').evaluate(e=>e.open),'Result navigation did not open technical evidence');
+    assert(await page.locator('#resultModal .modal-close').evaluate(e=>{const r=e.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),'Close is unavailable after reading a long result');
+    await page.locator('.result-back-top').click();
+    assert(await page.locator('#patientResultContent > .assessment-state-card h3').evaluate(e=>e===document.activeElement),'Back to overview lost the lead');
+    checks.push('result contents, evidence disclosure, persistent Close and return-to-overview work by keyboard focus');
     await page.keyboard.press('Escape');
     assert(!await page.locator('#resultModal').evaluate(e => e.classList.contains('show')), 'Result keyboard dismissal failed');
     checks.push('result keyboard dismissal and existing focus lifecycle');

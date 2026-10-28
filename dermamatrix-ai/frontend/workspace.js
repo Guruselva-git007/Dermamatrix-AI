@@ -73,6 +73,23 @@
     if($('teachingTools'))$('teachingTools').hidden=!chosen||state.area==='Sweat';
   }
   function theme() {const span=document.querySelector('#themeToggle > span');if(span)span.innerHTML=icon(document.body.dataset.theme==='dark'?'sun':'moon');}
+  function result(root) {
+    root.querySelector('.result-contents')?.remove();root.querySelector('.result-back-top')?.remove();
+    const lead=root.querySelector(':scope > .consumer-hero, :scope > .assessment-state-card, :scope > .patient-result-hero');
+    if(!lead)return;
+    const next=[...root.querySelectorAll(':scope > .consumer-section-heading')].find(el=>el.textContent.trim()==='NEXT STEPS')?.nextElementSibling;
+    const sections=[['Overview',lead],['Meaning & limits',$('resultPlainExplanation')],['Care guidance',root.querySelector('.consumer-treatment')],['Next steps',next],['Technical details',root.querySelector('#patientTechnicalSlot details')]].filter(([,el])=>el);
+    if(sections.length<3)return;
+    const nav=document.createElement('nav');nav.className='result-contents';nav.setAttribute('aria-label','Result sections');
+    const jump=target=>{
+      if(target.tagName==='DETAILS')target.open=true;
+      const focus=target.querySelector('h3, h4, summary')||target;focus.tabIndex=-1;focus.focus({preventScroll:true});
+      target.scrollIntoView({block:'start',behavior:'instant'});
+    };
+    for(const [label,target] of sections){const button=document.createElement('button');button.type='button';button.className='text-button';button.textContent=label;button.onclick=()=>jump(target);nav.append(button);}
+    const warning=root.querySelector(':scope > .patient-urgent-alert');if(warning)warning.after(nav);else root.prepend(nav);
+    const back=document.createElement('button');back.type='button';back.className='text-button result-back-top';back.textContent='Back to overview ↑';back.onclick=()=>jump(lead);root.append(back);
+  }
   function update() {
     if(!installed)return;
     move($('reportRegister'),$('journey-results'));
@@ -153,7 +170,7 @@
     organiseJourney();organiseProfile();installed=true;update();theme();
   }
   window.WorkspaceUI={
-    update,assessment,theme,
+    update,assessment,theme,result,
     page(page){if(!installed)return;if(page==='progress')journey();if(page==='settings')profile();},
     reveal(view){if(!installed)return;journey(view);if(view==='routines')$('routineEditorDisclosure').open=true;},
     async routineSaved(id){

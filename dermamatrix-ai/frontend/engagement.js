@@ -4,6 +4,7 @@
   let generation = 0, historyCursor = null, historyQuery = '', historyArea = '', historyEpisode='',historyBodyArea='',historyEpisodeId='',historyLoading = false, todayFlight = null, todayRequestVersion=0;
   let historyRequestVersion=0, historySnapshotKey=null;
   let schedule = null, scheduleId = '', scheduleLoadVersion = 0, guideVersion = 0;
+  let guideListVersion = 0, guideOpener = null, guideRetry = null;
   const $ = id => document.getElementById(id);
   const node = (tag, text, cls) => { const n = document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n; };
   const action = (label, fn, cls='button quiet') => { const n=node('button',label,cls);n.type='button';n.onclick=fn;return n; };
@@ -113,38 +114,57 @@
     dialog.showModal();$('contextEpisode').focus();
   }
 
+  function closeGuide({restoreFocus=true}={}) {
+    guideVersion++;guideRetry=null;
+    $('learn')?.classList.remove('is-reading');
+    if($('learnDetail'))$('learnDetail').hidden=true;
+    if($('learnRetry'))$('learnRetry').hidden=true;
+    status('learnStatus','');
+    const target=guideOpener?.isConnected&&guideOpener.getClientRects().length?guideOpener:$('learnSearch');
+    guideOpener=null;
+    if(restoreFocus&&target){target.focus({preventScroll:true});target.scrollIntoView({block:'center',behavior:'instant'});}
+  }
   async function guides(){
-    const query=$('learnSearch').value.trim().toLowerCase(),area=$('learnArea').value,version=++guideVersion;
+    closeGuide({restoreFocus:false});
+    const query=$('learnSearch').value.trim().toLowerCase(),area=$('learnArea').value,version=++guideListVersion;
+    const list=$('learnList');list.setAttribute('aria-busy','true');status('learnStatus','Finding guides…');
     try{
-      const data=await requestJSON('/api/knowledge/conditions'+(area?'?area='+encodeURIComponent(area):''));if(version!==guideVersion)return;
-      const list=$('learnList');list.replaceChildren();
+      const data=await requestJSON('/api/knowledge/conditions'+(area?'?area='+encodeURIComponent(area):''));if(version!==guideListVersion)return;
+      list.replaceChildren();
       const items=data.items.filter(r=>`${r.name} ${(r.aliases||[]).join(' ')}`.toLowerCase().includes(query));
-      for(const entry of items){const row=node('article',undefined,'learn-row');row.append(node('h3',entry.name),node('p',entry.health_area),action('Read guide',()=>openGuide(entry.id)));list.append(row);}
-      if(!items.length)list.append(node('p','No guides match. Try a different word or category.'));
-    }catch(e){status('learnStatus',e.message);}
+      for(const entry of items){const row=node('article',undefined,'learn-row'),read=action('Read guide',()=>openGuide(entry.id));read.setAttribute('aria-label','Read guide: '+entry.name);row.append(node('h3',entry.name),node('p',entry.health_area),read);list.append(row);}
+      if(!$('learn').classList.contains('is-reading'))status('learnStatus',items.length?`${items.length} ${items.length===1?'guide':'guides'} found${area?' · '+area:''}.`:'No guides match. Try a different word or category.');
+    }catch(e){if(version===guideListVersion){status('learnStatus',`Guides could not be refreshed. ${e.message} Try again; any previous matches remain below.`);guideRetry=guides;$('learnRetry').hidden=false;}}
+    finally{if(version===guideListVersion)list.setAttribute('aria-busy','false');}
   }
   async function openGuide(id){
     const version=++guideVersion;
+    guideOpener=document.activeElement;guideRetry=()=>openGuide(id);$('learnRetry').hidden=true;status('learnStatus','Opening guide…');
     try{
-      const {topic}=await requestJSON('/api/knowledge/conditions/'+encodeURIComponent(id));if(version!==guideVersion)return;
-      const body=$('learnDetail');body.replaceChildren(node('h2',topic.name),node('p',topic.medical_notice),node('p',topic.description));
+      const {topic}=await requestJSON('/api/knowledge/conditions/'+encodeURIComponent(id));if(version!==guideVersion||document.querySelector('.page-active')?.id!=='learn')return;
+      const body=$('learnDetail'),toolbar=node('div',undefined,'guide-toolbar'),title=node('h2',topic.name);
+      toolbar.append(action('← Back to guides',()=>closeGuide(),'text-button'));
+      title.id='guideTitle';title.tabIndex=-1;
+      const notice=node('p',topic.medical_notice,'guide-notice');
+      body.replaceChildren(toolbar,title,notice,node('p',topic.description,'guide-intro'));
       for(const [label,key] of [['Common symptoms','common_symptoms'],['General care context','care_options'],['Routine discussion','daily_routine'],['When to seek care','red_flags']]){
         body.append(node('h3',label));const list=node('ul');for(const value of topic[key]||[])list.append(node('li',value));body.append(list);
       }
       body.append(node('h3','Sources & content status'),node('p',`Content version: ${topic.version}. Recorded review date: ${topic.last_reviewed}. Clinical reviewer identity is not recorded; independent clinical review remains pending.`));
       const sources=node('ul');for(const source of topic.evidence_references||[]){const url=supportedExternalUrl(source.url);if(url){const li=node('li'),a=node('a',source.title||source.name||url);a.href=url;a.target='_blank';a.rel='noopener noreferrer';li.append(a);sources.append(li);}}body.append(sources);
       body.append(action('Report a correction',()=>{showPage('settings');window.WorkspaceUI?.privacy();if(signed()){document.querySelector('#rightsRequestForm [name=kind]').value='content_correction';document.querySelector('#rightsRequestForm [name=note]').value=`Guide: ${topic.id}; version: ${topic.version}\n`;document.querySelector('#rightsRequestForm textarea').focus();}else{toast('Sign in to record a local correction request. No monitored support service is configured.');}}));
-      body.hidden=false;body.tabIndex=-1;body.focus();body.scrollIntoView({block:'start',behavior:'auto'});
+      body.hidden=false;body.tabIndex=-1;$('learn').classList.add('is-reading');status('learnStatus','');guideRetry=null;
       window.ContinuityUI?.guide(topic);
-    }catch(e){status('learnStatus',e.message);}
+      title.focus({preventScroll:true});body.scrollIntoView({block:'start',behavior:'instant'});
+    }catch(e){if(version===guideVersion){status('learnStatus',`This guide could not be opened. ${e.message} Your search is unchanged.`);$('learnRetry').hidden=false;}}
   }
 
   window.EngagementUI={
     async refresh(){const reads=[loadTodayFresh()];if(signed())reads.push(loadHistory(true));if(scheduleId)reads.push(loadSchedule({preserveInput:true}));await Promise.allSettled(reads);},
     filterEpisode(id){$('journeyEpisodeId').value=id;loadHistory(true);},
-    openGuide,
+    openGuide,closeGuide,
     clear(){
-      generation++;scheduleLoadVersion++;historyRequestVersion++;historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;
+      generation++;scheduleLoadVersion++;historyRequestVersion++;guideListVersion++;closeGuide({restoreFocus:false});$('learnDetail')?.replaceChildren();$('learnForm')?.reset();historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;
       historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';historyEpisodeId='';schedule=null;scheduleId='';
       $('resultContextDialog')?.close();
       for(const id of ['scheduleEditor','journeySearchForm','resultContextForm'])$(id)?.reset();
@@ -179,6 +199,7 @@
     const contextDialog=node('dialog',undefined,'consumer-dialog');contextDialog.id='resultContextDialog';contextDialog.setAttribute('aria-labelledby','contextTitle');contextDialog.innerHTML='<form id="resultContextForm"><h2 id="contextTitle">Organise this result</h2><p id="contextStatus" role="status"></p><label>Personal concern label<input id="contextEpisode" maxlength="120"></label><label>Body area<input id="contextBodyArea" maxlength="80"></label><div class="consumer-actions"><button id="cancelResultContext" type="button" class="button quiet">Cancel</button><button type="submit" class="button primary">Save labels</button></div></form>';document.body.append(contextDialog);$('cancelResultContext').onclick=()=>contextDialog.close();
     const learn=node('section',undefined,'learn-section');learn.id='learn';learn.dataset.page='learn';learn.setAttribute('aria-labelledby','learnTitle');learn.innerHTML='<h1 id="learnTitle">Understand your concerns</h1><p>Source-linked education, separate from your assessment. These guides do not diagnose or prescribe.</p><form id="learnForm" class="consumer-filter"><label>Search guides<input id="learnSearch" type="search" maxlength="120" placeholder="Search a topic"></label><label>Category<select id="learnArea"><option value="">All categories</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><button class="button quiet" type="submit">Find guides</button></form><p id="learnStatus" role="status"></p><div id="learnList"></div><article id="learnDetail" class="consumer-panel" hidden></article>';
     $('products').after(learn);$('learnForm').onsubmit=e=>{e.preventDefault();guides();};
+    const retry=action('Try again',()=>guideRetry?.());retry.id='learnRetry';retry.hidden=true;$('learnStatus').after(retry);
     const link=node('a','Learn');link.prepend(node('span','▤'),document.createTextNode(' '));link.href='#learn';link.dataset.pageNav='learn';link.onclick=e=>{e.preventDefault();showPage('learn');};document.querySelector('[data-page-nav=progress]').after(link);
     const intro=node('dialog',undefined,'consumer-dialog');intro.id='welcomeDialog';intro.setAttribute('aria-labelledby','welcomeTitle');intro.innerHTML='<h2 id="welcomeTitle">A clearer way to keep track</h2><ol><li>Choose a concern and provide the appropriate photo or questionnaire.</li><li>Read the supported evidence, uncertainty and next steps. Research rankings are not diagnoses.</li><li>Save with an account, track your own routine and prepare a clinician discussion.</li></ol><p>Guest results remain in the current tab. Creating an account does not silently transfer a guest assessment. Source photos are not retained by the assessment service.</p><button id="closeWelcome" type="button" class="button primary">Continue</button>';
     document.body.append(intro);$('openWelcome').onclick=()=>intro.showModal();$('closeWelcome').onclick=()=>{sessionStorage.setItem('dermamatrix_intro_seen','true');intro.close();};
