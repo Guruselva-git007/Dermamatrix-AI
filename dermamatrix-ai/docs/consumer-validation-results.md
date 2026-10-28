@@ -13,7 +13,7 @@ only a targeted accessibility suite was added to the existing sequential runner.
 | ID / severity | Original observation and reproduction | Consumer impact / minimal correction | Verification and limit |
 |---|---|---|---|
 | CV-01 — P1 | `frontend/index.html:108`: chooser accepted JPEG/PNG/WEBP/AVIF only, while existing client/server support HEIC/HEIF. Inspect `#imageInput.accept` and its format hint. | Supported gallery formats could be filtered out or appear unsupported. Added HEIC/HEIF MIME types/extensions to the chooser and aligned the visible limit/format hint. Decoder, limits, consent and inference unchanged. | Targeted browser assertion; generated 490-byte HEIC selected through browser automation, reported `SERVER_DECODE_REQUIRED`, with zero assessment requests before consent; existing three HEIF decode/rejection/size tests pass. Native Safari panel listed HEIC as eligible but would not complete Upload for PNG either: owner check remains. Physical phone capture is untested. |
-| CV-02 — P2 | `frontend/assessment-review.js:19`: at 390×844, review focused Confirm, `scrollTop=143`, title top −100px while dialog began at 20px. | The explanation began off-screen. Focus the review heading (`tabindex=-1`) when opening; explicitly return to the review button after cancellation because a Mac mouse click need not focus it. Clear the return target on workspace reset; preserve native keyboard order and explicit confirmation. No automatic submit or changed medical content. | At 390×844 and 320×600, heading top 43px, `scrollTop=0`, no dialog horizontal overflow; Back/Confirm reachable, Escape restores opener and draft. Actual Safari visibly focuses heading; Option-Tab reaches Back/Confirm and Return completes the guest questionnaire. Speech unverified. |
+| CV-02 — P2 | `frontend/assessment-review.js:19`: at 390×844, review focused Confirm, `scrollTop=143`, title top −100px while dialog began at 20px. | The explanation began off-screen. Focus the review heading (`tabindex=-1`) when opening; explicitly return to the review button after cancellation because a Mac mouse click need not focus it. Clear the return target on workspace reset; preserve native keyboard order and explicit confirmation. No automatic submit or changed medical content. | At 390×844 and 320×600, heading top 43px, `scrollTop=0`, no dialog horizontal overflow; Back/Confirm reachable, Escape restores opener and draft. Actual Safari visibly focuses heading; Option-Tab reaches Back/Confirm and Return completes the guest questionnaire. Final actual Safari Escape visibly restores Review questionnaire; speech unverified. |
 | CV-03 — P2 | `frontend/app.js` mobile drawer focus lifecycle: open at 320px left focus on body during visibility transition; closing could blur the drawer child when made inert before checking the return target. | Keyboard users lost their position. Focus the selected link after visibility updates, with a guarded transition callback; capture return-focus intent before inert changes. Preserve native layout/animation and account isolation. | Two source-executing regressions simulate immediate inert blur and cancelled deferred focus; browser check requires focus inside drawer, named dialog, Escape and restored trigger. No speculative redesign. |
 
 The first CI `40746936098` passed 256 backend/74 frontend, all 53 checks each
@@ -22,8 +22,17 @@ WebKit result wait. Focused local WebKit reproduced differing native traversal
 and Escape returning to the workspace heading. The test accepts Safari's native
 Option-Tab path (still requiring Back then Confirm); the product now explicitly
 restores the invoking review button after cancellation. Final local WebKit12/12
-passes; complete CI is rerun on this final source. No failed result assertion
+passes; complete CI was rerun on that source. No failed result assertion
 was skipped or counted as passed.
+
+Second CI `40748488611` supplied the actual result-wait cause: the new WebKit
+assessment reached the shared loopback IP's unchanged 20-attempt/300-second
+quota. It had already passed the first ten accessibility checks. Added explicit
+synthetic technical-budget fixture resets between engines in the existing runner:
+only `request_budgets` is cleared, guarded by test environment, `*_synthetic`
+database and disabled mail; application limits and medical history remain intact.
+Two reset guard/scope tests pass (12 focused runner tests total). Final CI with fixture isolation passes all 159 browser checks; no production
+throttle was raised or disabled.
 
 Earlier failed local probes are retained privately. Two were harness setup issues:
 reusing a same-document navigation and trying a desktop-only sidebar link at a
@@ -57,13 +66,17 @@ remote automation/security/extension permissions left unchanged.
 The new 12-check suite runs in the existing isolated three-engine CI runner after
 the existing 37 connected checks, with real origin-outage checks still separate.
 Final exact CI/commit status is recorded in `ROADMAP_EXECUTION_STATUS.md`.
-No full-suite pass is claimed until that receipt is present. Existing connected
+Final exact source `e8fd5852301c150bd96d39bfc4af378d2f8de9fc` passed
+[CI 40749855922](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40749855922):
+258 backend, 74 frontend and 159 browser checks (53 each Chrome/Firefox/WebKit),
+explicit synthetic migrations, source hygiene and the pinned advisory gate.
+No advisory or failed check was suppressed. Existing connected
 checks exercise assessments, account switches, routines, immutable corrections,
 concerns/check-ins, bookmarks/search, brief/report downloads, interrupted saves
 and deduplication. Backend tests retain historical zero/one/many/unassigned cases,
 privacy/consent/ownership/no-photo and canonical evidence contracts.
 
-Protection verification: all backend files, model/scoring/contract/schema files,
+Protection verification: all production backend files, model/scoring/contract/schema files,
 service worker, IBM Plex assets and CSS layers remain unchanged. Frontend diffs
 are limited to the three corrections listed above. No provider activated, new
 model inferred/trained, historical evidence rewritten, personal photo used,

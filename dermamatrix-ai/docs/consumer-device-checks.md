@@ -27,7 +27,8 @@ launcher, synthetic database and fixtures are reused; no public tunnel is needed
 If the phone is absent or says unauthorised, unlock it and check the cable and
 on-phone prompt once. Stop after that bounded check and record the actual state;
 do not keep trying unattended. Android Debug Bridge is not required for Chrome's
-built-in USB workflow. See [Google's connection guide](https://developer.chrome.com/docs/devtools/remote-debugging/)
+built-in USB workflow. The menu path follows [Samsung's Developer options guide](https://www.samsung.com/ca/support/mobile-devices/galaxy-phone-developer-options/).
+See [Google's connection guide](https://developer.chrome.com/docs/devtools/remote-debugging/)
 and [USB port forwarding](https://developer.chrome.com/docs/devtools/remote-debugging/local-server).
 
 ## Device test card
@@ -101,7 +102,9 @@ and focus tests are supplementary evidence, not speech verification.
   swipes to move and double-tap to activate. Two-finger scrolling is normally
   needed while TalkBack is on. Repeat consent/error/review/result/navigation
   checks and listen for dynamic feedback. Turn it off afterward if originally
-  off. Use the device's shown shortcut/instructions if gestures differ.
+  off. Use the device's shown shortcut/instructions if gestures differ. See [Google's
+  TalkBack setup](https://support.google.com/accessibility/android/answer/6007100)
+  and [gesture guide](https://support.google.com/accessibility/android/answer/6151827).
 
 Record exact spoken words only when actually heard. A silent, unnamed or missing
 modal is a finding to investigate, not something to mark passed from the DOM.

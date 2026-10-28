@@ -1,6 +1,6 @@
 # Consumer development execution status
 
-Updated: 28 October 2026. Canonical checkpoint. Sequential implementation;
+Updated: 29 October 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
@@ -18,11 +18,12 @@ origin-outage/recovery evidence. See the final receipt below. Physical-device,
 assistive-technology speech, human and policy validation remain external.
 Provider activation and deployment remain deferred.
 
-**Current authorized batch — real-world validation and accessibility: in progress.**
-The owner requested a new bounded stage after the closed desktop-engine batch.
-Actual Safari guest checks and targeted accessibility checks found three concrete
-frontend defects. See the final section and `consumer-validation-results.md`.
-Physical devices, speech and participants remain a separate external track.
+**Current authorized batch — real-world validation and accessibility: Track A complete.**
+The new bounded stage corrected three concrete frontend defects. Exact CI
+`40749855922` passes 258 backend/74 frontend/159 browser checks. Actual Safari
+guest interactions and final review-return focus were sampled directly. See the
+final receipt and `consumer-validation-results.md`. Physical devices, speech,
+full native Safari acceptance and participants remain an explicit external track.
 
 ## Verdict and current batch
 
@@ -567,7 +568,7 @@ exact regression/commit receipt remains pending. Private source/test evidence is
 `local-artifacts/consumer-validation-2026-10-28/`.
 
 First CI `40746936098` passed 256 backend/74 frontend and all 53 browser checks
-in Chrome/Firefox; WebKit passed existing37 then failed the new result wait.
+in Chrome/Firefox; WebKit passed existing 37 then failed the new result wait.
 Focused local WebKit exposed native Option-Tab traversal and Escape restoring
 workspace heading instead of the invoking review button. Added explicit guarded
 review return focus, cleared on workspace reset; the test supports the observed
@@ -585,3 +586,60 @@ runner/CI: it clears only `request_budgets` before each engine, refuses non-test
 non-synthetic or mail-enabled environments, and preserves accounts, assessments,
 originals/revisions and every medical record. Two focused guard/scope tests added;
 no application rate limit or backend behavior changed. Final CI rerun pending.
+
+### Final verified receipt — consumer validation and accessibility
+
+- Final tested source `e8fd5852301c150bd96d39bfc4af378d2f8de9fc` is committed and
+  pushed on `codex/consumer-evolution`. [Development CI 40749855922](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40749855922)
+  **completed successfully** on that exact commit: **258 backend, 74 frontend and
+  159 browser checks (53 each Chrome/Firefox/WebKit)**, explicit synthetic
+  migrations, source hygiene and pinned dependency audit with no known
+  vulnerabilities in that audited environment. Earlier failed runs remain
+  recorded; no failing check or advisory was suppressed. The unmerged default
+  branch is separate and is not attested by this receipt.
+- CV-01/P1 chooser HEIC/HEIF allowlist/hint, CV-02/P2 review heading/return focus
+  and CV-03/P2 drawer focus are VERIFIED IMPLEMENTED and VERIFIED TESTED in the
+  available development scope. Review 390px scrollTop143/title−100→scrollTop0/
+  title43; same heading remains visible at 320×600. Tab or native Option-Tab
+  reaches Back then Confirm; Escape/draft/account reset safeguards remain.
+  Actual Safari 27.2 visibly restores Review questionnaire after Escape on the
+  final product source. No new confirmed unresolved P0/P1 remains in the checked
+  independent scope; native observations below remain unverified rather than
+  declared clean.
+- Each engine runs the existing 37 connected checks, 12 targeted accessibility
+  checks and 4 actual origin-outage checks. Synthetic request-budget fixture
+  resets are explicit and clear only technical counters; production 20/300s
+  assessment limits, accounts, medical history and all evidence remain intact.
+  Both new guard/scope regressions pass; 12 focused runner tests total. Local
+  HEIF decode/mislabeled/pixel-limit 3/3 and generated-file selection pass; no
+  real camera/HEIC device outcome is inferred from this.
+- Full backend/model/schema/canonical evidence/scoring/provider/service-worker
+  and CSS/IBM Plex sources remain unchanged. Product edits are limited to the
+  three frontend corrections. Existing regression contracts cover consent,
+  ownership, guest privacy, original records/revisions, concerns/routines/check-ins,
+  interrupted retries, reports and exports. No real account data accessed,
+  historical evidence rewritten, raw health photo retained, provider activated,
+  classifier trained/changed, erasure executed or deployment performed.
+- Actual Safari guest onboarding/consent/review/result/refresh and keyboard/focus
+  samples were performed directly. Its native panel could not complete Upload
+  for either HEIC or PNG under the tool; its modal AX output and live zoom paints
+  were inconsistent. Full native upload/zoom/account/export and real VoiceOver
+  speech remain OWNER INTERACTION REQUIRED. 200%/300% zoom was observed and
+  restored to 100%; no 400% Safari or speech pass is claimed.
+- Samsung/iPhone hardware was unavailable at the bounded connection check;
+  representative sessions require real participants. The observer-ready six-task
+  study and exact Samsung USB/Mac native/VoiceOver/TalkBack steps are saved in
+  `consumer-validation-protocol.md` and `consumer-device-checks.md`. Clinical,
+  operator and retention/erasure decisions remain policy dependencies.
+- Owned synthetic server 8001/database 3308/test browsers/Safari tabs are closed;
+  original Safari Start Page and normal 8000/3307 services are preserved. A
+  documentation-only closing commit follows this tested source. Final local/remote
+  equality, readable chat/journal refresh and exact sleep-hold release are recorded
+  in `local-artifacts/consumer-validation-2026-10-28/completion.json`.
+
+**Completion decision:** independently executable Track A is finished. Track B is
+NOT TESTED where devices, spoken output or people are absent; the handoff is
+executable and no indefinite waiting is required. Next development stage: run
+physical Samsung/native Safari/speech checks and the 5–8-person synthetic usability
+study when available, then fix reproduced findings. Preserve the verified app;
+no speculative features, cosmetic loop, deployment or provider setup is inferred.
