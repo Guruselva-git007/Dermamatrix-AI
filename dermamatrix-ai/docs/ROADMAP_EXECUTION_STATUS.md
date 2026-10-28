@@ -10,6 +10,13 @@ authorized development scope.** The bounded refinement preserves completed A–L
 See the final section for findings, before/after evidence and the final CI receipt. Earlier
 “exact next action” paragraphs describe their closed batches, not this new task.
 
+**Latest continuation — remaining development verification:** the owner asked to
+finish pending development. Production code remains unchanged at the verified
+runtime; the remaining desktop-engine coverage is being completed with existing
+workflows, strict per-engine receipts and a separate live offline test. See the
+last section for current cross-browser progress. Provider/deployment deferral is
+unchanged; this does not reopen completed visual/features work.
+
 ## Verdict and current batch
 
 **October 28 continuity batch:** All independent A–L development enhancements
@@ -426,3 +433,37 @@ owner request or the documented external device/human/policy evidence. Do not
 reopen A–L, activate providers, deploy, localize, retrain or execute real erasure
 as an inferred continuation. Physical phones/screen-reader speech/human usability
 and approved operational/clinical/retention decisions remain external checks.
+
+## Development closure follow-up — desktop browser coverage
+
+Baseline: `a7dd50ec48a4f7bae17f602d0e9cc5f2b95c99dc`; application/workflow source
+unchanged since the prior verified runtime, normal local app ready/source-identical.
+No open implementation markers were found in production frontend/backend code.
+Reused the recent 246/72/37 evidence rather than restarting the completed audit.
+
+The documented desktop Firefox/WebKit gap can be advanced independently of real
+phones/participants/providers. Installed only the matching isolated test engines;
+no Safari settings, framework, application dependency, model or database schema
+change. Local Firefox failed before app launch with “Could not find profile
+folder” in both the default and a fresh project-owned location; the unsuccessful
+workaround was removed rather than built into the app/test runner.
+
+WebKit runs the existing 37 workflow checks successfully. Its initial network
+fault test was obscured by service-worker routing; fault contexts now use the
+documented Playwright `serviceWorkers=block`, with real service-worker/offline
+coverage kept in a separate enabled context. The native event-history test
+ensures a disclosure is open instead of blindly toggling it closed. All original
+data/authorization/correction/retry assertions remain and response-loss injection
+is explicitly asserted. No product defect was inferred from a tooling failure.
+
+Added a sequential reusable browser runner with synthetic/disabled-mail
+preflight, per-engine artifact roots, strict result JSON and owned-session cleanup.
+Seven focused evidence-parser tests pass. CI reuses one synthetic stack for
+Chrome/Firefox/WebKit and pins the previously verified Ubuntu 24.04 runner family.
+Local Chrome and WebKit each pass 37 connected workflow checks plus four real
+offline checks. Fresh frontend tests pass 72/72 and the seven new evidence-parser
+tests pass; syntax/source hygiene and protected-file hashes pass. The 390px
+offline explanations were visually inspected in both engines, with readable
+content and an accessible reconnection link. Exact three-engine Linux CI receipt
+remains in progress. Private evidence:
+`local-artifacts/development-closure-2026-10-28/`.

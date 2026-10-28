@@ -1,7 +1,7 @@
-async page => {
+async (page, options = {}) => {
   // Synthetic local stack only. This does not activate delivery or touch normal accounts.
   const checks = [], errors = [], samples = [];
-  const root = '../local-artifacts/product-maturity-2026-10-28/';
+  const root = options.artifactRoot || '../local-artifacts/product-maturity-2026-10-28/';
   const password = 'Synthetic-quality-only-84!';
   const emailA = 'quality-a-' + Date.now() + '@example.invalid';
   const emailB = 'quality-b-' + Date.now() + '@example.invalid';

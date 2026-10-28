@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       mysql:
         image: mysql:8.0
@@ -63,21 +63,14 @@ jobs:
           python backend/scripts/check_tracked_secrets.py
           python -m pip install pip-audit==2.9.0
           python -m pip_audit --disable-pip --no-deps -r backend/requirements-local.lock
-      - name: Browser smoke against isolated local stack
+      - name: Cross-browser workflows against isolated local stack
         env:
           DERMAMATRIX_CONSUMER_ENABLED: 'true'
           DERMAMATRIX_MAIL_TRANSPORT: disabled
         run: |
           npm install --global @playwright/cli@0.1.22
+          playwright-cli install-browser firefox --with-deps
+          playwright-cli install-browser webkit --with-deps
           python -m gunicorn --chdir backend --bind 127.0.0.1:8001 --workers 1 app:app > /tmp/dermamatrix-ci.log 2>&1 &
           for attempt in $(seq 1 20); do curl --fail --silent http://127.0.0.1:8001/api/readiness && break; sleep 1; done
-          playwright-cli -s=ci open http://127.0.0.1:8001 --browser=chrome
-          playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-smoke.js > /tmp/dermamatrix-browser.json
-          python -c "import json; d=json.load(open('/tmp/dermamatrix-browser.json')); assert len(d['checks']) >= 12 and not d['errors']; print(json.dumps(d))"
-          mkdir -p ../local-artifacts/consumer-next-2026-10-28
-          playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-continuity.js > /tmp/dermamatrix-continuity.json
-          python -c "import json; d=json.load(open('/tmp/dermamatrix-continuity.json')); assert len(d['checks']) >= 11 and not d['errors']; print(json.dumps(d))"
-          mkdir -p ../local-artifacts/product-maturity-2026-10-28
-          playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-product-quality.js > /tmp/dermamatrix-quality.json
-          python -c "import json; d=json.load(open('/tmp/dermamatrix-quality.json')); assert len(d['checks']) >= 10 and not d['errors']; print(json.dumps(d))"
-          playwright-cli -s=ci close
+          python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit --artifacts ../local-artifacts/browser-regressions

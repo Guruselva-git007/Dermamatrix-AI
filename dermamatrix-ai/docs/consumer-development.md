@@ -126,6 +126,36 @@ installation does not enable offline assessment or notification delivery.
 - Source hygiene: `.venv/bin/python backend/scripts/check_tracked_secrets.py`
 - Dependency environment: `.venv/bin/python -m pip check`
 
+### Isolated desktop browser regressions
+
+Reuse the existing `playwright-cli@0.1.22`. Install the optional test runtimes
+explicitly with `playwright-cli install-browser firefox` and
+`playwright-cli install-browser webkit` (`--with-deps` on the Linux CI runner).
+These are test-browser caches, not changes to a personal browser/profile or
+Safari remote-automation settings. The runner installs nothing automatically.
+
+With the existing isolated `*_synthetic` database/server on loopback port 8001,
+`DERMAMATRIX_ENV=test` and `DERMAMATRIX_MAIL_TRANSPORT=disabled`, run:
+
+```
+.venv/bin/python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit
+```
+
+Each engine runs the same 15 core, 12 continuity and 10 quality checks. A
+separate context runs four real service-worker/offline checks. Per-engine logs,
+screenshots and strict JSON receipts go into a fresh ignored project artifact
+directory. The runner refuses missing/incomplete/error JSON even if the CLI
+returns exit zero, and closes only its named browser sessions.
+
+Network-failure tests block service workers so requests remain controllable by
+Playwright routing, as its [network documentation](https://playwright.dev/docs/network#missing-network-events-and-service-workers)
+recommends. The offline suite enables the real service worker in a separate
+context and verifies cache scope, actual offline navigation, API failure and
+reconnection. Production service-worker behavior is unchanged. Browser-engine
+automation does not establish physical iPhone/Android, actual Safari application,
+screen-reader speech, participant or clinical validation. The authoritative
+checkpoint records exactly which local/CI engines passed and platform failures.
+
 `requirements-local.lock` records the verified Darwin arm64 CPython 3.14 runtime.
 The development CI successfully executed the pinned Linux install, migration,
 regression, advisory and browser-smoke checks on implementation commit 524c6b2. It has no deployment job. Neither

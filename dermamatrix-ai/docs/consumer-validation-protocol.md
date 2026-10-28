@@ -29,7 +29,9 @@ small sessions do not establish population performance or clinical validity.
 | Real Android phone / Chrome or Samsung Internet | Camera/gallery, orientation, large photos, native sharing/downloads, keyboard, interruptions, notification handoff | Not physically verified |
 | Real iPhone / Safari | HEIC selection, camera permission, gallery, downloads, standalone installation and resumed sessions | Not physically verified |
 | Desktop Chrome | Onboarding, security, routines, history, Learn, review dialog, mobile emulation, keyboard/zoom, offline boundary | Development browser evidence; see execution status |
-| Desktop Safari and Firefox | Complete flows, deep links, focus and download behaviour | Not verified; no additional engine installed for this task |
+| Desktop Firefox | Complete flows, deep links, focus and download behaviour | Cross-engine follow-up in progress; local Firefox runtime fails before app launch; Linux CI remains the independent verification environment |
+| Desktop WebKit development browser | Same workflows plus real service-worker/offline boundary | 41 local checks pass, including the real offline boundary. This is not actual Safari/iPhone verification |
+| Actual desktop Safari application | Complete flows, focus and downloads | Remote automation is disabled on this Mac; no system setting changed and no actual Safari verification claimed |
 | VoiceOver/TalkBack and keyboard only | Names, roles, announcements, focus restoration, dialogs, input errors and reading order | Keyboard/focus sampled in browser; actual speech/phone assistive technology not verified |
 
 Test 320px reflow, actual 200%/400% browser zoom, light/dark, reduced motion,
