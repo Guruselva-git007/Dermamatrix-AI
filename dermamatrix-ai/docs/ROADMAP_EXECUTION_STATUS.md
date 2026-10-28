@@ -25,6 +25,26 @@ guest interactions and final review-return focus were sampled directly. See the
 final receipt and `consumer-validation-results.md`. Physical devices, speech,
 full native Safari acceptance and participants remain an explicit external track.
 
+**Latest authorized batch — UI optimization and polish (29 October): complete.**
+The bounded CSS refinement fixes demonstrated Today, Check, Learn and Profile
+layout defects and enlarged-text overflow while preserving the completed visual
+system. [Exact CI 40762096112](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/40762096112)
+passes source `c0b9d545559df8f9b1802dcc1e1d74cf4a6a57a0`: **258 backend,
+74 frontend and 159 browser checks (53 per engine)**. Local Chrome/WebKit also
+pass 53 each; local Firefox's launcher failed before any app test, with its
+coverage supplied by final Linux CI. Responsive samples cover seven routes at
+320/390/768/1440px in both themes; final changed-route samples and the 200%
+computed-text simulation pass. This is not physical device, native zoom or
+screen-reader speech validation. Runtime diff is only `frontend/product.css`;
+backend/JS/index/evidence/model/schema records remain unchanged. Owned temporary
+services/browser/test user are closed; normal 8000 serves the current stylesheet
+without restart. See `ui-refinement-2026-10-29.md` and ignored completion evidence.
+No selected P0/P1 defect remains in the tested changes. Do not restart completed
+A–L work, redesign or hardware probing. The next development action is the
+existing actual-device/speech/consumer-study handoff when available; provider
+activation and deployment remain deferred. Closing Markdown and private Git/
+sleep-release receipts follow the exact green runtime above.
+
 ## Verdict and current batch
 
 **October 28 continuity batch:** All independent A–L development enhancements
