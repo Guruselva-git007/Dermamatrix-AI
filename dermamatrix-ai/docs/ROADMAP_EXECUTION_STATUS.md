@@ -5,6 +5,11 @@ Updated: 28 October 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
+**Current task — professional product maturity (28 October):** the new owner
+prompt authorizes a bounded evidence-led refinement, preserving completed A–L.
+See the final section for the current findings and quality-gate status. Earlier
+“exact next action” paragraphs describe their closed batches, not this new task.
+
 ## Verdict and current batch
 
 **October 28 continuity batch:** All independent A–L development enhancements
@@ -326,3 +331,79 @@ screen-reader speech and representative human checks. Erasure/closure execution
 requires the approved DM-06 retention/exception/backup policy and explicit action.
 Keep provider setup deferred until the owner requests deployment. Future changes
 start from this verified checkpoint, preserving original records and visual system.
+
+## October 28 — professional product maturity
+
+New-task baseline: `c6ea60d28cc125316d82a6b7ad80627e9d2fdef2` on
+`codex/consumer-evolution`, application source clean, unrelated root work preserved.
+Fresh isolated verification: **246 backend**, **60 frontend**, **15 existing
+browser** and **12 integrated browser** checks pass. Rendered baseline covers
+seven destinations at 320/390/768/1280/1440 in light/dark (70 geometry/label
+samples), with representative screenshots, result review and actual local API
+timings. No page overflow or unlabelled visible inputs in those samples. One
+expected unauthenticated `/api/auth/me` 401 is distinct from uncaught script errors.
+
+| Finding | Consumer impact and baseline evidence | Selected change | Priority / status |
+| --- | --- | --- | --- |
+| Delayed profile hydration and unbound account work | A held first-account profile response replaced the visible second-account identity in an actual synthetic account switch. Existing profile writes also lacked the post-CSRF owner guard. | Bind profile/entry/startup work to owner plus workspace generation; all API callers inherit the pre-send guard, and stale revocation/CSRF responses cannot affect the new workspace. Preserve a chosen registration form during slow startup. | P0 — locally verified; 12 added frontend regressions and actual interrupted account-switch/save checks |
+| Catalogue inherits a horizontal carousel | All 21 matching cards remain in implicit columns outside the viewport. 83 external controls clipped at 320, 77 at desktop despite no document overflow; results/filter/sort labels run together. | Reset legacy grid flow/minimums, wrap real cards/actions, align toolbar/filters and fit cards to their content; retain all catalogue/search destinations. | P1 — locally verified; zero clipped controls in all ten width/theme samples, including last-card keyboard access |
+| Catalogue inherits unreadable dark headings and old typography | Same-record stable dark sample: heading contrast 1.49:1, Manrope instead of IBM Plex. | Explicit existing ink/muted/font tokens override legacy category/heading selectors. | P1 — locally verified; sampled heading 15.65:1, all checked card text at least 6.40:1, IBM Plex loaded |
+| Result finding/next action follows the long explanation | Same saved record at 390: finding starts at 792.7px, first action 1148.2px. | Lead with existing canonical result/next action, keep all four explanations before technical details, prioritize the actual recorded warning without recalculating it. | P1 — locally verified; finding 209.4px/action 564.9px, exact warning and professional-support handoff tested |
+| Current navigation destination is visual only | One accessible Today link, but zero `aria-current=page` links after navigation. | Exactly one current-page cue, updated with existing routes/history. | P2 — locally verified across all seven destinations |
+| More charts, new branding and decorative empty-state content | No demonstrated consumer benefit; would reopen the completed design or invent activity. | Excluded. Preserve Achromatic ledger/IBM Plex and factual empty states. | P3 — not selected |
+
+Source references used as guidance, not approval/certification: [NHS buttons](https://service-manual.nhs.uk/design-system/components/buttons),
+[GOV.UK errors](https://design-system.service.gov.uk/components/error-message/),
+[AHRQ health literacy](https://www.ahrq.gov/health-literacy/improve/precautions/index.html),
+[W3C focus visibility](https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html),
+[NIST AI trustworthiness](https://airc.nist.gov/airmf-resources/airmf/3-sec-characteristics/),
+[OWASP ASVS](https://asvs.owasp.org/) and
+[FDA transparency](https://www.fda.gov/medical-devices/artificial-intelligence-enabled-medical-devices/transparency-machine-learning-enabled-medical-devices-guiding-principles).
+Applied principles: actionable controls/error recovery, understandable main findings,
+visible focus, owner isolation and evidence limitations. Existing clinical
+meaning, models, schema, reports and original records remain protected.
+
+Private evidence: `local-artifacts/product-maturity-2026-10-28/`.
+
+### Local quality-gate evidence
+
+- Fresh baseline backend: 246 pass; the entire backend remains byte-identical to
+  the baseline. Latest frontend: **72 pass**, including nine account lifecycle
+  tests and three general-request/revoked-session regressions. Syntax and tracked
+  source hygiene pass. Original schema/assessment-result-v1.7/scoring/model/offline
+  files are hash-identical; no data migration, historical rewrite or dependency change.
+- Actual Chrome regression: **15 existing + 12 connected + 10 product-quality
+  checks**. Tests exercise account switching with held responses and CSRF preparation,
+  unchanged-input response-loss retry, concern comparisons/corrections/history,
+  bookmarks/search, PDF download and original account isolation. Final runtime CI
+  must verify these same suites before closing the remote receipt.
+- Comparable baseline/final screen samples: 70 each, seven destinations at
+  320/390/768/1280/1440 in both themes. Zero document overflow/unlabelled visible
+  inputs; directory control clipping fell from 77–83 to zero. Screenshots and the
+  same saved record were inspected; four explanations, rich technical evidence
+  and the existing clinician brief remain available.
+- Comparable small local measurements: median two-frame navigation 23.55→21.15ms;
+  three-sample read medians episodes 13.9→15.5ms, check-ins 13.5→13.0ms, search
+  15.1→14.2ms, history 15.1→12.7ms. These are bounded loopback samples, not
+  production targets or evidence of a general speedup. No material regression
+  observed; more catalogue rows are now actually reachable.
+- Fresh actual model smoke on generated pixels: ordinary Skin 2.047s, dermoscopy
+  0.333s, Nails 0.657s; all return five real rankings. No download, training or
+  clinical-performance claim; Hair/Sweat limitations remain unchanged.
+- Style-source lint has no failures; its warnings concern structural labels,
+  explicit shadow/blur removal and floating dialogs. Raw auth-gate heuristics
+  wrongly count inert background headings/hidden option text/hidden story content.
+  Those three rules were documented exceptions for that auth-gate scan only;
+  reviewed scan has no failures. Two warnings retained: a heading in the inert
+  background and stronger interactive control borders. Actual visible-screen,
+  keyboard, five-width and contrast checks above remain the acceptance evidence.
+- Real phones/camera/gallery/HEIC/touch, actual screen-reader speech, human
+  usability and approved retention/erasure/operator/clinical decisions remain
+  external checks. No device/participant/conformance certification is invented.
+
+**Next closing step:** commit/push only scoped source, obtain the exact runtime
+development-CI receipt, verify the ordinary loopback assets without opening real
+health records, update private journal/chats, close owned synthetic resources and
+release this task's keep-awake helper. Stop cosmetic iteration: selected changes
+meet local gates and no verified unresolved P0 remains in the tested scope.
+No deployment, provider activation, extra language, model change or real erasure.

@@ -45,6 +45,26 @@ test('an account switch during CSRF preparation prevents the old draft from bein
   const pending=h.api.requestJSON('/api/episodes',{method:'POST',body:'private draft',ownerGuard:()=>valid});
   valid=false;release();await assert.rejects(pending,/account changed.*Nothing was sent/);assert.equal(calls,0);
 });
+test('all API clients inherit the workspace guard even without a caller-supplied guard',async()=>{
+  const h=harness();let release,calls=0;
+  h.api.state.profile={patient_id:'OWNER-A'};
+  h.context.window.ConsumerClient={prepare:options=>new Promise(resolve=>{release=()=>resolve(options);})};
+  h.context.fetch=async()=>{calls++;throw Error('old action must not reach the next account');};
+  const pending=h.api.requestJSON('/api/privacy/processing',{method:'PUT',body:'old account action'});
+  h.api.state.profile={patient_id:'OWNER-B'};h.api.state.workspaceVersion++;
+  release();await assert.rejects(pending,/account changed/i);assert.equal(calls,0);
+});
+for(const switchAccount of [false,true])test('revoked-session response '+(switchAccount?'cannot end a newer account':'still ends its current account'),async()=>{
+  const h=harness();let release;const events=[];
+  h.api.state.profile={patient_id:'OWNER-A'};
+  h.context.CustomEvent=class{constructor(type){this.type=type;}};
+  h.context.window.dispatchEvent=event=>events.push(event.type);
+  h.context.fetch=()=>new Promise(resolve=>{release=()=>resolve({ok:false,status:401,json:async()=>({code:'SESSION_REVOKED',error:'Session revoked'})});});
+  const pending=h.api.requestJSON('/api/profile');
+  if(switchAccount){h.api.state.profile={patient_id:'OWNER-B'};h.api.state.workspaceVersion++;}
+  release();await assert.rejects(pending,/Session revoked/);
+  assert.deepEqual(events,switchAccount?[]:['dermamatrix-session-ended']);
+});
 test('the owner guard stays in the client and preserves normal request headers',async()=>{
   const h=harness();let sent;
   h.context.fetch=async(_url,options)=>{sent=options;return{ok:true,json:async()=>({saved:true})};};

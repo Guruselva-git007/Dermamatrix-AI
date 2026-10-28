@@ -77,4 +77,7 @@ jobs:
           mkdir -p ../local-artifacts/consumer-next-2026-10-28
           playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-continuity.js > /tmp/dermamatrix-continuity.json
           python -c "import json; d=json.load(open('/tmp/dermamatrix-continuity.json')); assert len(d['checks']) >= 11 and not d['errors']; print(json.dumps(d))"
+          mkdir -p ../local-artifacts/product-maturity-2026-10-28
+          playwright-cli -s=ci --raw run-code --filename=frontend/tests/browser-product-quality.js > /tmp/dermamatrix-quality.json
+          python -c "import json; d=json.load(open('/tmp/dermamatrix-quality.json')); assert len(d['checks']) >= 10 and not d['errors']; print(json.dumps(d))"
           playwright-cli -s=ci close

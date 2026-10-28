@@ -118,6 +118,8 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
     throw Error('Open DermaMatrix through the local app server at http://127.0.0.1:8000. Opening index.html directly cannot reach its secure local API.');
   }
   const controller = new AbortController();
+  const workspaceVersion = state.workspaceVersion, patientId = state.profile?.patient_id;
+  const current = () => workspaceVersion === state.workspaceVersion && patientId === state.profile?.patient_id;
   const abort = () => controller.abort();
   options.signal?.addEventListener('abort', abort, { once: true });
   if (options.signal?.aborted) controller.abort();
@@ -125,9 +127,9 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
   try {
     const { ownerGuard, ...requestOptions } = options;
     const prepared = window.ConsumerClient ? await window.ConsumerClient.prepare(requestOptions) : requestOptions;
-    if (ownerGuard && !ownerGuard()) throw Error('The account changed before submission. Nothing was sent for this attempt.');
+    if (!current() || (ownerGuard && !ownerGuard())) throw Error('The account changed before submission. Nothing was sent for this attempt.');
     const response = await fetch(url, { ...prepared, signal: controller.signal });
-    window.ConsumerClient?.observe(response);
+    if (current()) window.ConsumerClient?.observe(response);
     let payload;
     try { payload = await response.json(); } catch {
       if (response.ok) throw Error('The server returned an unreadable response. Please retry.');
@@ -135,7 +137,7 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
     }
     if (response.ok && (!payload || typeof payload !== 'object' || Array.isArray(payload))) throw Error('The server returned an incomplete response. Please retry.');
     if (!response.ok) {
-      if (payload.code === 'SESSION_REVOKED') window.dispatchEvent(new CustomEvent('dermamatrix-session-ended'));
+      if (payload.code === 'SESSION_REVOKED' && current()) window.dispatchEvent(new CustomEvent('dermamatrix-session-ended'));
       const error = Error(payload.error || `Request failed (${response.status}).`);
       error.status = response.status;
       error.payload = payload;
@@ -465,6 +467,7 @@ function clearWorkspaceEvidence() {
     else input.value = input.defaultValue || '';
   });
   $$('#screen select, #checkinForm select').forEach(input => { input.selectedIndex = 0; });
+  $('#profileForm [type="submit"]').disabled = false;
   resetRoutineForm(); $('#checkinDate').value = currentDate();
   const pipeline = $('#analysisPipeline');
   if (pipeline) { pipeline.textContent = ''; $('[data-result-panel="evidence"] .analysis-dashboard > div')?.append(pipeline); }
@@ -685,16 +688,22 @@ function applyPreferences(preferences = {}) {
   localStorage.setItem('dermamatrix_theme', next.theme);
 }
 
+function accountWorkspaceGuard() {
+  const patientId = state.profile?.patient_id, workspaceVersion = state.workspaceVersion;
+  return () => Boolean(patientId) && state.profile?.patient_id === patientId && state.workspaceVersion === workspaceVersion;
+}
+
 async function persistPreferences(patch) {
   const version = (state.preferenceRequestVersion || 0) + 1; state.preferenceRequestVersion = version;
-  const workspaceVersion = state.workspaceVersion;
   const next = { ...(state.preferences || {}), ...patch };
   applyPreferences(next);
   if (!state.profile?.patient_id) return;
+  const current = accountWorkspaceGuard();
   try {
-    const data = await requestJSON('/api/preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
-    if (workspaceVersion === state.workspaceVersion && version === state.preferenceRequestVersion) applyPreferences(data.preferences);
+    const data = await requestJSON('/api/preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch), ownerGuard: () => current() && version === state.preferenceRequestVersion });
+    if (current() && version === state.preferenceRequestVersion) applyPreferences(data.preferences);
   } catch (error) {
+    if (!current() || version !== state.preferenceRequestVersion) return;
     toast(error.status === 401 ? 'Your session ended. Sign in again to save preferences.' : 'Preference changed in this browser but could not be saved to your account.');
   }
 }
@@ -712,9 +721,12 @@ function applyAccount(account, preferences = null) {
 
 async function enterAccount(authentication, message) {
   applyAccount(authentication.user || authentication.account, authentication.preferences); hideAuthGate();
+  const current = accountWorkspaceGuard();
   showPage('dashboard');
-  await hydrateProfile(); await loadProgress({ force: true });
-  if (message) toast(message);
+  await hydrateProfile();
+  if (!current()) return;
+  await loadProgress({ force: true });
+  if (current() && message) toast(message);
 }
 
 async function registerAccount(event) {
@@ -763,12 +775,15 @@ async function continueAsGuest() {
 }
 
 async function restoreAuthentication() {
+  const workspaceVersion = state.workspaceVersion, patientId = state.profile?.patient_id;
+  const current = () => state.workspaceVersion === workspaceVersion && state.profile?.patient_id === patientId;
   try {
     const data = await requestJSON('/api/auth/me', {}, 10000);
+    if (!current()) return Boolean(state.profile?.patient_id);
     if (!data.authenticated || !(data.user || data.account)) return false;
     applyAccount(data.user || data.account, data.preferences); return true;
   } catch {
-    return false;
+    return !current() && Boolean(state.profile?.patient_id);
   }
 }
 
@@ -844,7 +859,12 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   const target = allowed.includes(route) ? route : 'dashboard';
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
   if (target === 'home') updateAssessmentProgress();
-  $$('[data-page-nav]').forEach(link => link.classList.toggle('active', link.dataset.pageNav === target));
+  $$('[data-page-nav]').forEach(link => {
+    const selected = link.dataset.pageNav === target;
+    link.classList.toggle('active', selected);
+    if (selected) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
   const titles = { dashboard: 'Today', home: 'Check', progress: 'Journey', products: 'Products', support: 'Find a Doctor', settings: 'Profile', learn:'Learn' };
   $('#workspaceTitle').textContent = titles[target];
   if (target === 'progress' || target === 'dashboard') loadProgress();
@@ -1952,18 +1972,21 @@ function chooseDirectoryQuery(query) {
 
 async function saveProfile(event) {
   event.preventDefault();
+  const current = accountWorkspaceGuard();
+  if (!current()) return;
   const form = new FormData(event.currentTarget); const payload = Object.fromEntries(form.entries());
   payload.health_data_consent = form.get('health_data_consent') === 'on';
   const button = event.currentTarget.querySelector('[type="submit"]'); button.disabled = true;
   try {
     payload.consent_notice_version = processingNoticeVersion('health_history');
-    const data = await requestJSON('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await requestJSON('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), ownerGuard: current });
+    if (!current()) return;
     const profile = data.profile;
     state.profile = { ...state.profile, ...profile };
     persistBrowserProfile();
-    $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); toast('Profile saved in the local project database.');
-  } catch (error) { handleChangedProcessingNotice(error); toast(error.message || 'Unable to save profile.'); }
-  button.disabled = false;
+    $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); if (current()) toast('Profile saved in the local project database.');
+  } catch (error) { if (current()) { handleChangedProcessingNotice(error); toast(error.message || 'Unable to save profile.'); } }
+  finally { if (current()) button.disabled = false; }
 }
 
 function persistBrowserProfile() {
@@ -1979,8 +2002,10 @@ function restoreProfile() {
 
 async function hydrateProfile() {
   if (!state.profile?.patient_id) return;
+  const current = accountWorkspaceGuard();
   try {
     const profile = await requestJSON('/api/profile', {}, 10000);
+    if (!current()) return;
     state.profile = { ...state.profile, ...profile };
     $('#profileName').textContent = state.profile.full_name; $('#profileMeta').textContent = state.profile.patient_id;
     updateDashboardIdentity();
@@ -2939,7 +2964,7 @@ async function initialiseApp() {
   const authenticated = await authentication;
   if (authenticated) await hydrateProfile();
   showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false });
-  if (!authenticated) showAuthGate('login');
+  if (!authenticated && !state.isGuest && !$('#authGate').classList.contains('show')) showAuthGate('login');
   window.ConsumerUI?.ready();
 }
 
