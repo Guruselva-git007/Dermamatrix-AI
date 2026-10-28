@@ -139,8 +139,9 @@ small { font-size: 13px; }
 .today-panel h2 { margin: 0 0 6px; font-size: 17px; }
 .today-panel > p { font-size: 14px; color: var(--dm-muted); margin: 0 0 12px; }
 .today-panel > p:not([role]) { display: none; }
-.today-panel > .section-heading { margin-bottom: 12px; }
+.today-panel > .section-heading { flex-wrap: wrap; margin-bottom: 12px; }
 .today-panel > .section-heading h2 { margin: 0; }
+.today-panel > .section-heading > button { width: auto; max-width: 100%; flex: none; }
 .today-panel .consumer-actions { margin-top: 14px; align-items: center; }
 #todayTasks > p { margin: 12px 0; color: var(--dm-muted); font-size: 14px; }
 .today-task { display: grid; grid-template-columns: 1fr auto auto; gap: 8px 10px; padding: 14px 0; border-bottom: 1px solid var(--dm-line); }
@@ -322,10 +323,14 @@ small { font-size: 13px; }
 .report-register-heading, .report-register-heading h3 { margin-top: 0; }
 
 /* Profile has three focused destinations and the same save model within each form. */
-.settings-heading { margin-bottom: 22px; }
+.settings-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; margin-bottom: 22px; }
+.settings-heading > h1, .settings-heading > p { grid-column: 1; }
+.settings-heading > h1 { margin-bottom: 0; }
 .settings-heading .eyebrow { display: none; }
-.settings-heading .settings-intro { margin-top: 8px; }
-.settings-heading > button { float: right; margin-left: 12px; }
+.settings-heading .settings-intro { margin-top: 0; }
+.settings-heading > button { grid-column: 2; align-self: start; margin: 0; }
+.settings-heading > #navProfileButton { grid-row: 1; }
+.settings-heading > #installWorkspace { grid-row: 2; }
 .progress-heading > div > p:not(.eyebrow) { font-size: 15px; }
 .progress-heading .eyebrow { display: none; }
 .settings-groups, .profile-preferences { display: grid; gap: 20px; }
@@ -358,7 +363,7 @@ small { font-size: 13px; }
 .consumer-list { gap: 12px; font-size: 14px; }
 .consumer-list p { margin: 5px 0; }
 .consumer-status { margin: 0 0 16px; padding: 14px 18px; background: var(--dm-surface); border: 1px solid var(--dm-line); border-radius: 6px; color: var(--dm-ink); }
-.profile-guest { padding: 24px; border: 1px solid var(--dm-line); border-radius: 8px; background: var(--dm-surface); }
+.profile-guest { margin-top: 20px; padding: 24px; border: 1px solid var(--dm-line); border-radius: 8px; background: var(--dm-surface); }
 .profile-guest h2 { font-size: 19px; margin: 0 0 8px; }
 .profile-guest p { color: var(--dm-muted); font-size: 14px; max-width: 60ch; }
 
@@ -371,7 +376,7 @@ small { font-size: 13px; }
 .learn-row:nth-child(odd) { border-right: 1px solid var(--dm-line); }
 .learn-row h3 { grid-column: 1; margin: 0; font-size: 16px; }
 .learn-row p { grid-column: 1; margin: 0; font-size: 13px; color: var(--dm-muted); }
-.learn-row button { grid-row: 1 / 3; grid-column: 2; margin: 0; }
+.learn-row button { grid-row: 1 / 3; grid-column: 2; align-self: center; margin: 0; }
 #learnDetail { margin-top: 20px; }
 #learnDetail p, #learnDetail li { font-size: 15px; }
 .doctor-search-hero { margin: 0 0 20px; }
@@ -607,6 +612,15 @@ body[data-theme="dark"] :is(.consumer-panel, .consumer-dialog, .consumer-filter)
 body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft); }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 
+/* Empty accounts pair their two short follow-ups instead of stretching each
+   across 1144px: (1144 - 20px gap) / 2 = 562px per section at 1440px. */
+@media (min-width: 1151px) {
+  #dashboard.page-active:has(.health-snapshot[hidden]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+  #dashboard:has(.health-snapshot[hidden]) > .dashboard-heading,
+  #dashboard:has(.health-snapshot[hidden]) > .dashboard-actions-section { grid-column: 1 / -1; margin-bottom: 0; }
+  #dashboard:has(.health-snapshot[hidden]) > .dashboard-care-grid { margin-bottom: 0; }
+}
+
 /* Tablets are a deliberate band; the content never competes with a narrow rail. */
 @media (max-width: 1150px) {
   .dashboard-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -687,6 +701,8 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .area-choice { gap: 10px; }
   .area-choice button { display: block; min-height: 80px; padding: 12px; }
   .area-choice button > span { display: none; }
+  .screen-layout:not(.needs-area) .area-choice button { min-height: 44px; padding: 10px 12px; }
+  .screen-layout:not(.needs-area) .area-choice button small { display: none; }
   .drop-zone { min-height: 164px; }
   .drop-zone strong { font-size: 15px; }
   .form-grid, .sweat-grid, #routineForm, .checkin-form, #scheduleEditor, .advanced-filter-fields { grid-template-columns: 1fr; }
@@ -714,7 +730,13 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .settings-row .text-button { max-width: 108px; font-size: 13px; }
   .settings-row:has(#downloadAccountDataButton) { grid-template-columns: 1fr; }
   .settings-row #downloadAccountDataButton { max-width: none; justify-self: start; }
-  .settings-heading > button { float: none; margin: 0 8px 12px 0; }
+  .settings-heading > h1, .settings-heading > p { grid-column: 1 / -1; }
+  .settings-heading > button { grid-column: 1 / -1; grid-row: auto; justify-self: start; margin: 4px 0 0; }
+  .settings-heading > #navProfileButton { grid-row: 3; }
+  .settings-heading > #installWorkspace { grid-row: 4; }
+  #learnForm { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  #learnForm > label:first-child { grid-column: 1 / -1; }
+  #learnForm > button { align-self: end; width: auto; }
   #learnList { grid-template-columns: 1fr; }
   .learn-row:nth-child(odd) { border-right: 0; }
   .learn-row { padding: 16px; }
