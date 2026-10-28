@@ -46,7 +46,10 @@ async (page, options = {}) => {
     assert(!errors.length, errors.join('; '));
     return { checks, errors, cachedPaths: paths };
   } catch (error) {
-    const context = await page.evaluate(() => ({ url: location.href, online: navigator.onLine, worker: Boolean(navigator.serviceWorker.controller), guest: typeof state === 'undefined' ? null : state.isGuest, authMessage: document.querySelector('#authMessage')?.textContent }));
+    let context = { url: page.url() };
+    try {
+      context = await page.evaluate(() => ({ url: location.href, online: navigator.onLine, worker: Boolean(navigator.serviceWorker.controller), guest: typeof state === 'undefined' ? null : state.isGuest, authMessage: document.querySelector('#authMessage')?.textContent }));
+    } catch { /* Preserve the original failure if navigation destroyed its context. */ }
     throw Error(error.message + ' | Completed: ' + checks.join(', ') + ' | Context: ' + JSON.stringify(context));
   } finally {
     await page.context().setOffline(false);

@@ -36,7 +36,8 @@ def command(cli: str, session: str, arguments: list[str], log: Path, timeout: in
     log.write_text(result.stdout, encoding="utf-8")
     log.with_suffix(".stderr.txt").write_text(result.stderr, encoding="utf-8")
     if result.returncode:
-        raise RuntimeError(f"Browser command failed; see {log.name}")
+        detail = (result.stdout.strip() or result.stderr.strip())[-5000:]
+        raise RuntimeError(f"Browser command failed; see {log.name}: {detail}")
     return result.stdout
 
 
@@ -48,7 +49,10 @@ def run_suite(cli: str, session: str, filename: str, minimum: int, folder: Path,
     options = json.dumps({"artifactRoot": str(suite) + "/"})
     wrapper.write_text(f"async page => await ({source})(page, {options})\n", encoding="utf-8")
     output = command(cli, session, ["--raw", "run-code", "--filename=" + str(wrapper)], suite / "result.json")
-    result = verified_result(output, minimum)
+    try:
+        result = verified_result(output, minimum)
+    except ValueError as error:
+        raise RuntimeError(f"{filename}: {error}: {output[-5000:]}") from error
     record["suites"].append({"suite": filename, "checks": len(result["checks"]), "errors": []})
     print(f"{record['browser']}: {filename}: {len(result['checks'])} checks passed", flush=True)
 
@@ -100,7 +104,7 @@ def main() -> int:
         except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
             record["errors"].append(str(error))
             summary["errors"].append({"browser": browser, "message": str(error)})
-            print(f"{browser}: verification failed; preserved evidence in {folder}", flush=True)
+            print(f"{browser}: verification failed; preserved evidence in {folder}: {error}", flush=True)
         finally:
             try:
                 command(cli, session, ["close"], folder / "close.txt", 30)

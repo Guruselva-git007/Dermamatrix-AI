@@ -467,3 +467,12 @@ offline explanations were visually inspected in both engines, with readable
 content and an accessible reconnection link. Exact three-engine Linux CI receipt
 remains in progress. Private evidence:
 `local-artifacts/development-closure-2026-10-28/`.
+
+First cross-engine CI `40732215006` passed 253 backend/72 frontend, dependency
+gates and all 37 connected checks in all three engines. Chrome/WebKit also pass
+the four actual offline checks. Firefox's offline suite failed; the initial CLI
+wrapper preserved its file on the disposable runner but did not include the
+underlying message in CI output. Added bounded failure diagnostics (including
+CLI exit-zero error text) and protected the original offline exception from a
+destroyed page context. No failing assertion was bypassed; Firefox offline
+verification remains pending the diagnostic run.
