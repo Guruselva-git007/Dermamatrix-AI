@@ -668,10 +668,11 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .section-heading h2 { font-size: 17px; }
   .section-heading p { font-size: 13px; }
   .dashboard-actions { gap: 10px; }
-  .dashboard-action { grid-template-columns: 1fr auto; padding: 14px 12px; min-height: 104px; gap: 6px; }
+  .dashboard-action { grid-template-columns: minmax(0, 1fr) auto; padding: 14px 12px; min-height: 104px; gap: 6px; }
   .dashboard-action > span { display: none; }
   .dashboard-action strong { font-size: 14px; }
   .dashboard-action small { grid-column: 1 / -1; font-size: 12px; }
+  .dashboard-action strong, .dashboard-action small { overflow-wrap: anywhere; }
   .dashboard-action b { grid-column: 2; }
   .scope-note { line-height: 1.6; font-size: 12px; }
   .consumer-panel, .health-snapshot, .dashboard-recent, .next-step-card, .routine-list-card, .routine-form-card, .checkin-card, .history-card, .journey-status-section, .report-register, .doctor-search-hero, .settings-group { padding: 18px; }
@@ -695,7 +696,7 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .screen-card { padding: 18px; }
   .card-heading { display: block; }
   .card-heading h2 { font-size: 19px; }
-  .assessment-meta { flex-direction: row; justify-content: space-between; margin-top: 12px; }
+  .assessment-meta { flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; margin-top: 12px; }
   .assessment-steps { grid-template-columns: 1fr 1fr; gap: 12px; padding-bottom: 16px; }
   .assessment-steps li { font-size: 12px; }
   .area-choice { gap: 10px; }
