@@ -476,3 +476,16 @@ underlying message in CI output. Added bounded failure diagnostics (including
 CLI exit-zero error text) and protected the original offline exception from a
 destroyed page context. No failing assertion was bypassed; Firefox offline
 verification remains pending the diagnostic run.
+
+Diagnostic CI `40733530860` reproduced Firefox's `navigator.onLine=false` while
+its controlled worker still returned the live app instead of the offline page.
+This is consistent with the documented Mozilla worker/offline-emulation limit
+([2081131](https://bugzilla.mozilla.org/show_bug.cgi?id=2081131)); it is not evidence
+of cached health data. Changed the test mechanism to an owned loopback origin limited to reads and guest sign-out whose listening socket is actually closed and verified unreachable, then
+restarted at the same address. Cache, fallback provenance, failed health API and
+reconnection assertions remain; no application source or assertion was bypassed.
+Three relay regressions prove unchanged forwarded bytes/no-store headers, actual
+connection refusal, same-origin recovery and blocked account/health writes. All
+ten runner tests pass locally. Chrome and WebKit each pass all four origin-outage
+checks with real worker provenance. CI now has a 15-minute upper bound. Final
+three-engine receipt pending.

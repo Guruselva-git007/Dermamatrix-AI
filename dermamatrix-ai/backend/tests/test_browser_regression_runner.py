@@ -1,8 +1,14 @@
 """Do not accept CLI exit success as evidence of a completed browser workflow."""
 import importlib.util
 import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import threading
 import unittest
+from urllib.error import HTTPError
+from urllib.request import build_opener, ProxyHandler, Request
+
+urlopen = build_opener(ProxyHandler({})).open
 
 spec = importlib.util.spec_from_file_location("browser_runner", Path(__file__).resolve().parents[2] / "frontend/tests/run_browser_regressions.py")
 runner = importlib.util.module_from_spec(spec)
@@ -38,3 +44,58 @@ class BrowserEvidenceTests(unittest.TestCase):
         for checks in [[""], [True], "not an array"]:
             with self.subTest(checks=checks), self.assertRaises(ValueError):
                 runner.verified_result(json.dumps({"checks": checks, "errors": []}), 1)
+
+
+class TestOriginLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        class Upstream(BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b'Synthetic unchanged upstream'
+                self.send_response(200)
+                self.send_header('Cache-Control', 'no-store, max-age=0')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_):
+                pass
+
+        self.upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        self.thread = threading.Thread(target=self.upstream.serve_forever, kwargs={'poll_interval': .05}, daemon=True)
+        self.thread.start()
+        self.origin = runner.TestOrigin(self.upstream.server_address[1])
+
+    def tearDown(self):
+        self.origin.stop()
+        self.upstream.shutdown()
+        self.upstream.server_close()
+        self.thread.join(timeout=5)
+
+    def test_actual_outage_and_recovery_preserve_bytes_and_no_store(self):
+        self.origin.start()
+        url = self.origin.url
+        with urlopen(url + '/sample', timeout=2) as response:
+            self.assertEqual(response.read(), b'Synthetic unchanged upstream')
+            self.assertEqual(response.headers['Cache-Control'], 'no-store, max-age=0')
+        self.origin.stop()
+        with self.assertRaises(OSError):
+            urlopen(url + '/uncached-target', timeout=2)
+        self.origin.start()
+        self.assertEqual(self.origin.url, url)
+        with urlopen(url, timeout=2) as response:
+            self.assertEqual(response.read(), b'Synthetic unchanged upstream')
+
+    def test_closed_origin_cannot_keep_accepting_browser_connections(self):
+        self.origin.start()
+        url = self.origin.url
+        self.origin.stop()
+        self.origin.stop()
+        with self.assertRaises(OSError):
+            urlopen(url, timeout=2)
+
+    def test_relay_rejects_account_and_health_record_writes(self):
+        self.origin.start()
+        for path in ['/api/auth/register', '/api/progress-checkins']:
+            with self.subTest(path=path), self.assertRaises(HTTPError) as caught:
+                urlopen(Request(self.origin.url + path, data=b'{}'), timeout=2)
+            self.assertEqual(caught.exception.code, 405)

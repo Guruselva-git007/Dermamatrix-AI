@@ -142,16 +142,22 @@ With the existing isolated `*_synthetic` database/server on loopback port 8001,
 ```
 
 Each engine runs the same 15 core, 12 continuity and 10 quality checks. A
-separate context runs four real service-worker/offline checks. Per-engine logs,
+separate context runs four real service-worker/origin-outage checks. Per-engine logs,
 screenshots and strict JSON receipts go into a fresh ignored project artifact
 directory. The runner refuses missing/incomplete/error JSON even if the CLI
 returns exit zero, and closes only its named browser sessions.
 
 Network-failure tests block service workers so requests remain controllable by
 Playwright routing, as its [network documentation](https://playwright.dev/docs/network#missing-network-events-and-service-workers)
-recommends. The offline suite enables the real service worker in a separate
-context and verifies cache scope, actual offline navigation, API failure and
-reconnection. Production service-worker behavior is unchanged. Browser-engine
+recommends. The outage suite enables the real service worker on an owned,
+loopback relay for reads and guest sign-out only. It verifies cache scope, closes the relay's listening
+socket, requires the cached explanation and failed health API access, then
+restarts that same origin and verifies reconnection. This avoids a Firefox
+network-emulation limitation consistent with [Mozilla bug 2081131](https://bugzilla.mozilla.org/show_bug.cgi?id=2081131),
+where worker fetches can ignore an offline flag. Origin unavailability is not a
+claim that every physical network disruption is identical. The upstream synthetic
+app and normal services stay running; relay sockets close in cleanup. No test
+origin is exposed outside loopback. Production service-worker behavior is unchanged. Browser-engine
 automation does not establish physical iPhone/Android, actual Safari application,
 screen-reader speech, participant or clinical validation. The authoritative
 checkpoint records exactly which local/CI engines passed and platform failures.

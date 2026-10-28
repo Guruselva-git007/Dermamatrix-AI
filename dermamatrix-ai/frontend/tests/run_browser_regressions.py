@@ -7,16 +7,96 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import http.client
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
-from urllib.request import urlopen
+import threading
+from urllib.request import build_opener, ProxyHandler
 
 
 APP = Path(__file__).resolve().parents[2]
 SUITES = (("browser-smoke.js", 15), ("browser-continuity.js", 12), ("browser-product-quality.js", 10))
+
+
+class TestOrigin:
+    """Loopback relay for reads/guest sign-out; close its socket for an outage."""
+
+    def __init__(self, upstream_port: int = 8001):
+        self.upstream_port = upstream_port
+        self.port = 0
+        self.server = None
+        self.thread = None
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+    def start(self) -> None:
+        if self.server is not None:
+            raise RuntimeError("Test origin is already running")
+        upstream_port = self.upstream_port
+
+        class Relay(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.forward()
+
+            def do_POST(self):
+                if self.path != "/api/auth/logout":
+                    self.send_error(405, "Only guest sign-out is allowed")
+                    return
+                self.forward()
+
+            def forward(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= 4096:
+                    self.send_error(413)
+                    return
+                connection = http.client.HTTPConnection("127.0.0.1", upstream_port, timeout=15)
+                try:
+                    headers = {key: value for key, value in self.headers.items() if key.lower() != "connection"}
+                    body = self.rfile.read(length) if length else None
+                    connection.request(self.command, self.path, body=body, headers=headers)
+                    response = connection.getresponse()
+                    body = response.read()
+                    self.send_response(response.status)
+                    for key, value in response.getheaders():
+                        if key.lower() not in {"connection", "keep-alive", "transfer-encoding", "content-length", "server", "date"}:
+                            self.send_header(key, value)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(body)
+                except (OSError, http.client.HTTPException):
+                    self.send_error(502, "Synthetic upstream unavailable")
+                finally:
+                    connection.close()
+
+            def log_message(self, *_):
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", self.port), Relay)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        self.thread.start()
+
+    def stop(self) -> None:
+        if self.server is None:
+            return
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
+        self.server = None
+        try:
+            connection = socket.create_connection(("127.0.0.1", self.port), timeout=1)
+        except OSError:
+            return
+        connection.close()
+        raise RuntimeError("Owned test origin did not close")
 
 
 def verified_result(output: str, minimum: int) -> dict:
@@ -41,20 +121,23 @@ def command(cli: str, session: str, arguments: list[str], log: Path, timeout: in
     return result.stdout
 
 
-def run_suite(cli: str, session: str, filename: str, minimum: int, folder: Path, record: dict) -> None:
-    suite = folder / Path(filename).stem
+def run_suite(cli: str, session: str, filename: str, minimum: int, folder: Path, record: dict, extra_options: dict | None = None) -> dict:
+    extra_options = extra_options or {}
+    phase = extra_options.get("phase")
+    suite = folder / (Path(filename).stem + ("-" + phase if phase else ""))
     suite.mkdir(exist_ok=True)
     source = (APP / "frontend/tests" / filename).read_text(encoding="utf-8").strip()
     wrapper = suite / "run.js"
-    options = json.dumps({"artifactRoot": str(suite) + "/"})
+    options = json.dumps({"artifactRoot": str(suite) + "/", **extra_options})
     wrapper.write_text(f"async page => await ({source})(page, {options})\n", encoding="utf-8")
     output = command(cli, session, ["--raw", "run-code", "--filename=" + str(wrapper)], suite / "result.json")
     try:
         result = verified_result(output, minimum)
     except ValueError as error:
         raise RuntimeError(f"{filename}: {error}: {output[-5000:]}") from error
-    record["suites"].append({"suite": filename, "checks": len(result["checks"]), "errors": []})
-    print(f"{record['browser']}: {filename}: {len(result['checks'])} checks passed", flush=True)
+    record["suites"].append({"suite": filename, **({"phase": phase} if phase else {}), "checks": len(result["checks"]), "errors": []})
+    print(f"{record['browser']}: {filename}{':' + phase if phase else ''}: {len(result['checks'])} checks passed", flush=True)
+    return result
 
 
 def main() -> int:
@@ -68,7 +151,7 @@ def main() -> int:
     if os.environ.get("DERMAMATRIX_ENV") != "test" or not os.environ.get("MYSQL_DATABASE", "").endswith("_synthetic") or os.environ.get("DERMAMATRIX_MAIL_TRANSPORT") != "disabled":
         parser.error("Use the isolated *_synthetic database, DERMAMATRIX_ENV=test and disabled mail transport")
     try:
-        with urlopen("http://127.0.0.1:8001/api/readiness", timeout=10) as response:
+        with build_opener(ProxyHandler({})).open("http://127.0.0.1:8001/api/readiness", timeout=10) as response:
             readiness = json.load(response)
     except (OSError, ValueError):
         parser.error("The isolated test stack on port 8001 is unavailable")
@@ -90,6 +173,7 @@ def main() -> int:
         # suites inject response loss/latency, so use the documented test option.
         config.write_text(json.dumps({"browser": {"contextOptions": {"serviceWorkers": "block"}}}), encoding="utf-8")
         record["service_workers"] = {"network_fault_suites": "blocked", "offline_suite": "enabled_in_a_separate_context"}
+        origin = TestOrigin()
         try:
             arguments = ["open", summary["target"], "--browser=" + browser, "--config=" + str(config)]
             command(cli, session, arguments, folder / "open.txt", 60)
@@ -99,13 +183,26 @@ def main() -> int:
                 run_suite(cli, session, filename, minimum, folder, record)
             command(cli, session, ["close"], folder / "close-network.txt", 30)
             config.write_text(json.dumps({"browser": {"contextOptions": {"serviceWorkers": "allow"}}}), encoding="utf-8")
-            command(cli, session, arguments, folder / "open-offline.txt", 60)
-            run_suite(cli, session, "browser-offline.js", 4, folder, record)
+            # Firefox can keep fetching from a worker despite setOffline(true).
+            # Use an actually closed owned origin instead of weakening fallback assertions.
+            origin.start()
+            record["offline_disruption"] = "owned_loopback_origin_stopped_and_restarted"
+            command(cli, session, ["open", origin.url, "--browser=" + browser, "--config=" + str(config)], folder / "open-offline.txt", 60)
+            prepared = run_suite(cli, session, "browser-offline.js", 2, folder, record, {"phase": "prepare", "origin": origin.url})
+            origin.stop()
+            run_suite(cli, session, "browser-offline.js", 1, folder, record, {"phase": "outage", "origin": origin.url})
+            origin.start()
+            run_suite(cli, session, "browser-offline.js", 1, folder, record, {"phase": "recover", "origin": origin.url, "cachedPaths": prepared["cachedPaths"]})
         except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
             record["errors"].append(str(error))
             summary["errors"].append({"browser": browser, "message": str(error)})
             print(f"{browser}: verification failed; preserved evidence in {folder}: {error}", flush=True)
         finally:
+            try:
+                origin.stop()
+            except (OSError, RuntimeError) as error:
+                record["errors"].append("Test origin cleanup: " + str(error))
+                summary["errors"].append({"browser": browser, "message": "Test origin cleanup failed"})
             try:
                 command(cli, session, ["close"], folder / "close.txt", 30)
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
