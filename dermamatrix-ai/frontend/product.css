@@ -139,9 +139,9 @@ small { font-size: 13px; }
 .today-panel h2 { margin: 0 0 6px; font-size: 17px; }
 .today-panel > p { font-size: 14px; color: var(--dm-muted); margin: 0 0 12px; }
 .today-panel > p:not([role]) { display: none; }
-.today-panel > .section-heading { flex-wrap: wrap; margin-bottom: 12px; }
+.today-panel > .section-heading { align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .today-panel > .section-heading h2 { margin: 0; }
-.today-panel > .section-heading > button { width: auto; max-width: 100%; flex: none; }
+.today-panel > .section-heading > button { width: auto; max-width: 100%; min-height: 44px; flex: none; }
 .today-panel .consumer-actions { margin-top: 14px; align-items: center; }
 #todayTasks > p { margin: 12px 0; color: var(--dm-muted); font-size: 14px; }
 .today-task { display: grid; grid-template-columns: 1fr auto auto; gap: 8px 10px; padding: 14px 0; border-bottom: 1px solid var(--dm-line); }
@@ -667,7 +667,7 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .section-heading { gap: 12px; align-items: start; }
   .section-heading h2 { font-size: 17px; }
   .section-heading p { font-size: 13px; }
-  .dashboard-actions { gap: 10px; }
+  .dashboard-actions { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 10px; }
   .dashboard-action { grid-template-columns: minmax(0, 1fr) auto; padding: 14px 12px; min-height: 104px; gap: 6px; }
   .dashboard-action > span { display: none; }
   .dashboard-action strong { font-size: 14px; }
@@ -699,7 +699,7 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .assessment-meta { flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; margin-top: 12px; }
   .assessment-steps { grid-template-columns: 1fr 1fr; gap: 12px; padding-bottom: 16px; }
   .assessment-steps li { font-size: 12px; }
-  .area-choice { gap: 10px; }
+  .area-choice { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 10px; }
   .area-choice button { display: block; min-height: 80px; padding: 12px; }
   .area-choice button > span { display: none; }
   .screen-layout:not(.needs-area) .area-choice button { min-height: 44px; padding: 10px 12px; }
