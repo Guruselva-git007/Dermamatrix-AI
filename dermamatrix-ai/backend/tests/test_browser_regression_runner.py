@@ -1,10 +1,13 @@
 """Do not accept CLI exit success as evidence of a completed browser workflow."""
 import importlib.util
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
+from types import SimpleNamespace
 import unittest
+from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 from urllib.request import build_opener, ProxyHandler, Request
 
@@ -99,3 +102,25 @@ class TestOriginLifecycleTests(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(HTTPError) as caught:
                 urlopen(Request(self.origin.url + path, data=b'{}'), timeout=2)
             self.assertEqual(caught.exception.code, 405)
+
+
+class SyntheticBudgetIsolationTests(unittest.TestCase):
+    def test_refuses_normal_database_wrong_environment_and_enabled_mail(self):
+        for values in [
+            {'DERMAMATRIX_ENV': 'test', 'MYSQL_DATABASE': 'real_account_database', 'DERMAMATRIX_MAIL_TRANSPORT': 'disabled'},
+            {'DERMAMATRIX_ENV': 'local', 'MYSQL_DATABASE': 'isolated_synthetic', 'DERMAMATRIX_MAIL_TRANSPORT': 'disabled'},
+            {'DERMAMATRIX_ENV': 'test', 'MYSQL_DATABASE': 'isolated_synthetic', 'DERMAMATRIX_MAIL_TRANSPORT': 'smtp'},
+        ]:
+            with self.subTest(values=values), patch.dict(os.environ, values), self.assertRaises(ValueError):
+                runner.reset_synthetic_budgets()
+
+    def test_reset_touches_only_technical_budgets_and_closes_the_connection(self):
+        connection = MagicMock()
+        connect = MagicMock(return_value=connection)
+        values = {'DERMAMATRIX_ENV': 'test', 'MYSQL_DATABASE': 'isolated_synthetic', 'DERMAMATRIX_MAIL_TRANSPORT': 'disabled'}
+        with patch.dict(os.environ, values), patch.dict('sys.modules', {'pymysql': SimpleNamespace(connect=connect)}):
+            runner.reset_synthetic_budgets()
+        self.assertEqual(connect.call_args.kwargs['database'], 'isolated_synthetic')
+        connection.cursor.return_value.__enter__.return_value.execute.assert_called_once_with('DELETE FROM request_budgets')
+        connection.commit.assert_called_once_with()
+        connection.close.assert_called_once_with()

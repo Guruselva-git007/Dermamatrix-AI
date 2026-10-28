@@ -138,14 +138,19 @@ With the existing isolated `*_synthetic` database/server on loopback port 8001,
 `DERMAMATRIX_ENV=test` and `DERMAMATRIX_MAIL_TRANSPORT=disabled`, run:
 
 ```
-.venv/bin/python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit
+.venv/bin/python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit --reset-synthetic-budgets
 ```
 
 Each engine runs the same 15 core, 12 continuity, 10 quality and 12 targeted
 accessibility/keyboard checks. A
 separate context runs four real service-worker/origin-outage checks. Per-engine logs,
 screenshots and strict JSON receipts go into a fresh ignored project artifact
-directory. The runner refuses missing/incomplete/error JSON even if the CLI
+directory. With `--reset-synthetic-budgets`, each engine starts with fresh technical request
+budgets in the explicitly isolated `*_synthetic` database. No accounts, health
+records or history are cleared, and application limits remain enabled. This
+prevents several engines sharing one loopback IP from consuming each other's
+five-minute test quota. The flag refuses a non-test database or enabled mail.
+The runner refuses missing/incomplete/error JSON even if the CLI
 returns exit zero, and closes only its named browser sessions.
 
 Network-failure tests block service workers so requests remain controllable by

@@ -23,6 +23,25 @@ APP = Path(__file__).resolve().parents[2]
 SUITES = (("browser-smoke.js", 15), ("browser-continuity.js", 12), ("browser-product-quality.js", 10), ("browser-accessibility.js", 12))
 
 
+def reset_synthetic_budgets() -> None:
+    """Separate engine test fixtures without disabling the application's limits."""
+    database = os.environ.get("MYSQL_DATABASE", "")
+    if os.environ.get("DERMAMATRIX_ENV") != "test" or not database.endswith("_synthetic") or os.environ.get("DERMAMATRIX_MAIL_TRANSPORT") != "disabled":
+        raise ValueError("Technical-budget reset requires an isolated test *_synthetic database and disabled mail")
+    import pymysql
+    connection = pymysql.connect(host=os.environ.get("MYSQL_HOST", "127.0.0.1"),
+                                 port=int(os.environ.get("MYSQL_PORT", "3306")),
+                                 user=os.environ.get("MYSQL_USER", "root"),
+                                 password=os.environ.get("MYSQL_PASSWORD", ""),
+                                 database=database, connect_timeout=10)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM request_budgets")
+        connection.commit()
+    finally:
+        connection.close()
+
+
 class TestOrigin:
     """Loopback relay for reads/guest sign-out; close its socket for an outage."""
 
@@ -144,6 +163,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browsers", nargs="+", choices=("chrome", "firefox", "webkit"), default=["chrome"])
     parser.add_argument("--artifacts", type=Path)
+    parser.add_argument("--reset-synthetic-budgets", action="store_true", help="Reset only technical request budgets before each engine in the isolated synthetic database")
     args = parser.parse_args()
     cli = shutil.which("playwright-cli")
     if not cli:
@@ -175,6 +195,10 @@ def main() -> int:
         record["service_workers"] = {"network_fault_suites": "blocked", "offline_suite": "enabled_in_a_separate_context"}
         origin = TestOrigin()
         try:
+            if args.reset_synthetic_budgets:
+                reset_synthetic_budgets()
+                record["technical_budget_fixture_reset"] = True
+                print(f"{browser}: reset only synthetic technical request budgets; app limits unchanged", flush=True)
             arguments = ["open", summary["target"], "--browser=" + browser, "--config=" + str(config)]
             command(cli, session, arguments, folder / "open.txt", 60)
             metadata = command(cli, session, ["--raw", "run-code", "async page => ({userAgent: await page.evaluate(() => navigator.userAgent)})"], folder / "engine.json")

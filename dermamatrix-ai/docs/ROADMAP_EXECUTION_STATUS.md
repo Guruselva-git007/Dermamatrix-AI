@@ -574,3 +574,14 @@ review return focus, cleared on workspace reset; the test supports the observed
 native Option-Tab path while requiring Back/Confirm reachability and returned
 focus. Local WebKit now passes12/12. Added diagnostic context; no result check
 was bypassed. Final exact CI receipt follows the rerun below.
+
+Second CI `40748488611` again passed256/74, Chrome/Firefox53each and WebKit37.
+Its new diagnostic context showed WebKit's final guest assessment was honestly
+rejected with “Too many attempts”, after all first10 accessibility checks passed.
+The shared synthetic loopback IP hit the unchanged20-assessment/300s server
+budget. This was test-fixture interference, not a fabricated result or a disabled
+limit. Added an explicit `--reset-synthetic-budgets` fixture option to the existing
+runner/CI: it clears only `request_budgets` before each engine, refuses non-test,
+non-synthetic or mail-enabled environments, and preserves accounts, assessments,
+originals/revisions and every medical record. Two focused guard/scope tests added;
+no application rate limit or backend behavior changed. Final CI rerun pending.

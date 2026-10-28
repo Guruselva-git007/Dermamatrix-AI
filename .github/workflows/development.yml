@@ -74,4 +74,4 @@ jobs:
           playwright-cli install-browser webkit --with-deps
           python -m gunicorn --chdir backend --bind 127.0.0.1:8001 --workers 1 app:app > /tmp/dermamatrix-ci.log 2>&1 &
           for attempt in $(seq 1 20); do curl --fail --silent http://127.0.0.1:8001/api/readiness && break; sleep 1; done
-          python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit --artifacts ../local-artifacts/browser-regressions
+          python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit --reset-synthetic-budgets --artifacts ../local-artifacts/browser-regressions
