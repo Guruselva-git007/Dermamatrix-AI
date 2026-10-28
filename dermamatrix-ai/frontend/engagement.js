@@ -132,14 +132,14 @@
       const data=await requestJSON('/api/knowledge/conditions'+(area?'?area='+encodeURIComponent(area):''));if(version!==guideListVersion)return;
       list.replaceChildren();
       const items=data.items.filter(r=>`${r.name} ${(r.aliases||[]).join(' ')}`.toLowerCase().includes(query));
-      for(const entry of items){const row=node('article',undefined,'learn-row'),read=action('Read guide',()=>openGuide(entry.id));read.setAttribute('aria-label','Read guide: '+entry.name);row.append(node('h3',entry.name),node('p',entry.health_area),read);list.append(row);}
+      for(const entry of items){const row=node('article',undefined,'learn-row'),read=action('Read guide',()=>openGuide(entry.id,read));read.setAttribute('aria-label','Read guide: '+entry.name);row.append(node('h3',entry.name),node('p',entry.health_area),read);list.append(row);}
       if(!$('learn').classList.contains('is-reading'))status('learnStatus',items.length?`${items.length} ${items.length===1?'guide':'guides'} found${area?' · '+area:''}.`:'No guides match. Try a different word or category.');
     }catch(e){if(version===guideListVersion){status('learnStatus',`Guides could not be refreshed. ${e.message} Try again; any previous matches remain below.`);guideRetry=guides;$('learnRetry').hidden=false;}}
     finally{if(version===guideListVersion)list.setAttribute('aria-busy','false');}
   }
-  async function openGuide(id){
+  async function openGuide(id,opener=document.activeElement){
     const version=++guideVersion;
-    guideOpener=document.activeElement;guideRetry=()=>openGuide(id);$('learnRetry').hidden=true;status('learnStatus','Opening guide…');
+    guideOpener=opener;guideRetry=()=>openGuide(id,opener);$('learnRetry').hidden=true;status('learnStatus','Opening guide…');
     try{
       const {topic}=await requestJSON('/api/knowledge/conditions/'+encodeURIComponent(id));if(version!==guideVersion||document.querySelector('.page-active')?.id!=='learn')return;
       const body=$('learnDetail'),toolbar=node('div',undefined,'guide-toolbar'),title=node('h2',topic.name);
