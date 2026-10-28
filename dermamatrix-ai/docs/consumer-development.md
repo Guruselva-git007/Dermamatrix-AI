@@ -141,7 +141,8 @@ With the existing isolated `*_synthetic` database/server on loopback port 8001,
 .venv/bin/python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit
 ```
 
-Each engine runs the same 15 core, 12 continuity and 10 quality checks. A
+Each engine runs the same 15 core, 12 continuity, 10 quality and 12 targeted
+accessibility/keyboard checks. A
 separate context runs four real service-worker/origin-outage checks. Per-engine logs,
 screenshots and strict JSON receipts go into a fresh ignored project artifact
 directory. The runner refuses missing/incomplete/error JSON even if the CLI

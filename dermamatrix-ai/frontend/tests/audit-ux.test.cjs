@@ -20,6 +20,7 @@ function harness(width = 375) {
       classList: { contains: name => classes.has(name), add: name => classes.add(name), remove: name => classes.delete(name), toggle(name, on) { on ? classes.add(name) : classes.delete(name); } },
       setAttribute: (name, value) => attrs.set(name, value), removeAttribute: name => attrs.delete(name), getAttribute: name => attrs.get(name),
       querySelector: () => null, querySelectorAll: () => [], closest: () => null,
+      addEventListener() {}, removeEventListener() {},
       getClientRects: () => [1], contains: () => false,
       focus() { document.activeElement = this; },
     };
@@ -125,6 +126,28 @@ test('Tab and Shift+Tab loop within the gate, including when focus starts outsid
   assert.equal(press(last, false), true); assert.equal(h.document.activeElement, first);
   assert.equal(press(first, true), true); assert.equal(h.document.activeElement, last);
   assert.equal(press(h.body, false), true); assert.equal(h.document.activeElement, first);
+});
+
+test('closing the drawer restores its trigger when inert immediately blurs its child', () => {
+  const h = harness(), sidebar = h.get('.sidebar'), child = h.element();
+  sidebar.contains = element => element === child;
+  Object.defineProperty(sidebar, 'inert', { set(value) { if (value && h.document.activeElement === child) h.document.activeElement = h.body; } });
+  h.body.classList.add('nav-open'); child.focus();
+  h.api.setNavigationOpen(false);
+  assert.equal(h.document.activeElement, h.get('.menu-button'));
+  assert.equal(h.get('.menu-button').getAttribute('aria-expanded'), 'false');
+});
+
+test('drawer opening focuses after visibility updates and a cancelled callback cannot steal focus', () => {
+  const h = harness(), selected = h.element(); let queued;
+  h.context.window.requestAnimationFrame = callback => { queued = callback; };
+  h.get('.sidebar').querySelector = () => selected;
+  h.api.setNavigationOpen(true);
+  assert.equal(h.document.activeElement, h.body);
+  queued(); assert.equal(h.document.activeElement, selected);
+  h.api.setNavigationOpen(false); h.api.setNavigationOpen(true);
+  h.api.setNavigationOpen(false); h.get('.menu-button').focus(); queued();
+  assert.equal(h.document.activeElement, h.get('.menu-button'));
 });
 
 test('notice version cannot be sent until server-owned text has loaded; unavailable notices stay unaccepted', async () => {

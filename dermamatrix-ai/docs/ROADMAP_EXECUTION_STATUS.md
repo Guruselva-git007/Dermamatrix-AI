@@ -18,6 +18,12 @@ origin-outage/recovery evidence. See the final receipt below. Physical-device,
 assistive-technology speech, human and policy validation remain external.
 Provider activation and deployment remain deferred.
 
+**Current authorized batch — real-world validation and accessibility: in progress.**
+The owner requested a new bounded stage after the closed desktop-engine batch.
+Actual Safari guest checks and targeted accessibility checks found three concrete
+frontend defects. See the final section and `consumer-validation-results.md`.
+Physical devices, speech and participants remain a separate external track.
+
 ## Verdict and current batch
 
 **October 28 continuity batch:** All independent A–L development enhancements
@@ -533,3 +539,29 @@ assistive-technology speech, representative consumer sessions or approved
 clinical/operator/retention/erasure decisions. Provider setup and deployment stay
 deferred until the owner explicitly requests them. No blanket clinical,
 accessibility-conformance or public-readiness certification is claimed.
+
+## Consumer validation and accessibility follow-up
+
+Baseline `b95fee4d11230238e02665a74f53f1f63961f52a`, prior exact green test commit
+`cf0c6a7a2a62179eed44c4793b0f914c08d74c46` (256/72/123). Reused completed A–L,
+source evidence and existing runner. One worker; development/English only.
+
+Implemented CV-01/P1 HEIC/HEIF chooser allowlist/hint correction; CV-02/P2
+heading-first assessment review focus; CV-03/P2 reliable drawer entry/return focus
+across visibility/inert changes. Local 74 frontend, three HEIF tests and 12 new
+targeted browser checks pass. No backend/schema/model/scoring/evidence change.
+Actual Safari 27.2 guest questionnaire, consent failure, review/Escape/result,
+refresh and corrected heading/Option-Tab confirmation were exercised. Native
+picker completion/zoom/speech limitations remain explicit; no real phone was
+connected. No actual speech or participant data was fabricated.
+
+`consumer-validation-results.md` contains reproduction/impact/minimal changes,
+before/after results, matrix and outstanding observations. Updated existing
+consumer protocol with an observer-ready six-task 5–8-participant study and
+privacy-conscious blank record/triage/summary templates. `consumer-device-checks.md`
+has exact Samsung USB forwarding, Mac native chooser/VoiceOver and optional
+physical iPhone handoffs. No duplicate runner/framework/provider/public tunnel.
+
+The existing CI runner now includes the 12 targeted checks in each engine; final
+exact regression/commit receipt remains pending. Private source/test evidence is
+`local-artifacts/consumer-validation-2026-10-28/`.

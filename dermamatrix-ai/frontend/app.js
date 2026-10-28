@@ -890,14 +890,23 @@ function setNavigationOpen(open) {
   const scrim = $('#navScrim');
   const wasOpen = document.body.classList.contains('nav-open');
   const expanded = Boolean(open && window.innerWidth <= 880);
+  // Making the drawer inert can move focus to body before we inspect it.
+  const restoreFocus = !expanded && window.innerWidth <= 880 && (sidebar.contains(document.activeElement) || document.activeElement === scrim);
   sidebar.classList.toggle('open', expanded);
   document.body.classList.toggle('nav-open', expanded);
   scrim.hidden = !expanded;
   menuButton.setAttribute('aria-expanded', String(expanded));
   menuButton.setAttribute('aria-label', expanded ? 'Close navigation' : 'Open navigation');
   syncInteractionInertness();
-  if (expanded && !wasOpen) sidebar.querySelector('.nav-links .active')?.focus();
-  if (!expanded && window.innerWidth <= 880 && (sidebar.contains(document.activeElement) || document.activeElement === scrim)) menuButton.focus();
+  if (expanded && !wasOpen) {
+    const focusSelection = () => {
+      if (document.body.classList.contains('nav-open') && window.innerWidth <= 880) sidebar.querySelector('.nav-links .active')?.focus();
+      if (sidebar.contains(document.activeElement) || !document.body.classList.contains('nav-open')) sidebar.removeEventListener('transitionend', focusSelection);
+    };
+    sidebar.addEventListener('transitionend', focusSelection, { once: true });
+    window.requestAnimationFrame(focusSelection);
+  }
+  if (restoreFocus) menuButton.focus();
 }
 
 function showCarePlan(plan) {
