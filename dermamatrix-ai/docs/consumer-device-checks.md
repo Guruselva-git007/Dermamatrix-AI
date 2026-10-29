@@ -1,5 +1,19 @@
 # Physical device and native assistive-technology checks
 
+**Owner steering — 29 October 2026:** the Samsung was connected over USB, but
+Chrome remained Pending authentication. Guruselva explicitly asked to leave
+phone testing and finish available Mac work. Physical tests are deferred; do not
+restart connection probes or debugging setup without a new request. A suggested
+USB-authorization reset was not confirmed completed. See the newest native
+acceptance section in `consumer-validation-results.md` for available Safari
+results and the remaining native Save/Upload/dialog/zoom/speech checks.
+
+When an interactive device session is requested again, prepare the existing
+isolated environment first, give one action at a time, wait for actual owner
+observations, record outcomes and fix/retest demonstrated app defects in the
+same task. Resume from the first unfinished check; do not repeat verified work
+or substitute browser emulation for physical acceptance.
+
 Development only. Use the isolated synthetic stack on loopback port 8001, never
 personal health records or the normal account database. The temporary stack is
 closed after each development batch. Tell the developer **“Phone connected;

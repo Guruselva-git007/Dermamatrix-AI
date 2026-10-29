@@ -5,6 +5,30 @@ Updated: 29 October 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
+**Latest continuation — native desktop acceptance (29 October): available
+independent checks complete; physical-phone testing explicitly deferred by owner.**
+Actual Safari27.2: seven scoped scenarios verified (synthetic login, saved result/
+technical navigation, brief invalid-date/accurate preview, routine check-in save,
+logout, second-account isolation, Back/Forward/refresh). Five native scenarios
+remain partial/owner-dependent: PDF/JSON Save, correction dialog, full zoom and
+completed file selection/replacement. Native200% observed and original100%
+restored; actual speech remains unverified. See the newest section of
+`consumer-validation-results.md` for exact observations/limits. All130 baseline
+production source files remain byte-identical; no application defect warranted
+a speculative correction. Prior unchanged runtime CI40774346102 (258/77/177)
+is reused, not represented as a new run.
+
+Samsung was physically connected but Chrome screenshots remained Pending
+authentication. After bounded setup guidance, the owner said to leave phone
+testing and finish without it. Do not restart phone probing/setup unless asked.
+No physical workflow, forwarding, speech or usability-session pass is claimed.
+Normal8000 is ready/current and opened in Chrome; task Safari tab and owned
+synthetic services/user/sleep hold close in the final receipt. Task-owned changes
+are documentation only; scoped commit/push/cleanup identities are retained in
+`local-artifacts/device-acceptance-2026-10-29/completion.json` at project root.
+Next action is owner-assisted unresolved native checks or another explicitly
+requested development objective; no deployment/providers or repeated cosmetic work.
+
 **Current task — professional product maturity (28 October): complete within the
 authorized development scope.** The bounded refinement preserves completed A–L.
 See the final section for findings, before/after evidence and the final CI receipt. Earlier

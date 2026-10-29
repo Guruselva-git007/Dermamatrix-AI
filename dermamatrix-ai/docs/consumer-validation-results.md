@@ -1,5 +1,85 @@
 # Consumer validation and accessibility — current development batch
 
+## Native desktop acceptance continuation — 29 October 2026
+
+Baseline `db2f2a8eaa331bce2df3ed09458fbe71139c1a7c` on
+`codex/consumer-evolution`; unchanged runtime previously verified by CI
+40774346102 (258 backend / 77 frontend / 177 browser checks). This continuation
+uses **actual Safari 27.2**, not automated WebKit. One worker, existing synthetic
+database on loopback3308/app8001, a restricted temporary database user and disabled
+mail. Two disposable accounts were prepared; no normal account data was opened.
+
+| Case | Actual observation | Disposition |
+|---|---|---|
+| SA-01 Account sign-in | Synthetic A signs in; Today shows its one questionnaire result and one routine. Password saving declined. | VERIFIED TESTED |
+| SA-02 Saved result | Reopens correct concern, questionnaire limitations and evidence; Technical details expands; return/Close works. | VERIFIED TESTED |
+| SA-03 Brief validation/preview | Missing dates produce an actionable rejection. Native keyboard date entry and explicit concern selection produce exactly one included assessment and truthful missing-photo/research notices. | VERIFIED TESTED |
+| SA-04 PDF saving | Correct PDF reaches native Save panel and private project destination. Save stays disabled through the control surface; keyboard attempt does not complete it. Cancelled. | OWNER INTERACTION REQUIRED; no saved-file pass |
+| SA-05 Routine/check-in | Routine shortcut selects its routine; review/Escape works; native Option-Tab/Return saves one synthetic check-in. Native UI shows self-reported trend and Saved. Notes-field preservation was not established. | VERIFIED TESTED for stated scope |
+| SA-06 Correction | Visible correction dialog opens, but its fields are omitted from this native AX surface. Escape cancels and leaves the record. | OWNER INTERACTION REQUIRED; no correction/speech pass |
+| SA-07 JSON saving | Correct dated account JSON reaches native Save; same disabled Save behavior as PDF. Cancelled. | OWNER INTERACTION REQUIRED; no saved-file pass |
+| SA-08 Sign-out | Account entry returns with signed-out message and cleared private workspace. | VERIFIED TESTED |
+| SA-09 Account switch | Synthetic B has its own identity, no Today assessments and zero Journey matches; A's concern/result/routine are absent from these views. | VERIFIED TESTED |
+| SA-10 Native navigation | Safari Back returns Today, Forward returns Journey, refresh retains B and its empty Journey. | VERIFIED TESTED |
+| SA-11 Zoom | Native site settings confirm 200%; responsive navigation appears. Limited screenshot/paint output prevents full reflow acceptance. Original100% restored and confirmed. | PARTIAL; full visual/keyboard acceptance remains pending |
+| SA-12 Photo picker | Choose photo opens native panel. Generated PNG selected; PNG/HEIC eligible and text fixture disabled. Upload stays disabled; exposed Open action has no effect. Cancel returns to Skin with consent off and Review disabled. | PARTIAL; completed selection/replacement remains pending |
+
+**Seven scoped scenarios verified, five partial/owner-dependent.** These are
+native acceptance observations, not seven new automated regression tests. A
+ScreenCaptureKit capture failure followed the check-in confirmation; subsequent
+native UI and synthetic SQL both confirmed the saved record. It was not retried
+as another save. Initial URL/input control failures and unavailable dialog fields
+were not counted as product defects or successful input-preservation tests.
+
+Synthetic SQL corroboration: A has exactly one assessment, one routine and one
+check-in; B has zero of all three. All **130 baseline production source files**
+(Python/JavaScript/CSS/HTML) remain byte-identical. No app correction was justified;
+no tests/frameworks were added. Unchanged automated suites were not rerun. The
+prior exact-source CI receipt above remains the regression evidence. No model,
+scoring, schema, provider, retention, consent or historical-evidence change.
+
+### Samsung interaction and owner steering
+
+USB inventory identified `SAMSUNG_Android`. Owner enabled USB debugging; Chrome's
+owner-supplied screenshots showed Offline / Pending authentication. Reconnection
+did not establish authorization. The browser policy rejected agent access to
+`chrome://inspect`; no alternate surface/raw CDP workaround or ADB installation
+was used. The owner supplied observations instead. Consulted the official
+[Chrome troubleshooting procedure](https://developer.chrome.com/docs/devtools/remote-debugging/)
+for the missing approval prompt. A suggested authorization reset was **not
+confirmed performed**.
+
+The owner then explicitly requested **leave the phone test and finish remaining
+work without the phone**. Stop phone setup/testing and do not restart it on
+continuation unless requested. No USB port forwarding was configured by this
+task, no phone app journey was completed and no physical acceptance is claimed.
+No unattended hardware probes continue. Owner-controlled USB debugging settings
+were not silently changed back.
+
+### Resume boundary and closure
+
+No confirmed application P0/P1 defect was reproduced in the independently
+completed observations. Disabled native Save/Upload and omitted dialog AX fields
+remain unresolved acceptance/tooling observations, not proven clean behavior.
+Next owner-assisted native checks: complete picker selection/replacement, PDF
+and JSON Save, correction dialog, notes preservation, full zoom and actual
+VoiceOver speech. Existing TalkBack/physical iPhone/consumer-study checks remain
+pending; phone testing is expressly deferred. Reuse the existing protocol rather
+than creating another study or repeating verified cases.
+
+Private evidence: `local-artifacts/device-acceptance-2026-10-29/` at project root.
+Normal8000 readiness and four current frontend assets verified. The normal app
+was opened in primary Chrome at account entry for desktop use. Synthetic B was
+signed out; task Safari tab closed and original Start Page preserved. Owned test
+app/database/user and sleep hold are closed at final receipt; synthetic fixture
+rows remain available for a later explicitly requested session. No deployment,
+public tunnel, provider activation or physical/speech certification.
+
+This is a documentation-only batch. Task-owned documentation is committed and
+pushed separately; final identities/cleanup are recorded in the canonical
+checkpoint and ignored completion receipt. CI need not repeat unchanged runtime
+suites for these Markdown-only changes.
+
 Baseline: `codex/consumer-evolution`, documentation head
 `b95fee4d11230238e02665a74f53f1f63961f52a`. Prior exact green test commit
 `cf0c6a7a2a62179eed44c4793b0f914c08d74c46`, CI
