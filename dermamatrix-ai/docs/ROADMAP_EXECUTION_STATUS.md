@@ -6,35 +6,49 @@ Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
 **Current authorized batch — frontend stability and consumer acceptance
-(30 October): corrections implemented; final exact-source verification pending.**
+(30 October): independently verifiable development work complete.**
 Corrected inherited context/Profile/technical contrast, small Products type,
 missing textarea outline, root-frozen theme aliases and mobile technical overflow.
 White/sky and navy/cyan identity, IBM Plex, layout/navigation and scanner remain.
 Runtime changes are four CSS files, a dialog-heading focus guard and a scoped
 assessment-textarea reveal helper. Backend/scoring/schema/model/evidence/privacy /
-report/export sources remain unchanged; only focused UI behavior was corrected.
+report/export sources remain hash-identical; original values are preserved.
 
-Initial local Chrome83/WebKit83, frontend90 and runner12 passed the CSS phase.
-CI41072083917 timed out at the new Linux WebKit focus probe; richer diagnostics
-and natural preceding-field keyboard traversal retained all viewport/outline
-assertions. CI41074357496 then failed an earlier correction-draft check. A held
-heading frame proved a real focus-stealing race; its guard and deterministic
-real-typing test pass locally. CI41077279135 diagnosed the focused textarea
-clipped below844px viewport (bottom907.5px). A local reproduction showed an older
-smooth focus scroll could finish after the reveal. Instant scoped correction
-now leaves the full focused control visible, respects chosen text/focus and
-ignores superseded workspaces. Frontend93 and the targeted two-theme keyboard
-path pass; the full focused WebKit27 also passes. Whole three-engine CI is pending.
+[Exact CI41080564965](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41080564965)
+**passes source `3a9641f7548d72e6b2e6e8bd397a852d6d252a97`: 258 backend,
+93 frontend and 249 browser checks (83 each Chrome/Firefox/WebKit)**, explicit
+isolated migrations, source hygiene/tracked-secret gate and pinned audit. The
+initial stylesheet phase passes local Chrome83/WebKit83 and runner12. After the
+focus corrections frontend93 and focused WebKit27 pass, including real Tab with
+solid3px outline and full textarea visible in both themes. Quality21→27 adds
+active aliases, expanded/filled context, technical values/reflow and Profile /
+Products readability at five widths, plus200% computed technical text.
 
-Actual native Safari stopped at its browser-generated HTTPS warning for the
-isolated HTTP fixture. No Continue/security workaround was attempted; the owned
-tab was closed and original Start Page preserved. Native file selection,
-correction, completed PDF/JSON saving and zoom remain owner-dependent; actual
-speech/participant acceptance unverified. Phone stays deferred. The stale proposal
-list was reconciled with implemented source, not rebuilt. Private evidence:
-local-artifacts/frontend-stability-2026-10-30/ at project root. Next: final
-integrated verification, scoped Git/evidence and guarded cleanup. Development
-only; no providers, deployment, speculative features or medical changes.
+Three incomplete CI runs are retained as failures. CI41072083917 timed out at
+the new focus probe; natural keyboard traversal/richer diagnostics retained all
+viewport/outline assertions. CI41074357496 failed correction-draft retention;
+a held heading frame proved focus-stealing and lost typing. CI41077279135
+revealed clipped focused textareas; a local trace found competing smooth focus
+scrolling. Minimal UI guards/reveal and stronger real-typing checks resolve the
+reproductions. The final whole CI verifies them together. No selected unresolved
+P0/P1 remains in inspected application states; no blanket product attestation.
+
+The stale proposal list was reconciled with existing source, not rebuilt. Actual
+native Safari stopped at its browser-generated HTTPS warning for the isolated
+HTTP fixture. No Continue/security workaround was attempted; the owned tab was
+closed and original Start Page preserved. Native file selection/replacement,
+correction, completed PDF/JSON saving and zoom remain owner-dependent; speech /
+participant acceptance unverified. Phone stays deferred. Resume native work only
+after Codex prepares the fixture and the owner personally handles that warning.
+
+See newest consumer-validation-results.md and private
+local-artifacts/frontend-stability-2026-10-30/ for before/after, exact assertions,
+CI, source protection, Git and cleanup. Normal8000/3307 preserved/current; owned
+fixture/browsers/users closed with identity checks, synthetic rows retained.
+Sleep helper releases at final closure, allowing ordinary Mac sleep. Development
+only: no new framework, provider, deployment, default-branch merge, medical
+functionality or speculative redesign. Next: preserve verified source; resume
+owner-assisted acceptance or a newly authorized development objective.
 
 **Current authorized batch — white + sky blue restoration and original scanner
 (30 October): complete within the authorized development scope.**

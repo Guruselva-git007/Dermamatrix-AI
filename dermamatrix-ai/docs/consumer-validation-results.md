@@ -456,8 +456,8 @@ canonical checkpoint. Existing unrelated dirty/untracked work remains preserved.
 This is the next owner-authorized bounded batch after the white/sky restoration.
 The verified baseline is closing commit281f22a, runtime dcc33fc and CI41066123656.
 The restored white/sky and navy/cyan design, layout, IBM Plex, navigation and
-original scanner are preserved. No speculative features, schema/API/medical changes or phone setup. A targeted
-continuity-dialog autofocus guard was added after a reproducible input-loss race. One primary worker; development only.
+original scanner are preserved. No speculative features, schema/API/medical changes or phone setup. Targeted
+continuity-dialog autofocus and textarea-reveal guards address reproduced focus defects. One primary worker; development only.
 
 ### Reproductions and corrections
 
@@ -548,7 +548,7 @@ No live migration, model install/retraining, provider activation, real medical
 input, default-branch merge or deployment was performed. Synthetic test records
 use the existing isolated fixture; personal database/service remains separate.
 
-Exact final CI/source/Git/cleanup receipt follows after integrated verification.
+Exact final CI/source/Git/cleanup receipt is recorded below.
 
 | Asset | Before raw bytes | After raw bytes | Before local gzip bytes | After local gzip bytes |
 |---|---:|---:|---:|---:|
@@ -573,7 +573,7 @@ existing Option-Tab compatibility path), retaining the same focused-note,
 full-viewport and solid-outline assertions. Failure context now includes active
 focus, input/header rectangles and scroll position. Local WebKit27 passes this
 setup in both themes using actual Tab with a3px solid outline. No browser, check,
-visibility threshold or product behavior was disabled; final exact CI is pending.
+visibility threshold or product behavior was disabled; the final exact CI receipt is below.
 
 Second CI41074357496 again passed Chrome/Firefox83 each but failed earlier in the
 existing delayed-correction assertion on Linux WebKit, before reaching the new
@@ -592,7 +592,7 @@ frame, types actual keystrokes and checks the draft before/after the old save.
 Focused WebKit27 passes with the stronger case. The existing viewport/outline and
 all previous checks remain; no failure was suppressed or browser omitted. The
 initial focus-probe timeout is not conclusively attributed to this race; final
-whole CI must verify the selected keyboard paths and dialog behavior together.
+whole CI verifies the selected keyboard paths and dialog behavior together below.
 
 Third CI41077279135 preserved the draft but failed the unchanged full-viewport
 assertion: the focused96px Tracking note ended at907.5px in an844px viewport,
@@ -610,5 +610,42 @@ two-theme keyboard/reflow sequence now passes locally. The existing quality test
 retains focused-note/full-viewport/solid-outline assertions and records actual
 geometry. Final focused WebKit27 passes with solid3px outline and textarea
 top727.5625/bottom823.5625 inside844px viewport in both themes. The screenshot
-shows the complete focused control. Exact whole CI is pending. None of the three
+shows the complete focused control. Final exact whole CI passes below. None of the three
 incomplete CI runs is represented as a success.
+
+### Final exact-source verification and closure
+
+[CI41080564965](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41080564965)
+completed successfully on **3a9641f7548d72e6b2e6e8bd397a852d6d252a97**:
+**258 backend, 93 frontend and 249 browser checks**, 83 each Chrome/Firefox/WebKit.
+Explicit synthetic migrations, tracked-secret/source hygiene and pinned advisory
+audit pass. No known vulnerabilities were reported in that audited environment;
+this does not resolve the separate27 default-branch alerts. Final whole CI tests
+all selected UI corrections together; the three earlier failures remain failures.
+The quality threshold remains27 and all viewport/outline/draft requirements remain.
+Local93 frontend/12 runner, earlier stylesheet-phase Chrome83/WebKit83 and final
+focused WebKit27 supplement the authoritative exact-source full run.
+
+No selected unresolved critical/high-impact defect remains in inspected states.
+Canonical assessment-result-v1.7/PIRS, research limits, consent/owner/guest
+boundaries, original records/revisions, raw-photo non-retention, routines,
+corrections, episodes, briefs/reports/exports and disabled providers are preserved
+by protected source hashes and cross-feature regression evidence. app.js only
+adds scoped textarea reveal; continuity.js only guards deferred heading autofocus.
+No inference, scoring, schema, persistence or medical-data semantics changed.
+
+Actual Safari acceptance remains partial. On the next owner-assisted session,
+Codex first prepares the isolated fixture; the owner personally handles Safari's
+local HTTP warning; resume at native file selection/replacement, then correction,
+completed PDF/JSON saving and zoom. Automated WebKit is not native Safari. Phone
+stays deferred; actual speech, physical touch/gallery and representative consumer
+sessions remain unverified. No clinical/WCAG/public-readiness verdict is implied.
+
+Owned test browsers and synthetic8001/3308 services/temporary SQL users are closed
+with identity checks; synthetic rows retained. Original normal8000/3307 services
+and unrelated Git work remain intact. The canonical checkpoint, scoped Git push,
+private journal/archive and exact task-helper release are saved in the closing
+receipt. Ordinary Mac sleep is allowed after closure. Important files: the four
+selected stylesheets, app.js/continuity.js focus handling, the existing frontend
+unit/quality suite and runner, reconciled experience/development references, this
+report and ROADMAP_EXECUTION_STATUS.md. No deployment or provider activation.
