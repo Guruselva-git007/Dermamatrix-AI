@@ -557,3 +557,16 @@ Exact final CI/source/Git/cleanup receipt follows after integrated verification.
 | `product.css` | 79807 | 80492 | 15263 |
 
 Combined raw delta: -13 bytes; combined local-gzip delta: +125 bytes. No loading/latency improvement claimed.
+
+First exact CI41072083917 passed backend/unit/advisory gates and all83 browser
+checks in Chrome and Firefox, then Linux WebKit timed out at the newly added
+keyboard-focus probe. This run is not counted as a complete pass. The probe had
+programmatically focused the note and immediately traversed next/back; its timeout
+did not capture enough focus/scroll state to attribute a product defect.
+
+The setup now starts at the preceding text field and uses actual Tab (or the
+existing Option-Tab compatibility path), retaining the same focused-note,
+full-viewport and solid-outline assertions. Failure context now includes active
+focus, input/header rectangles and scroll position. Local WebKit27 passes this
+setup in both themes using actual Tab with a3px solid outline. No browser, check,
+visibility threshold or product behavior was disabled; final exact CI is pending.

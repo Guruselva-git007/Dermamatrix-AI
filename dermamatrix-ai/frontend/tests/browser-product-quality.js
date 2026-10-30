@@ -346,11 +346,19 @@ async (page, options = {}) => {
     checks.push('expanded context panels and filled fields preserve readable Plex text, input and reflow in both themes');
     for(const theme of ['light','dark']){
       await page.setViewportSize({width:390,height:844});await settledTheme(theme);
-      await page.locator('#concernNote').focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
-      await page.waitForFunction(()=>{const e=document.querySelector('#concernNote'),r=e.getBoundingClientRect();return e===document.activeElement&&r.top>=64&&r.bottom<=innerHeight;});
+      // Start at the preceding text field, then use the browser's actual
+      // keyboard traversal. Some WebKit environments use Option-Tab for controls.
+      let traversal;
+      for(const key of ['Tab','Alt+Tab']){
+        await page.locator('#previousTreatment').focus();await page.keyboard.press(key);
+        if(await page.locator('#concernNote').evaluate(e=>e===document.activeElement)){traversal=key;break;}
+      }
+      assert(traversal,'Tracking note cannot be reached from the preceding field by keyboard');
+      try { await page.waitForFunction(()=>{const e=document.querySelector('#concernNote'),r=e.getBoundingClientRect();return e===document.activeElement&&r.top>=64&&r.bottom<=innerHeight;}); }
+      catch(error){const context=await page.locator('#concernNote').evaluate(e=>({focus:document.activeElement.id,rect:e.getBoundingClientRect().toJSON(),viewport:innerHeight,scrollY,header:document.querySelector('.topbar').getBoundingClientRect().toJSON()}));throw Error('Tracking-note focus/viewport failed: '+JSON.stringify(context));}
       const focus=await page.locator('#concernNote').evaluate(e=>({visible:e.matches(':focus-visible'),style:getComputedStyle(e).outlineStyle,width:parseFloat(getComputedStyle(e).outlineWidth)}));
       assert(focus.visible&&focus.style!=='none'&&focus.width>=2,'Tracking-note keyboard focus is absent: '+JSON.stringify(focus));
-      samples.push({state:'tracking-note-focus',theme,...focus});await page.screenshot({path:root+`quality-context-focus-${theme}.png`});
+      samples.push({state:'tracking-note-focus',theme,traversal,...focus});await page.screenshot({path:root+`quality-context-focus-${theme}.png`});
     }
     checks.push('tracking-note keyboard focus is visible and in view in both themes');
     await questionnaire(false);await page.locator('#patientTechnicalSlot .technical-details').evaluate(e=>e.open=true);

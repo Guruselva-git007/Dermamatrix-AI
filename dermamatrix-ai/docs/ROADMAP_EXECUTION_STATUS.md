@@ -15,7 +15,10 @@ overflowed mobile; values now wrap without changing/truncating medical content.
 The approved white/sky and navy/cyan tokens, existing layouts and scanner remain.
 No backend/controller/model/schema/data change. Product quality adds6 focused
 checks (21→27). Local frontend90, runner12 and integrated Chrome83/WebKit83
-pass; final exact-source CI will be recorded below.
+pass. First exact CI41072083917 passed Chrome/Firefox83 each but Linux
+WebKit timed out in the new focus probe. Its setup now uses preceding-field
+keyboard traversal, with visibility/outline assertions unchanged and richer
+failure context. Local WebKit27 passes; final exact-source CI remains pending.
 
 Actual native Safari attempt stopped at its browser-generated HTTPS warning for
 http://127.0.0.1:8001/. The owned tab was closed without Continue or another bypass;
