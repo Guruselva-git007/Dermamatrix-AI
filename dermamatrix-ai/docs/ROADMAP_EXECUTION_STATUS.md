@@ -5,8 +5,8 @@ Updated: 30 October 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current authorized batch — integrated product refinement (30 October):
-implementation/local verification complete; final-source CI receipt pending.**
+**Latest authorized batch — integrated product refinement (30 October): complete
+within the selected independently verifiable development scope.**
 Owner renewed optimization/fix/polish authorization, including useful internet
 design research. Reproduced late correction completion closing a replacement
 dialog, delayed check-in completion clearing a later draft, reset brief dates,
@@ -14,12 +14,31 @@ out-of-order brief previews and unreadable inherited Journey dark text/10px fiel
 Fixed these in the existing continuity controller/product stylesheet; added a
 labelled check-in review with heading-first focus. Original records, API/scoring,
 backend/schema/models and architecture remain unchanged. No phone setup,
-provider activation or deployment. 87 frontend tests and 12 runner tests pass.
-Local Chrome/WebKit each passed63 connected/offline checks before the final
-readability CSS/assertion; final Chrome quality21 passes including that addition.
-Responsive review/brief probes cover320/390/768/1440 in both themes, with enlarged
-text simulation. Exact final three-engine CI and cleanup/Git receipt follow;
-do not treat this paragraph as a final all-checks-pass claim.
+provider activation or deployment. [Exact CI 41048402988](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41048402988)
+**passes source `a4a5d92fd88203c333720b5b5a00b6855594e194`: 258 backend,
+87 frontend and 192 browser checks (64 each Chrome/Firefox/WebKit)**, explicit
+synthetic migrations, source hygiene and pinned advisory audit. The 12 focused
+runner tests also pass locally. Final Chrome quality 21 and prior local
+Chrome/WebKit 63 checks supplement the authoritative full CI. Measured affected
+dark text contrast 1.492→15.647:1; fields 10→16px IBM Plex. Responsive review/brief
+probes cover 320/390/768/1440 in both themes and enlarged-text simulation. Physical
+device/native speech/participant acceptance remains unverified, as documented.
+
+No selected unresolved P0/P1 remains in the affected verified flows. Runtime
+changes are only `frontend/continuity.js` and `frontend/product.css`; original
+backend/main renderer/index/canonical evidence/scoring/schema/model paths stay
+byte-identical. See the newest `consumer-validation-results.md` section for
+reproductions, sources, before/after evidence and limitations. Owned synthetic
+services/users/browsers are closed; normal service8000 serves current assets without
+restart. Closing documentation-only commit, remote equality, archive refresh and
+exact sleep-hold release are recorded in ignored
+`local-artifacts/product-refinement-2026-10-30/completion.json` at project root.
+
+**Next action:** preserve this verified state. Continue an explicitly requested
+development objective or the documented owner-assisted native/consumer checks
+when available. Phone tests stay deferred unless requested. Do not infer another
+cosmetic pass, provider setup or deployment; no blanket clinical/accessibility/
+default-branch/public-readiness attestation is made.
 
 **Latest continuation — native desktop acceptance (29 October): available
 independent checks complete; physical-phone testing explicitly deferred by owner.**

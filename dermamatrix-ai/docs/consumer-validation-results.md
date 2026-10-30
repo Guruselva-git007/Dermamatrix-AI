@@ -1,5 +1,110 @@
 # Consumer validation and accessibility — current development batch
 
+## Integrated consumer workflow refinement — 30 October 2026
+
+Owner requested another bounded optimization/fix/polish pass and explicitly
+allowed internet research. Baseline `bd3d935b658454ba2a362d9ebd06fbc4ad680b73`;
+existing Achromatic ledger/IBM Plex and Flask/MySQL/vanilla JS preserved. One
+worker, existing isolated synthetic database/app on loopback 3308/8001, disabled
+mail and no phone setup. The earlier phone deferral remains in force.
+
+| Finding / priority | Observed baseline | Implemented result and evidence |
+|---|---|---|
+| PR-01 / P1 — delayed saves affect the next task | With a real synthetic correction committed but response held, Back → another correction opens, then the old response closes that new dialog. A separate baseline-code probe confirms a held check-in response clears a later unsaved note. | Bind dialog UI effects/focus/status to its particular form/owner; still refresh authoritative records after confirmed saves. Clear only the unchanged reviewed check-in draft. Browser verifies the replacement dialog/note survive, original correction history remains and the submitted check-in occurs once. Source-executing regressions also cover late failure/cancel/focus/account clearing. |
+| PR-02 / P1 — unreadable inherited Journey type | Actual dark render has #183f43 headings/summary values on #191c1f (1.492:1); retired selectors also retain Manrope and 10px routine/check-in fields. | Explicit existing ink/surface/font tokens restore IBM Plex, 16px fields and 15.647:1 dark text contrast for the measured elements. Browser checks headings, summary values and fields in both themes/four widths; no new palette/font. |
+| PR-03 / P2 — blank brief defaults after entry | Account clearing resets the date inputs; new signed-in workspace shows empty start/end and fails preview until manually filled. | Restore the range from 30 local calendar days ago through today during install/account clear, while clearing private questions/selection. Dates remain editable and survive record refresh. Browser and unit tests verify usable defaults. |
+| PR-04 / P2 — obsolete clinician preview wins | Held old preview arrives after a newer one: latest questions remain but the old assessment ID/status replaces the latest selection. | Invalidate previews immediately on relevant input/record/account changes; only current owner/request/input may publish results/errors. Download stays disabled until current input is previewed. Checkbox omissions remain usable. Tests cover success/error ordering and actual connected PDF export. |
+| PR-05 / P2 — review hierarchy | Review uses several unlabelled paragraphs and starts on a control. | A semantic definition list labels routine/date/trend/discomfort/change/concern/note; initial focus starts at its heading, Back returns to the invoking control. All entered text remains available and primary actions stay44px. Responsive/keyboard checks retain explicit confirmation. |
+
+### Design references and implementation scope
+
+[GOV.UK Check answers](https://design-system.service.gov.uk/patterns/check-answers/)
+informs the labelled review and checking step before submission. The
+[W3C modal-dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
+informs heading-first focus for structured content and logical return focus.
+These patterns were adapted to the current product, without copied branding,
+new assets, dependencies or a competing component system. An attempted NHS
+error-pattern page was unavailable; no claim relies on that page.
+
+Runtime changes: `frontend/continuity.js` and `frontend/product.css` only.
+Existing browser-quality suite expanded to 21 checks; ten source-executing lifecycle
+tests added; existing runner count and consumer-development guide updated.
+No backend, API/schema, model, scoring, inference, canonical evidence, source-photo
+handling, provider or normal-database change. Request keys and append-only
+correction contracts are preserved. The fix changes who may update current UI,
+not which stored health record is authoritative.
+
+### Visual and accessibility review
+
+Final probes inspect brief and review at 320/390/768/1440px in both themes
+(16 samples). All have no horizontal page/dialog overflow; review heading is
+visible, all seven entered fields remain, both actions are 44px and IBM Plex is
+used. A long-note enlarged-text simulation at 320px has no horizontal overflow;
+this is not native zoom/OS scaling or actual speech verification. Additional
+quality-suite samples exercise five-width/two-theme catalogue reflow and
+four-width/two-theme Journey contrast/field typography.
+
+| Dimension | Observed disposition |
+|---|---|
+| Typography | Actual legacy tiny fields/low-contrast Journey type corrected; existing IBM Plex retained. |
+| Layout | Labelled review and native date/preview/download sequence remain aligned and responsive. |
+| Hierarchy | Review title leads; supported input and explicit confirmation remain visible in reading order. |
+| Spacing | Empty preview/status blocks collapse; existing control/section rhythm preserved. |
+| Consistency | Shared tokens restored instead of adding another visual system. |
+| Responsiveness | Four widths/both themes and long-note enlargement sampled; no physical device claim. |
+| Accessibility | Heading/focus restoration, labelled structure, contrast and targets checked; speech/certification remain unverified. |
+
+The first responsive screenshot caught the navigation transition; it is retained
+as an attempt, not final visual acceptance. Final captures wait for the closed
+drawer and settled theme, and show the whole brief panel. One initial standalone
+WebKit test omitted the existing runner's service-worker-blocking configuration
+and timed out at its startup network interception before any quality check;
+that attempt is not a pass. Subsequent verification uses the documented fixture
+configuration. No production worker/cache behavior or assertion was weakened.
+
+### Verification and stopping boundary
+
+Final [CI 41048402988](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41048402988)
+**passes exact source `a4a5d92fd88203c333720b5b5a00b6855594e194`: 258 backend
+and 87 frontend tests, 192 browser checks (64 each Chrome/Firefox/WebKit)**,
+explicit synthetic migrations, source hygiene and pinned dependency audit with
+no known vulnerabilities in that audited environment. This does not attest the
+unmerged default branch, clinical readiness or a public deployment.
+
+The 12 focused runner tests also pass locally. Local Chrome/WebKit each pass 63
+connected/offline checks before the final readability addition; local Chrome 21
+quality checks include the final contrast/font assertions. Local WebKit 21 passes
+before only the last heading-font assertion. The full final CI is authoritative
+for the complete source. An interim CI was cancelled when the final font fix
+superseded it; no assertion/advisory was suppressed.
+
+Measured affected Journey dark text contrast improves 1.492→15.647:1; inherited
+fields improve 10→16px. Final computed headings/values/fields use IBM Plex. The
+style lint has 0 failures and 34 heuristic warnings: date zero-padding is actual
+calendar formatting; remaining warnings are inherited reset/overlay/hidden-label
+rules, retained to preserve the completed app rather than trigger a redesign.
+No whole-product accessibility score is claimed.
+
+Runtime commits `93b91df` and `a4a5d92` are pushed. Closing Markdown follows the
+exact green source. Owned loopback app 8001/MySQL 3308/temporary SQL users/browser
+sessions are closed; normal service8000 serves the current assets without restart. Final
+remote equality/archive/sleep-hold receipts live with the baseline reproductions,
+failed attempts, screenshots and strict JSON under ignored
+`local-artifacts/product-refinement-2026-10-30/` at project root. All backend/main
+assessment/index source hashes match baseline; no normal health record, model,
+source-photo or schema write was performed.
+
+No synthetic measurement is a clinical outcome, participant observation or
+production latency claim. No speedup/SLA claim is made. The backend/canonical
+contract/history/export regression suite passes in final CI. Unresolved
+native Save/Upload/dialog/zoom/speech and representative consumer checks remain
+as documented below. Phone testing remains explicitly deferred by the owner.
+No deployment or provider activation is a next step inferred from this batch.
+
+This selected batch is complete after its exact-source regression and scoped
+records/Git/resource closure. No selected P0/P1 defect remains in the verified
+flows. Preserve the app; no speculative redesign or feature expansion is needed.
+
 ## Native desktop acceptance continuation — 29 October 2026
 
 Baseline `db2f2a8eaa331bce2df3ed09458fbe71139c1a7c` on
