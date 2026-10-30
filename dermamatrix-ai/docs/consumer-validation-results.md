@@ -342,7 +342,7 @@ system and app motion preferences disable it. Results use actual canonical evide
 Local source tests: **258 backend / 90 frontend pass**. Local browser receipts
 cover **77 Chrome + 77 WebKit checks** using the existing runner and focused
 supplements: core15, continuity12, quality21, accessibility12, sky/scanner13 and
-real origin outage/recovery4. Final exact CI receipt is recorded below when done.
+real origin outage/recovery4. Final exact CI receipt is recorded below.
 Existing cross-feature flows include saved assessment/episode/history, routines,
 check-in correction, clinician brief, guide/bookmarks/search and account isolation.
 The new suite adds 70 route/theme/width samples (seven destinations × two themes ×
@@ -358,11 +358,11 @@ heading-first processing focus and reachable cancellation pass. Both system and
 app reduced motion retain the status and cancellation. The 200% test is computed
 text enlargement at 320px, not physical-device/native speech acceptance.
 
-A local active-stage Chrome sample observed 38 frames over 616.5ms, median16.7ms /
-p95 16.8ms and zero non-input layout shift during that sample. WebKit observed 38
+A final local active-stage Chrome sample observed 37 frames over603.2ms, median16.7ms /
+p95 16.7ms and zero non-input layout shift during that sample. WebKit observed 38
 frames over605ms, median17ms/p95 18ms; its layout-shift API is unavailable, so zero
 is not a WebKit measurement. Held-response release to actual questionnaire result
-was11ms Chrome /16ms WebKit. These short synthetic samples are not model speed,
+was10ms Chrome /16ms WebKit. These short synthetic samples are not model speed,
 end-to-end latency benchmarks or proof about ordinary phones. Production adds no
 timer/RAF/interval. The scanner SVG contains22–30 elements across variants.
 
@@ -412,3 +412,41 @@ Asset receipt (raw bytes / local gzip bytes; not a transfer benchmark):
 | `product.css` | 74702 | 79807 | 15063 |
 | `app.js` | 219741 | 220231 | 54880 |
 | `scanner.js` | 0 | 4829 | 2096 |
+
+### Exact closing verification receipt
+
+Runtime **`dcc33fcb13b7eb0f6c50dd1a145a6b801d741b8b`** is committed and pushed to
+`codex/consumer-evolution`.
+[CI41066123656](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41066123656)
+completed successfully: **258backend,90frontend,231browser checks** (77each
+Chrome/Firefox/WebKit), explicit synthetic migrations, source hygiene/tracked-secret
+checks and pinned advisory audit (“No known vulnerabilities found” in that audited
+environment). Exact whole-run success supersedes the earlier Chrome motion-fixture
+failure; every suite passed together without suppressing assertions. Final local
+Chrome13 also passes on this exact runtime after the short-screen/toast changes.
+
+All baseline backend sources remain hash-identical. Inference/evidence/PIRS,
+source-specific limits, consent/owner/guest privacy, original records/revisions,
+no-source-photo retention, reports/exports, routines/check-ins/corrections/episodes
+and disabled-provider paths are preserved by unchanged sources plus focused/full
+regression evidence. No personal records, migration, model install/retraining,
+provider activation or deployment was performed. No selected unresolved critical
+or high-impact defect remains in the inspected scope.
+
+Owned test services8001/3308 and SQL users sky_synthetic were closed/dropped with
+identity checks; synthetic rows retained. Owned test browsers closed; normal
+8000/3307 remain ready/current. Private cleanup, source/size and synchronization
+receipts accompany the screenshots/video. The task sleep hold is released on
+final closure, allowing ordinary Mac sleep. Phone/native speech/touch/gallery,
+physical iPhone and participant acceptance remain unverified and owner-deferred.
+
+GitHub's push banner separately reports27 default-branch dependency alerts
+(3critical/15high/9moderate). This branch's pinned audit does not resolve or
+attest the default branch. No default-branch merge, independent security scan or
+public-readiness claim is included in this visual development batch.
+
+Important files: `frontend/product.css`, `frontend/scanner.js`, the existing
+`frontend/app.js` processing/theme/toast wiring and index script registration;
+`browser-sky-scanner.js`, `scanner.test.cjs`, the existing runner and preference-test
+DOM fixture; CI syntax check, consumer development/design references and this
+canonical checkpoint. Existing unrelated dirty/untracked work remains preserved.

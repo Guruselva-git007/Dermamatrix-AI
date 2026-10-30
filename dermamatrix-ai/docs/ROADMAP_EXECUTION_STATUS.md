@@ -6,21 +6,37 @@ Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
 **Current authorized batch — white + sky blue restoration and original scanner
-(30 October): implemented; final exact-source CI and closing receipt pending.**
-The owner explicitly supersedes the Achromatic ledger palette. Day mode is white
-with sky-blue accents; night mode is deep navy with sky blue/cyan. Retain the
-existing layout, IBM Plex, navigation, functional components, medical evidence and
-privacy contracts. Do not reinstate neutral grey because of older design guidance.
-Recovered historical tokens from the active studio layer before `eebb526`; one
-maintained product stylesheet, no retired CSS reactivation. Original request-bound
-SVG/CSS scanner has Skin/Hair/Nails/questionnaire variants, truthful status,
-reduced-motion/visibility handling and immediate disposal. Corrected inherited
-dark selected-form/consent colors, stale retry toasts and short-screen scanner
-controls. No backend/model/schema/data semantic changes. Local258backend/90frontend
-and 77checks per Chrome/WebKit receipts pass across baseline/supplements; final CI
-will verify all engines together. See newest `consumer-validation-results.md`.
-Phone tests remain deferred. Finish exact CI, preserve task-owned Git work, update
-this receipt, archive and clean up only owned resources before closing.
+(30 October): complete within the authorized development scope.**
+The owner explicitly supersedes the Achromatic ledger palette: **white dominant
++ sky blue by day; deep navy + sky blue/cyan by night**. Preserve this decision,
+IBM Plex, the verified layout/navigation and existing functional/medical/privacy
+contracts. Recovered historical values from the last active studio layer before
+`eebb526`; adapted contrast, not a blind revert or retired-CSS reactivation.
+Original four-variant SVG/CSS scanner follows actual requests, has truthful
+indeterminate text, reduced-motion/hidden handling and immediate disposal.
+Corrected inherited dark selected-form/consent colors, stale retry toasts and
+short-screen cancellation placement. No backend/model/schema/data semantic change.
+
+[Exact CI41066123656](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41066123656)
+**passes runtime `dcc33fcb13b7eb0f6c50dd1a145a6b801d741b8b`:258backend,
+90frontend and231browser checks (77each Chrome/Firefox/WebKit)**, explicit isolated
+migrations, source hygiene/tracked-secret gate and pinned advisory audit. Local
+Chrome/WebKit, screenshots and computed-style/motion probes supplement the exact
+CI. Seven destinations at320/390/768/1280/1440 in both themes; each selected input
+path in both themes; status/focus/200% computed-text/reflow/error/cancel/success /
+workspace-clear checks. No selected unresolved P0/P1 in this inspected scope.
+No clinical, legal, whole-product accessibility or public-readiness attestation.
+
+See the newest `consumer-validation-results.md` section for recovery, before/after,
+performance samples, preserved contracts and limitations. Private evidence and
+closing Git/cleanup/archive receipts live in
+`local-artifacts/sky-blue-restoration-2026-10-30/` at project root. Owned8001/3308
+services, temporary SQL user and test browsers closed; normal8000/3307 preserved
+and current. Closing documentation-only receipt is saved separately from the
+exact runtime CI. No provider/deployment/default-branch merge; phone testing stays
+explicitly deferred. Actual speech/physical-device/human acceptance remains
+external. **Next action: preserve the verified state; resume a newly authorized
+development objective or deferred owner checks only when requested.**
 
 **Latest authorized batch — integrated product refinement (30 October): complete
 within the selected independently verifiable development scope.**
