@@ -450,3 +450,110 @@ Important files: `frontend/product.css`, `frontend/scanner.js`, the existing
 `browser-sky-scanner.js`, `scanner.test.cjs`, the existing runner and preference-test
 DOM fixture; CI syntax check, consumer development/design references and this
 canonical checkpoint. Existing unrelated dirty/untracked work remains preserved.
+
+## Frontend stability and consumer acceptance — 30 October 2026
+
+This is the next owner-authorized bounded batch after the white/sky restoration.
+The verified baseline is closing commit281f22a, runtime dcc33fc and CI41066123656.
+The restored white/sky and navy/cyan design, layout, IBM Plex, navigation and
+original scanner are preserved. No speculative features, schema/controller/API /
+medical changes or phone setup. One primary worker; development only.
+
+### Reproductions and corrections
+
+| Priority | Original observation / reproduction | Minimal correction | Final observed behavior / focused proof |
+|---|---|---|---|
+| P1 | Open Skin context in dark mode: Tracking note used inherited green text, contrast2.96:1 | Remove the old context-label color/type declarations and bind the component to maintained ink/type roles | Context text uses Plex and12.68:1 minimum in measured panel samples; entered text retained across themes/widths |
+| P1 | Guest Profile dark heading: old #183f43/Manrope on #102b49, contrast1.25:1 | Remove the old heading color/font shorthand; existing current type/theme rules own it | Readable Plex heading,12.68:1 in sampled panel; no layout replacement |
+| P1 | Open actual questionnaire technical evidence: inherited strong values #315f61, contrast2.01:1 | Move technical strong color ownership from compliance.css to semantic ink in product.css | All three real technical summary values12.68:1 or higher across both themes/five widths |
+| P1 | Keyboard Tab/Shift-Tab to tracking note: :focus-visible true but outline none0px, only10%-opacity green shadow | Remove obsolete textarea focus reset rather than increasing selector specificity | Solid3px current-theme outline; actual keyboard focus remains within viewport in both themes |
+| P1 | Expand technical evidence at390px: dialog scrollWidth415/clientWidth364 and long original values clipped | Make existing technical container shrinkable; allow long values to wrap | Same real values retained; scrollWidth364/clientWidth364; no horizontal overflow at five widths/both themes or320px200% computed text |
+| P2 | Light Products description inherited11px green text, contrast3.57:1 | Remove obsolete description font-size/color; existing maintained15px/secondary text roles apply | Readable Plex description, minimum5.02:1 in sampled light/dark states |
+| P2 | Switch dark theme: --dm-ink became #edf7ff but --ink stayed #173454; other aliases also froze root values | Resolve legacy semantic aliases on root and themed body, including missing paper/mint/deep-blue/shadow mappings | All eight checked legacy-role pairs resolve against the active theme across five widths |
+| P2 | Sidebar profile arrow retained faint legacy gray | Remove old styles.css color; maintained profile rule owns current blue | Brand-consistent visible affordance; geometry preserved |
+
+CSS ownership remains explicit: product.css defines maintained roles; selected
+conflicting color/type/focus properties were removed from discover.css,
+compliance.css and styles.css. Symptom disclosure surface and summary roles now
+use the same theme. Layout declarations, active stylesheet order, necessary legacy
+bridges and untouched stylesheets remain. No new competing layer, !important
+escalation or global stylesheet deletion. Original assessment values/labels are
+not rewritten or truncated to satisfy the new wrapping assertion.
+
+The old design-reference proposal table was reconciled with implemented source:
+corrections, episodes, explanations, briefs, capture guidance, check-ins, reminder
+preview, recovery, saved guides, search and local feedback already exist. Real
+provider delivery, monitored support, physical input and participant comprehension
+remain separate/unverified. This is a documentation correction, not a new feature.
+
+### Verification
+
+Local frontend90 and focused runner12 tests pass. Integrated local Chrome and
+WebKit each pass83 checks: core15, continuity12, quality27, accessibility12,
+scanner13 and real owned-origin outage/recovery4. Existing synthetic workflows
+verify guest assessment, concern/follow-up/Journey, routine/check-in/correction,
+brief selection/export, guides/bookmarks/search, account isolation, interruption /
+retry and duplicate protections. No additional behavioral defect was reproduced
+in those covered consumer transitions; their controllers were not rewritten.
+
+Six new quality checks cover body-resolved aliases, expanded/filled context,
+actual keyboard note focus, technical values, technical reflow and Profile /
+Products readability. Source spelling is not the acceptance test: computed colors,
+font family/size, actual retained values, focus and geometry are asserted. Both
+themes and320/390/768/1280/1440 widths are sampled. Technical long values also pass
+30px text simulation at320px. Existing reduced-motion, scanner disposal, no-health
+cache, review error/cancel and cross-feature checks remain in the full runner.
+
+Private evidence root: local-artifacts/frontend-stability-2026-10-30/ at project
+root. probe-before.json records actual original computed failures; style-owners.json
+records matching declaration ownership; focus-before.json records the actual
+keyboard outline; technical-overflow.json records the original geometry and full
+strings. probe-after-final.json has no remaining contrast-probe failures in the
+sampled states. quality-first/quality-final and regression contain exact assertions,
+state samples and images; after-*-final.png provide settled focused captures.
+Some initial screenshots caught scroll/compositor transitions; final static
+captures use the existing reduced-motion mode, without production motion changes.
+No DOM duplication was found (one header). These images are not speech/device passes.
+
+Visual review covers type, layout/alignment, hierarchy, spacing, consistency,
+responsive behavior and targeted accessibility in affected states. Selected
+contrast/focus/overflow defects are corrected; no further issue observed in the
+final samples. This does not certify full WCAG conformance or human task success.
+
+### Native Safari and external acceptance
+
+Actual Safari was selected and an owned tab opened at http://127.0.0.1:8001/.
+Safari displayed its browser-generated “This Connection Is Not Secure” HTTPS
+warning with Go Back/Continue. No Continue, setting change, alternate-host/channel,
+certificate workaround or bypass was attempted. The owned tab was closed and the
+original Start Page preserved. This is not an application failure or native pass.
+
+Native file selection/replacement, correction interaction, completed PDF/JSON
+saving and native zoom/reflow remain owner-dependent. To resume, the owner must
+personally handle the Safari warning for the isolated local fixture, then resume
+at native file selection; do not silently count WebKit automation as that test.
+Phone tests stay explicitly deferred. Actual VoiceOver/TalkBack speech, physical
+phone/iPhone/touch/gallery acceptance and representative participant sessions are
+unverified. Independent implementation/regression work completed without waiting.
+
+### Performance and protections
+
+No demonstrated startup/interaction bottleneck justified a speculative performance
+rewrite. No JavaScript, network, timer, scanner or request-latency behavior was
+changed. Asset measurements below are raw/local-gzip sizes, not transfer timings
+or evidence of a speed gain. Baseline hashes confirm backend, main controllers,
+scanner, model/scoring/evidence/privacy/schema/report/export paths unchanged.
+No live migration, model install/retraining, provider activation, real medical
+input, default-branch merge or deployment was performed. Synthetic test records
+use the existing isolated fixture; personal database/service remains separate.
+
+Exact final CI/source/Git/cleanup receipt follows after integrated verification.
+
+| Stylesheet | Before raw bytes | After raw bytes | After local gzip bytes |
+|---|---:|---:|---:|
+| `styles.css` | 11233 | 11224 | 3364 |
+| `compliance.css` | 2635 | 2566 | 912 |
+| `discover.css` | 15311 | 14691 | 3545 |
+| `product.css` | 79807 | 80492 | 15263 |
+
+Combined raw delta: -13 bytes; combined local-gzip delta: +125 bytes. No loading/latency improvement claimed.

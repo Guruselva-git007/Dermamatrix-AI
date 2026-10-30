@@ -231,3 +231,23 @@ four actual-request variants, interruption/error/success, focus, reduced motion
 and stale-work disposal. Its PNG is synthetic; image requests are held before
 inference and cancelled. A real synthetic questionnaire response verifies the
 result handoff. This does not measure image-model speed or physical-device input.
+
+### Theme ownership and expanded-state acceptance (30 October 2026)
+
+`product.css` owns current theme/type/focus roles. Legacy semantic aliases are
+bound on both root and body so they resolve against the active body theme rather
+than freezing the root's light-mode values. Confirmed obsolete color/type rules
+for context labels/textareas, the symptom disclosure, Products descriptions and
+Profile headings were removed from `discover.css`; the old focus reset was
+removed. Technical value color moved from `compliance.css` to the maintained
+stylesheet. Layout rules and stylesheet order remain. This is not evidence that
+remaining legacy stylesheets are unused or safe to remove wholesale.
+
+Expanded technical evidence has a shrinkable container and wraps long values
+without truncating or rewriting evidence. The product-quality suite now has27
+checks, including aliases, expanded/filled context, real keyboard focus, Profile /
+Products contrast and full technical values at five widths in both themes, plus
+200% computed technical-text enlargement. Other suites/thresholds are unchanged.
+Native Safari encountered a browser-generated HTTPS warning for the local HTTP
+fixture; no Continue/security bypass was attempted. Native file selection,
+correction, completed saving and zoom remain owner-dependent.

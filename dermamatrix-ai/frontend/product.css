@@ -21,8 +21,6 @@
   --dm-shadow: 0 16px 48px rgb(16 62 105 / .18); --dm-shadow-sm: 0 3px 10px rgb(16 62 105 / .06);
   --dm-ease: 160ms cubic-bezier(.2, .75, .25, 1);
   --dm-scan-bg: #071e34; --dm-scan-line: #78dfff; --dm-scan-dim: #3488b5;
-  --ink: var(--dm-ink); --muted: var(--dm-muted); --line: var(--dm-line);
-  --teal: var(--dm-blue); --sky: var(--dm-accent); --canvas: var(--dm-bg);
   color-scheme: light;
 }
 body[data-theme="dark"] {
@@ -38,6 +36,14 @@ body[data-theme="dark"] {
   --dm-shadow: 0 18px 48px rgb(0 8 20 / .4); --dm-shadow-sm: 0 3px 10px rgb(0 8 20 / .15);
   --dm-scan-bg: #06172b;
   color-scheme: dark;
+}
+/* Legacy semantic consumers resolve aliases on the themed element, not only
+   on :root, where var() substitution would freeze the light-mode values. */
+:root, body {
+  --ink: var(--dm-ink); --muted: var(--dm-muted); --line: var(--dm-line);
+  --teal: var(--dm-blue); --teal-deep: var(--dm-blue-strong);
+  --sky: var(--dm-accent); --paper: var(--dm-bg); --canvas: var(--dm-bg);
+  --mint: var(--dm-blue-soft); --shadow: var(--dm-shadow);
 }
 * { box-sizing: border-box; }
 html { background: var(--dm-bg); scroll-padding-top: 84px; }
@@ -74,7 +80,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, tex
 }
 select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) { min-height: 44px; }
 textarea { min-height: 88px; resize: vertical; }
-/* Retired form selectors still carry 10px DM Sans shorthands. These controls
+/* Remaining legacy form selectors still carry 10px DM Sans shorthands. These controls
    use the same readable type as the current forms, including entered notes. */
 :is(#routineForm, #checkinForm, #profileForm, #screenDetails) textarea {
   font: 400 16px/1.5 var(--dm-font); min-height: 96px;
@@ -113,7 +119,7 @@ small { font-size: 13px; }
 .profile .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--dm-bg-soft); color: var(--dm-ink); font: 500 12px var(--dm-font); display: grid; place-items: center; }
 .profile strong { font: 500 13px var(--dm-font); }
 .profile small { display: block; color: var(--dm-muted); font-size: 12px; margin-top: 3px; }
-.profile b { margin-left: auto; font-size: 20px; }
+.profile b { margin-left: auto; font-size: 20px; color: var(--dm-blue); }
 .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 16px; justify-content: space-between; height: 64px; padding: 0 32px; background: var(--dm-surface); border-bottom: 1px solid var(--dm-line); backdrop-filter: none; }
 .topbar > div:not(.topbar-actions) { margin-right: auto; }
 .workspace-label { display: none; }
@@ -253,8 +259,10 @@ small { font-size: 13px; }
 .form-grid, .sweat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
 .form-grid label, .routine-form-card label, .checkin-form label { display: grid; gap: 7px; font: 500 14px/1.5 var(--dm-font); color: var(--dm-ink); }
 .form-grid select { margin: 0; font: inherit; color: var(--dm-ink); padding: 10px 12px; }
-.concern-note, .previous-treatment { display: grid; gap: 8px; font-size: 14px; margin-top: 16px; }
-.symptom-details summary { min-height: 40px; font-size: 14px; cursor: pointer; }
+.concern-note, .previous-treatment { color: var(--dm-ink); font-weight: 500; display: grid; gap: 8px; font-size: 14px; margin-top: 16px; }
+.symptom-details { border: 1px solid var(--dm-line); background: var(--dm-surface); }
+.symptom-details[open] summary { border-bottom: 1px solid var(--dm-line); }
+.symptom-details summary { color: var(--dm-ink); font-weight: 500; min-height: 40px; font-size: 14px; cursor: pointer; }
 .symptom-chips label { font-size: 14px; padding: 8px; }
 .sweat-checks { display: grid; gap: 12px; }
 .sweat-checks label, .clinical-checks label, .consent-row, .assessment-consent { display: flex; align-items: flex-start; gap: 10px; font: 400 14px/1.6 var(--dm-font); color: var(--dm-ink); }
@@ -632,6 +640,7 @@ body[data-theme="dark"] #assessmentScanner { background: var(--dm-scan-bg); bord
 }
 
 .modal-backdrop { backdrop-filter: none; background: rgb(0 0 0 / .4); }
+.analysis-pipeline strong, .recommendation-panel strong { color: var(--dm-ink); }
 /* The rich result owns the visible report. Legacy panels remain data bridges. */
 #resultModal.has-patient-result .result-tabs, #resultModal.has-patient-result .result-panel, #resultModal.has-patient-result .modal-actions { display: none !important; }
 #resultModal.has-patient-result .modal-card { width: min(1040px, calc(100vw - 48px)); }
@@ -680,7 +689,7 @@ body[data-theme="dark"] #assessmentScanner { background: var(--dm-scan-bg); bord
 .patient-product { padding: 14px 0; border-bottom: 1px solid var(--dm-line); }
 .patient-urgent-alert { padding: 18px; border: 1px solid var(--dm-danger); border-radius: 8px; background: var(--dm-surface); }
 .patient-urgent-alert strong { color: var(--dm-danger); }
-.patient-technical { border-top: 1px solid var(--dm-line); }
+.patient-technical { min-width: 0; overflow-wrap: anywhere; border-top: 1px solid var(--dm-line); }
 .patient-technical summary { padding: 16px 0; font-size: 14px; cursor: pointer; }
 .patient-technical .analysis-pipeline { margin: 0; }
 .patient-technical .technical-details { border: 0; margin: 0; }

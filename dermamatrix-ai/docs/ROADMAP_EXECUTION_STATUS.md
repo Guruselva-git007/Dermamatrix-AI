@@ -5,6 +5,27 @@ Updated: 30 October 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
+**Current authorized batch — frontend stability and consumer acceptance
+(30 October): selected corrections implemented; integrated verification pending.**
+Confirmed inherited low-contrast context/Profile/technical text and small Products
+description; legacy aliases froze light-mode values and a textarea focus rule
+removed the keyboard outline. Removed conflicting properties from their older
+owners and bound aliases on the themed body. Expanded technical evidence also
+overflowed mobile; values now wrap without changing/truncating medical content.
+The approved white/sky and navy/cyan tokens, existing layouts and scanner remain.
+No backend/controller/model/schema/data change. Product quality adds6 focused
+checks (21→27). Local frontend90, runner12 and integrated Chrome83/WebKit83
+pass; final exact-source CI will be recorded below.
+
+Actual native Safari attempt stopped at its browser-generated HTTPS warning for
+http://127.0.0.1:8001/. The owned tab was closed without Continue or another bypass;
+original Start Page preserved. Native file selection, correction, completed
+PDF/JSON saving and zoom/reflow remain owner-dependent. Phone stays deferred.
+Existing capability proposals were reconciled with completed source, not rebuilt.
+Private evidence: local-artifacts/frontend-stability-2026-10-30/ at project root.
+Next: complete integrated regression, preserve task-owned Git/evidence and clean
+up owned resources; no additional speculative improvements or deployment.
+
 **Current authorized batch — white + sky blue restoration and original scanner
 (30 October): complete within the authorized development scope.**
 The owner explicitly supersedes the Achromatic ledger palette: **white dominant

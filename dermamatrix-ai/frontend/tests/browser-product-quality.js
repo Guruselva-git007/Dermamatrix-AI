@@ -302,12 +302,102 @@ async (page, options = {}) => {
     const savedCount=await page.evaluate(async()=>{const data=await requestJSON('/api/progress-checkins');return data.checkins.filter(r=>r.note==='Synthetic reviewed submission').length;});assert(savedCount===1,'Delayed save duplicated or lost the reviewed check-in');
     checks.push('structured responsive check-in review and delayed save preserve the next draft without duplicates');
 
+    // These states previously inherited color/font/focus declarations from older
+    // sheets. Assert rendered behavior rather than CSS source spelling.
+    async function settledTheme(theme) {
+      await page.evaluate(theme => applyTheme(theme), theme);
+      await page.evaluate(async () => { await Promise.all(document.getAnimations().filter(a => a.effect.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {}))); });
+    }
+    async function readable(selector) {
+      return page.locator(selector).evaluateAll(elements => {
+        const rgba = value => value.match(/[\d.]+/g).map(Number);
+        const luminance = c => c.slice(0,3).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((sum,v,i) => sum + v * [.2126,.7152,.0722][i],0);
+        function background(e) {
+          const result = [0,0,0,0];
+          while(e && result[3] < 1) { const c=rgba(getComputedStyle(e).backgroundColor),a=c[3]??1; for(let i=0;i<3;i++) result[i] += c[i]*a*(1-result[3]); result[3] += a*(1-result[3]); e=e.parentElement; }
+          return result;
+        }
+        return elements.filter(e => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden').map(e => {
+          const style=getComputedStyle(e), fg=luminance(rgba(style.color)), bg=luminance(background(e));
+          return {id:e.id,tag:e.tagName,text:e.textContent.trim().slice(0,80),ratio:(Math.max(fg,bg)+.05)/(Math.min(fg,bg)+.05),font:style.fontFamily,size:parseFloat(style.fontSize)};
+        });
+      });
+    }
+    await page.setViewportSize({width:1440,height:960});await nav('home');await page.locator('.area-choice [data-area=Skin]').click();
+    await page.evaluate(()=>{document.querySelector('#screenDetails').open=true;document.querySelector('.symptom-details').open=true;});
+    await page.locator('#concernNote').fill('Synthetic context retained across theme changes');await page.locator('#previousTreatment').fill('Synthetic care context, not medical advice');
+    const aliasSamples=[];
+    for(const theme of ['light','dark'])for(const width of [320,390,768,1280,1440]){
+      await page.setViewportSize({width,height:960});await settledTheme(theme);
+      const aliases=await page.evaluate(()=>{
+        const style=getComputedStyle(document.body),pairs={'--ink':'--dm-ink','--muted':'--dm-muted','--line':'--dm-line','--teal':'--dm-blue','--teal-deep':'--dm-blue-strong','--paper':'--dm-bg','--mint':'--dm-blue-soft','--shadow':'--dm-shadow'};
+        return Object.entries(pairs).map(([alias,target])=>({alias,value:style.getPropertyValue(alias).trim(),expected:style.getPropertyValue(target).trim()}));
+      });
+      assert(aliases.every(a=>a.value===a.expected),'Legacy theme alias froze a different theme: '+JSON.stringify(aliases));aliasSamples.push({theme,width,aliases});
+      const values=await readable('.concern-note,.previous-treatment,.symptom-details > summary,#concernNote,#previousTreatment');
+      assert(values.length===5&&values.every(v=>v.ratio>=4.5&&v.font.includes('IBM Plex Sans')&&v.size>=14),'Opened context text is unreadable: '+JSON.stringify(values));
+      assert(await page.locator('#concernNote').inputValue()==='Synthetic context retained across theme changes','Theme changes lost entered context');
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Opened assessment context overflows');
+      samples.push({state:'opened-context',theme,width,values});
+      if([390,1440].includes(width))await page.screenshot({path:root+`quality-open-context-${theme}-${width}.png`,animations:'disabled'});
+    }
+    samples.push({state:'legacy-theme-aliases',values:aliasSamples});
+    checks.push('legacy semantic aliases resolve against the active theme at five widths');
+    checks.push('expanded context panels and filled fields preserve readable Plex text, input and reflow in both themes');
+    for(const theme of ['light','dark']){
+      await page.setViewportSize({width:390,height:844});await settledTheme(theme);
+      await page.locator('#concernNote').focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
+      await page.waitForFunction(()=>{const e=document.querySelector('#concernNote'),r=e.getBoundingClientRect();return e===document.activeElement&&r.top>=64&&r.bottom<=innerHeight;});
+      const focus=await page.locator('#concernNote').evaluate(e=>({visible:e.matches(':focus-visible'),style:getComputedStyle(e).outlineStyle,width:parseFloat(getComputedStyle(e).outlineWidth)}));
+      assert(focus.visible&&focus.style!=='none'&&focus.width>=2,'Tracking-note keyboard focus is absent: '+JSON.stringify(focus));
+      samples.push({state:'tracking-note-focus',theme,...focus});await page.screenshot({path:root+`quality-context-focus-${theme}.png`});
+    }
+    checks.push('tracking-note keyboard focus is visible and in view in both themes');
+    await questionnaire(false);await page.locator('#patientTechnicalSlot .technical-details').evaluate(e=>e.open=true);
+    for(const theme of ['light','dark'])for(const width of [320,390,768,1280,1440]){
+      await page.setViewportSize({width,height:960});await settledTheme(theme);
+      const values=await readable('#patientTechnicalSlot .evidence-summary strong');
+      assert(values.length===3&&values.every(v=>v.ratio>=4.5&&v.font.includes('IBM Plex Sans')),'Technical values are unreadable: '+JSON.stringify(values));
+      samples.push({state:'technical-values',theme,width,values});
+      const geometry=await page.locator('#resultModal .modal-card').evaluate(card=>{const slot=card.querySelector('#patientTechnicalSlot');return{cardOverflow:card.scrollWidth>card.clientWidth+1,slotOverflow:slot.scrollWidth>slot.clientWidth+1,values:[...slot.querySelectorAll('dd')].map(e=>e.textContent)};});
+      assert(!geometry.cardOverflow&&!geometry.slotOverflow&&geometry.values.some(v=>v.includes('NOT_AVAILABLE_NO_VALIDATED_TABULAR_MODEL')),'Expanded technical evidence clips or loses original values: '+JSON.stringify(geometry));
+
+      if([390,1440].includes(width)){await page.locator('#patientTechnicalSlot').scrollIntoViewIfNeeded();await page.screenshot({path:root+`quality-technical-values-${theme}-${width}.png`,animations:'disabled'});}
+    }
+    await page.setViewportSize({width:320,height:844});
+    const largeTechnical=await page.addStyleTag({content:'.patient-technical, .patient-technical p, .patient-technical dt, .patient-technical dd {font-size:30px}'});
+    for(const theme of ['light','dark']){
+      await settledTheme(theme);
+      const large=await page.locator('#resultModal .modal-card').evaluate(card=>({overflow:card.scrollWidth>card.clientWidth+1,size:parseFloat(getComputedStyle(card.querySelector('.patient-technical dd')).fontSize)}));
+      assert(!large.overflow&&large.size>=30,'Enlarged technical text is clipped: '+JSON.stringify(large));
+      samples.push({state:'technical-text-200',theme,width:320,...large});
+      await page.screenshot({path:root+`quality-technical-text-200-${theme}.png`,animations:'disabled'});
+    }
+    await largeTechnical.evaluate(e=>e.remove());
+    await page.locator('#resultModal .modal-close').click();
+    checks.push('actual questionnaire technical values remain readable in both themes at five widths');
+    checks.push('expanded technical evidence wraps full original values without horizontal overflow at five widths');
+
     await page.setViewportSize({ width: 1440, height: 960 }); await logout();
     assert(await page.evaluate(() => !state.profile && !document.querySelector('#patientResultContent') && document.querySelector('#authGate').classList.contains('show') && document.querySelector('.app-shell').inert), 'Sign-out did not clear and isolate the private workspace');
     await page.locator('#continueGuestButton').click();
     await page.waitForFunction(() => state.isGuest && !document.querySelector('#authGate').classList.contains('show'));
     assert(await page.evaluate(() => !state.profile && !document.querySelector('#patientResultContent') && !document.querySelector('.app-shell').inert), 'Guest workspace retained private evidence');
     checks.push('final account clearing preserves guest boundary');
+    await page.setViewportSize({width:1440,height:960});
+    for(const theme of ['light','dark'])for(const width of [320,390,768,1280,1440]){
+      await page.setViewportSize({width,height:960});await settledTheme(theme);
+      for(const route of ['settings','products']){
+        await page.evaluate(route=>showPage(route,{scrollToTop:false}),route);
+        const values=await readable(route==='settings'?'#settings h2':'.products-heading p:not(.eyebrow)');
+        assert(values.length>0&&values.every(v=>v.ratio>=4.5&&v.font.includes('IBM Plex Sans')&&v.size>=14),'Heading/description lost readable theme styling: '+JSON.stringify(values));
+        assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Profile/product entry overflows');
+        samples.push({state:route+'-readability',theme,width,values});
+        if([390,1440].includes(width))await page.screenshot({path:root+`quality-${route}-readability-${theme}-${width}.png`,animations:'disabled'});
+      }
+    }
+    checks.push('guest Profile headings and Products descriptions retain readable theme typography at five widths');
+
     assert(!errors.length, errors.join('; '));
     return { checks, errors, samples };
   } catch (error) {

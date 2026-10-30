@@ -51,25 +51,33 @@ At 1440px, the 232px sidebar leaves a 1208px canvas; two 32px gutters leave
 three 16px gaps. Other sections share the same outer edges. Short cards fit their
 content instead of stretching over blank space.
 
-## Recommended next development, in priority order
+## Existing capability status — reconciled 30 October 2026
 
-These are proposals, not claims that the features already exist or instructions
-to launch services. Existing capabilities should be extended rather than duplicated.
+The former proposal table predates later implementation. It is not a backlog of
+missing features. Current source, the canonical checkpoint and exact CI receipts
+own status; recheck them before extending any item.
 
-| Priority | Improvement | Consumer value | Development work |
-|---|---|---|---|
-| 1 | Correct or undo a mistaken routine action | A mistap does not become a permanent frustration | Owner-authorised correction endpoint, immutable revision history, conflict protection and clear undo feedback; preserve the original event |
-| 1 | Guided concern episodes and body-area choices | Follow-ups stay with the same concern without typing identical labels | Normalised optional episode/body-area identifiers, accessible picker and filters; preserve original assessment JSON and existing labels |
-| 1 | A concise result explanation before detailed evidence | Answers “what does this mean for me?” | Content hierarchy and progressive disclosure using the existing canonical result; distinguish reported symptoms, image findings, research rankings and unavailable evidence |
-| 1 | A focused clinician-visit brief | Helps someone explain their concern clearly | Select one episode/date range, show relevant self-reported changes and questions, and export a readable brief; describe coverage and missing images honestly |
-| 2 | Better camera/gallery capture guidance | Fewer failed submissions and repeated attempts | Framing/lighting guidance, accessible camera fallback, local preview checks and physical iPhone/Android testing; retain current size limits and no retained source pixels |
-| 2 | A lighter recurring check-in | Tracking takes less effort | Relevant questions, remembered routine selection, explicit self-reported symptom impact and review before saving; version any expanded data contract and consent purpose |
-| 2 | Reminder preview and pause clarity | Users understand the schedule before opting in | Show timezone/quiet-hour effects and distinguish configured preferences, queued work and confirmed delivery; preview must not imply a provider is active |
-| 2 | More helpful empty, failed and interrupted states | People know how to recover without losing their place | Specific inline retry actions, preserve safe current-tab input, restore focus and distinguish unsaved work from saved records |
-| Deferred | Additional language support | Outside the current English-only development scope | Do not introduce localization or translation infrastructure in the October 28 implementation; preserve any existing assets |
-| 3 | Saved educational topics | Useful information is easy to revisit | Explicit account-owned bookmarks and content version/source dates; no claim of a clinical reviewer unless one is recorded |
-| 3 | Better unified search | Finds results, routines and education in one place | Owner-scoped indexed search with explicit categories, current filters, pagination and useful no-match recovery; avoid exposing private results to guests |
-| 3 | Clear support and feedback | Users can report a confusing result or broken screen | Contextual category/page/version, explicit optional text, no automatic photo/health-content attachment; a monitored support channel requires a real operator |
+| Existing capability | Current development status | Remaining acceptance or boundary |
+|---|---|---|
+| Routine action correction | Implemented with original events/revisions preserved | Keep conflict, retry and cross-view consistency coverage |
+| Concern episodes/body areas | Implemented, explicitly owner-scoped, with history filters | Legacy unassigned evidence remains readable; no inferred auto-linking |
+| Plain result explanation | Implemented: observation, support, uncertainty and next action | Human comprehension has not been measured |
+| Clinician-visit brief | Implemented selection, preview and PDF using canonical records | Native Safari completed saving remains unverified; no retained images |
+| Camera/gallery guidance | Existing capture controls, format/size limits and preview guidance | Physical camera/gallery/HEIC/touch acceptance remains external; phone deferred |
+| Recurring check-in | Existing form, labelled review and correction workflow | Reducing questions needs observed consumer benefit; no expanded medical contract implied |
+| Reminder preview/pause | Implemented local schedule/availability states | Provider activation/delivery remains disabled and deferred |
+| Failed/interrupted recovery | Existing inline recovery, current-tab input and idempotent retry | Extend only uncovered cases or reproduced defects; do not rebuild |
+| Saved educational guides | Existing account-owned bookmarks and source/version information | No invented clinical reviewer or content-validation claim |
+| Unified search | Existing owner-scoped records and educational guide search | Maintain privacy, filter and pagination boundaries |
+| Feedback/support | Existing local capture and recorded-pending-operator status | This is not a monitored support service or confirmed response |
+| Additional languages | Outside English-only scope | Remains deferred |
+
+The selected next batch is frontend stability and independently available
+consumer acceptance: remove confirmed conflicting style ownership, retain the
+approved white/sky and navy identity, verify filled/error/expanded/keyboard states,
+and preserve exact evidence. Avoid reopening already completed features merely
+because a historical idea list names them. Native Safari security warnings require
+owner handling; do not bypass them to manufacture a native test pass.
 
 Avoid adding diagnosis chatbots, medicine selection, automatic healing claims,
 unnecessary social feeds or raw-photo journals merely to increase the feature
