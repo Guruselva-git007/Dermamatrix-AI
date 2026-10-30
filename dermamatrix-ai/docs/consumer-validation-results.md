@@ -456,8 +456,8 @@ canonical checkpoint. Existing unrelated dirty/untracked work remains preserved.
 This is the next owner-authorized bounded batch after the white/sky restoration.
 The verified baseline is closing commit281f22a, runtime dcc33fc and CI41066123656.
 The restored white/sky and navy/cyan design, layout, IBM Plex, navigation and
-original scanner are preserved. No speculative features, schema/controller/API /
-medical changes or phone setup. One primary worker; development only.
+original scanner are preserved. No speculative features, schema/API/medical changes or phone setup. A targeted
+continuity-dialog autofocus guard was added after a reproducible input-loss race. One primary worker; development only.
 
 ### Reproductions and corrections
 
@@ -539,10 +539,10 @@ unverified. Independent implementation/regression work completed without waiting
 ### Performance and protections
 
 No demonstrated startup/interaction bottleneck justified a speculative performance
-rewrite. No JavaScript, network, timer, scanner or request-latency behavior was
-changed. Asset measurements below are raw/local-gzip sizes, not transfer timings
-or evidence of a speed gain. Baseline hashes confirm backend, main controllers,
-scanner, model/scoring/evidence/privacy/schema/report/export paths unchanged.
+rewrite. No network, scanner or request-latency behavior was changed. The small
+continuity UI autofocus guard is described below. Asset measurements below are raw/local-gzip sizes, not transfer timings
+or evidence of a speed gain. Baseline hashes confirm backend, main assessment controller, scanner and
+model/scoring/evidence/privacy/schema/report/export paths unchanged.
 No live migration, model install/retraining, provider activation, real medical
 input, default-branch merge or deployment was performed. Synthetic test records
 use the existing isolated fixture; personal database/service remains separate.
@@ -570,3 +570,22 @@ full-viewport and solid-outline assertions. Failure context now includes active
 focus, input/header rectangles and scroll position. Local WebKit27 passes this
 setup in both themes using actual Tab with a3px solid outline. No browser, check,
 visibility threshold or product behavior was disabled; final exact CI is pending.
+
+Second CI41074357496 again passed Chrome/Firefox83 each but failed earlier in the
+existing delayed-correction assertion on Linux WebKit, before reaching the new
+focus probe. A controlled browser delayed-frame reproduction then established a
+real UI race: after the user chose a new correction textarea, its queued heading
+focus took focus away; typed keystrokes were lost before the old response resumed.
+Before: TEXTAREA→H2, typed draft empty, replacement dialog still open. After the
+guard: TEXTAREA remains focused, “Synthetic typed draft” is present both before
+and after the delayed save. The old save's record/dialog identity guards remain.
+
+continuity.js now allows its deferred heading focus only while focus is still
+where opening the dialog left it. A chosen input is respected. The new source-
+executing unit test fails before/passes after; all91 frontend tests pass. The
+existing browser correction test deterministically holds/releases that heading
+frame, types actual keystrokes and checks the draft before/after the old save.
+Focused WebKit27 passes with the stronger case. The existing viewport/outline and
+all previous checks remain; no failure was suppressed or browser omitted. The
+initial focus-probe timeout is not conclusively attributed to this race; final
+whole CI must verify the selected keyboard paths and dialog behavior together.

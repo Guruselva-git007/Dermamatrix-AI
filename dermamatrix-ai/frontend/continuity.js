@@ -68,7 +68,8 @@
       }catch(error){if(sameDialog()&&d.open)status.textContent=`${error.message} This attempt was not confirmed. Your input remains here; retry the same details or reload if another tab changed the record.`;}
       finally{submit.disabled=false;}
     };
-    d.showModal();d.scrollTop=0;requestAnimationFrame(()=>{if(sameDialog()&&d.open)heading.focus({preventScroll:true});});
+    d.showModal();d.scrollTop=0;const initialFocus=document.activeElement;
+    requestAnimationFrame(()=>{if(sameDialog()&&d.open&&document.activeElement===initialFocus)heading.focus({preventScroll:true});});
   }
   function correctEvent(id, revision, title) {
     const content=el('div');content.append(el('p',title),el('p','The original action remains in history. Choose the effective status now.'));

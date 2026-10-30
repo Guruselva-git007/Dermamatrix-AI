@@ -68,6 +68,11 @@ test('review starts at its heading and cancellation returns to the explicit invo
   const h=harness();h.api.dialog('Review',h.content(),async()=>{},'Save',h.trigger);h.frames.shift()();
   assert.equal(h.document.activeElement,h.get('continuityDialogTitle'));h.get('continuityDialog').close();assert.equal(h.document.activeElement,h.trigger);
 });
+test('deferred heading focus respects an input already chosen by the user',()=>{
+  const h=harness(),content=h.content(),field=h.content();field.tagName='TEXTAREA';content.append(field);
+  h.api.dialog('Correction',content,async()=>{});field.focus();h.frames.shift()();
+  assert.equal(h.document.activeElement,field);
+});
 test('deferred dialog focus cannot run after cancellation or account clearing',()=>{
   const h=harness();h.api.dialog('Review',h.content(),async()=>{});h.ui.clear();h.state.profile=null;h.frames.shift()();
   assert.notEqual(h.document.activeElement,h.get('continuityDialogTitle'));assert.equal(h.get('continuityDialog').open,false);

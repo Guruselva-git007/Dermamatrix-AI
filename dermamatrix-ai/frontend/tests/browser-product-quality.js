@@ -278,8 +278,17 @@ async (page, options = {}) => {
     let releaseCorrection,correctionCaptured;const correctionGate=new Promise(resolve=>releaseCorrection=resolve),correctionReady=new Promise(resolve=>correctionCaptured=resolve);
     await page.route('**/api/corrections/checkin/*',async route=>{const response=await route.fetch();correctionCaptured();await correctionGate;await route.fulfill({response});});
     await page.locator('#correct-trend').selectOption('improving');await page.locator('#continuityDialog [type=submit]').click();await correctionReady;
-    await page.locator('#continuityDialog').getByRole('button',{name:'Back',exact:true}).click();await page.locator('#checkinCorrections button').nth(1).click();
-    await page.locator('#continuityDialog textarea').fill('Synthetic new correction draft');
+    await page.locator('#continuityDialog').getByRole('button',{name:'Back',exact:true}).click();
+    // Hold only the application's deferred heading frame. This reproduces a
+    // user choosing/typing in the next dialog before a busy renderer autofocuses.
+    await page.evaluate(()=>{window.qualityDialogFrames={original:window.requestAnimationFrame,frames:[]};window.requestAnimationFrame=callback=>{if(String(callback).includes('heading.focus')){window.qualityDialogFrames.frames.push(callback);return -1;}return window.qualityDialogFrames.original(callback);};});
+    try{
+      await page.locator('#checkinCorrections button').nth(1).click();await page.locator('#continuityDialog textarea').fill('');await page.locator('#continuityDialog textarea').focus();
+      await page.evaluate(()=>{for(const callback of window.qualityDialogFrames.frames)callback(performance.now());});
+      assert(await page.locator('#continuityDialog textarea').evaluate(e=>e===document.activeElement),'Deferred heading stole the chosen correction field');
+      await page.keyboard.type('Synthetic new correction draft');
+      assert(await page.locator('#continuityDialog textarea').inputValue()==='Synthetic new correction draft','Chosen correction input lost typed keystrokes');
+    }finally{await page.evaluate(()=>{window.requestAnimationFrame=window.qualityDialogFrames.original;delete window.qualityDialogFrames;});}
     const oldCorrection=page.waitForResponse(r=>new URL(r.url()).pathname.startsWith('/api/corrections/checkin/'));releaseCorrection();await (await oldCorrection).finished();await page.waitForFunction(id=>state.checkins.find(r=>r.checkin_id===id)?.revision===1,correctedId);await page.unroute('**/api/corrections/checkin/*');
     assert(await page.locator('#continuityDialog').evaluate(e=>e.open)&&await page.locator('#continuityDialog textarea').inputValue()==='Synthetic new correction draft','Old save closed or changed the current correction');
     assert((await page.locator('#checkinCorrections').textContent()).includes('Original: unchanged'),'Completed correction lost its original record');await page.keyboard.press('Escape');

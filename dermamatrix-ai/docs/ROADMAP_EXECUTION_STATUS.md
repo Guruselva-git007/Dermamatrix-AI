@@ -13,12 +13,16 @@ removed the keyboard outline. Removed conflicting properties from their older
 owners and bound aliases on the themed body. Expanded technical evidence also
 overflowed mobile; values now wrap without changing/truncating medical content.
 The approved white/sky and navy/cyan tokens, existing layouts and scanner remain.
-No backend/controller/model/schema/data change. Product quality adds6 focused
+Backend/core assessment/scanner/model/schema/data remain unchanged; a small
+continuity-dialog autofocus guard additionally prevents a chosen input losing focus. Product quality adds6 focused
 checks (21→27). Local frontend90, runner12 and integrated Chrome83/WebKit83
 pass. First exact CI41072083917 passed Chrome/Firefox83 each but Linux
 WebKit timed out in the new focus probe. Its setup now uses preceding-field
 keyboard traversal, with visibility/outline assertions unchanged and richer
-failure context. Local WebKit27 passes; final exact-source CI remains pending.
+failure context. Local WebKit27 passes. Second CI41074357496 failed an earlier correction
+draft assertion; controlled delayed-frame reproduction confirmed heading autofocus
+could steal a chosen textarea and lose keystrokes. Its guard and deterministic
+browser case now pass locally, along with91 frontend tests. Final CI is pending.
 
 Actual native Safari attempt stopped at its browser-generated HTTPS warning for
 http://127.0.0.1:8001/. The owned tab was closed without Continue or another bypass;

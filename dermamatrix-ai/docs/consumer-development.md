@@ -251,3 +251,9 @@ Products contrast and full technical values at five widths in both themes, plus
 Native Safari encountered a browser-generated HTTPS warning for the local HTTP
 fixture; no Continue/security bypass was attempted. Native file selection,
 correction, completed saving and zoom remain owner-dependent.
+
+A later controlled delayed-frame check found correction-heading autofocus could
+steal a field the user had already chosen, losing subsequent keystrokes. The
+continuity dialog now checks that focus is unchanged before its deferred heading
+focus. Existing owner/form/request guards remain. Unit91 and the deterministic
+held-frame browser case verify the chosen textarea and draft are retained.
