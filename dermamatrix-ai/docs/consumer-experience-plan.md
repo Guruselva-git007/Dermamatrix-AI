@@ -1,6 +1,6 @@
 # Consumer experience: design decisions and next improvements
 
-27 October 2026. This is a product/design reference; the execution checkpoint is
+Updated 30 October 2026. This is a product/design reference; the execution checkpoint is
 `ROADMAP_EXECUTION_STATUS.md`. Development remains the standing scope until
 Guruselva explicitly requests deployment. Provider activation is also deferred.
 
@@ -19,7 +19,7 @@ not establish clinical validation, diagnosis, legal compliance or a clinical ser
 
 | Area | Consumer benefit | Implementation |
 |---|---|---|
-| Visual foundation | Screens look like one product | One product stylesheet replaces six conflicting historical design layers; shared type, neutral surfaces, borders, radii, focus and control sizes |
+| Visual foundation | Screens look like one product | One product stylesheet replaces six conflicting historical design layers; shared type, restored white/sky and navy surfaces, borders, radii, focus and control sizes |
 | Home | Useful actions appear before decoration | Compact heading, one main start action, four concern shortcuts, factual routine/record panels and content-sized empty states |
 | Check | Users see only the relevant input | Concern selection comes before image/questionnaire fields; optional context and teaching tools stay secondary; existing consent and final review remain |
 | Journey | Finding a result does not require passing unrelated forms | Separate Results, Routines and Check-ins panels with keyboard-operable tabs; one searchable result list; extra filters disclosed on request |
@@ -30,11 +30,21 @@ not establish clinical validation, diagnosis, legal compliance or a clinical ser
 | Reliability | Fast entry and account changes behave predictably | Autofocus respects an already selected field; full forms and status clear on sign-out; email actions stay disabled while availability is unknown or disabled |
 | Responsive UI | The same jobs remain usable on a small screen | Folded labelled navigation, deliberate tablet layout, single-column forms where needed and 44px control targets |
 
-The visual direction is Achromatic ledger, seed 1478287822, with the existing
-self-hosted IBM Plex typography and restrained blue links/evidence. Its identity
-comes from the four concern pathways and honest record presentation, rather than
-decorative health scores or medical imagery. No chart or invented health data was
-added. Screenshots use an explicitly synthetic account in a disposable database.
+The owner's 30 October restoration supersedes the previous Achromatic ledger
+palette: **white + sky blue by day; deep navy + sky blue/cyan by night**. Keep the
+successful layout, spacing, IBM Plex typography, navigation and functional
+components. `product.css` remains the sole maintained presentation layer;
+retired theme/design-system/premium/studio sheets remain inactive. Recovered
+values from `studio.css` before `eebb526` are adapted for readable actions,
+secondary text and control boundaries. Do not revert to neutral grey on the basis
+of an earlier optimization prompt or a generic design-skill palette rule.
+
+The original decorative scanner uses four related SVG motifs only while the
+assessment request is active. No uploaded pixels, biometric collection or medical
+localization enter this artwork. It has honest indeterminate status, CSS-only
+motion, reduced-motion support and immediate disposal; no fake stage completion,
+percentage or intentional result delay. Research limitations and actual evidence
+still own the result. No chart or invented health data is added.
 
 At 1440px, the 232px sidebar leaves a 1208px canvas; two 32px gutters leave
 1144px. A panel's two 22px pads leave 1100px: four 263px concern controls plus

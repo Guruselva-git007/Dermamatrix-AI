@@ -5,6 +5,23 @@ Updated: 30 October 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
+**Current authorized batch — white + sky blue restoration and original scanner
+(30 October): implemented; final exact-source CI and closing receipt pending.**
+The owner explicitly supersedes the Achromatic ledger palette. Day mode is white
+with sky-blue accents; night mode is deep navy with sky blue/cyan. Retain the
+existing layout, IBM Plex, navigation, functional components, medical evidence and
+privacy contracts. Do not reinstate neutral grey because of older design guidance.
+Recovered historical tokens from the active studio layer before `eebb526`; one
+maintained product stylesheet, no retired CSS reactivation. Original request-bound
+SVG/CSS scanner has Skin/Hair/Nails/questionnaire variants, truthful status,
+reduced-motion/visibility handling and immediate disposal. Corrected inherited
+dark selected-form/consent colors, stale retry toasts and short-screen scanner
+controls. No backend/model/schema/data semantic changes. Local258backend/90frontend
+and 77checks per Chrome/WebKit receipts pass across baseline/supplements; final CI
+will verify all engines together. See newest `consumer-validation-results.md`.
+Phone tests remain deferred. Finish exact CI, preserve task-owned Git work, update
+this receipt, archive and clean up only owned resources before closing.
+
 **Latest authorized batch — integrated product refinement (30 October): complete
 within the selected independently verifiable development scope.**
 Owner renewed optimization/fix/polish authorization, including useful internet

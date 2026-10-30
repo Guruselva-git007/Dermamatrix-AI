@@ -160,7 +160,7 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
 
 function toast(message) {
   const element = $('#toast');
-  element.textContent = message; element.classList.add('show');
+  element.hidden = false; element.textContent = message; element.classList.add('show');
   clearTimeout(toast.timer); toast.timer = setTimeout(() => element.classList.remove('show'), 3200);
 }
 
@@ -800,7 +800,7 @@ function installProcessingOverlay() {
   if ($('#processingModal')) return;
   const overlay = document.createElement('div');
   overlay.id = 'processingModal'; overlay.className = 'processing-modal'; overlay.setAttribute('aria-hidden', 'true'); overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-labelledby', 'processingTitle');
-  overlay.innerHTML = '<div class="processing-card" role="status" aria-live="polite"><div class="scan-visual" aria-hidden="true"><span class="scan-corner corner-one"></span><span class="scan-corner corner-two"></span><span class="scan-corner corner-three"></span><span class="scan-corner corner-four"></span><span class="scan-line"></span><span class="scan-glow"></span></div><p class="eyebrow">ANALYSIS IN PROGRESS</p><h2 id="processingTitle">Preparing your screening summary</h2><p id="processingCopy">Each completed stage is shown clearly. This app will not represent an unavailable model as a result.</p><ol id="processingSteps" class="processing-steps"></ol><button type="button" class="button quiet" id="cancelAssessmentButton">Stop waiting</button><p class="processing-interruption-note">Stopping the wait cannot undo work already received by the server.</p></div>';
+  overlay.innerHTML = '<div class="processing-card"><div class="scan-visual" id="assessmentScanner" aria-hidden="true"></div><p class="eyebrow processing-kicker">Dermamatrix · processing</p><h2 id="processingTitle" tabindex="-1">Preparing your screening summary</h2><p id="processingStatus" class="processing-status" role="status" aria-live="polite" aria-atomic="true">Waiting for your assessment</p><p id="processingCopy"></p><details class="processing-details"><summary>What this review includes</summary><p>Server work is indeterminate. These are review tasks, not live progress updates.</p><ul id="processingSteps" class="processing-steps"></ul></details><p class="scanner-art-note">Illustration only · no biometric identification</p><button type="button" class="button quiet" id="cancelAssessmentButton">Stop waiting</button><p class="processing-interruption-note">Stopping the wait cannot undo work already received by the server.</p></div>';
   document.body.append(overlay);
   $('#cancelAssessmentButton').onclick = interruptAssessment;
 }
@@ -822,11 +822,14 @@ function openProcessing(area) {
   $('#processingTitle').textContent = area === 'Sweat' ? 'Preparing your questionnaire summary' : 'Preparing your image summary';
   const fallbackCopy = area === 'Skin'
     ? 'Image quality and research-model eligibility are checked before any scoped output is shown.'
-    : area === 'Sweat' ? 'Questionnaire inputs are explained with transparent contributions; no image model runs.' : 'Image quality is checked first. A disorder label is shown only if this deployment has compatible trained weights.';
+    : area === 'Sweat' ? 'Questionnaire inputs are explained with transparent contributions; no image model runs.' : area === 'Hair' ? 'Photo quality and reported context are reviewed; no hair-condition classifier runs.' : 'Photo quality and eligibility for the nail research model are checked before scoped output is shown.';
   $('#processingCopy').textContent = state.modelCapabilities[area]?.user_message || fallbackCopy;
-  $('#processingSteps').innerHTML = stages.map((stage, index) => `<li class="${index === 0 ? 'active' : ''}"><span>${index === 0 ? '…' : index + 1}</span>${stage}</li>`).join('');
+  $('#processingSteps').innerHTML = stages.map(stage => `<li>${escapeHTML(stage)}</li>`).join('');
+  $('#processingStatus').textContent = area === 'Sweat' ? 'Reviewing questionnaire responses…' : area === 'Hair' ? 'Reviewing photo quality and reported context…' : 'Reviewing photo and reported context…';
+  $('#processingModal .processing-details').open = false;
+  window.AssessmentScanner?.start(area);
   modal.classList.add('show'); modal.setAttribute('aria-hidden', 'false');
-  syncInteractionInertness(); $('#cancelAssessmentButton').focus();
+  syncInteractionInertness(); $('.processing-card').scrollTop = 0; $('#processingTitle').focus({ preventScroll: true });
 }
 
 async function loadModelCapabilities() {
@@ -843,11 +846,11 @@ async function loadModelCapabilities() {
   }
 }
 
-function finishProcessing(succeeded = false) {
+function finishProcessing() {
   const modal = $('#processingModal');
-  if (succeeded) {
-    $$('#processingSteps li').forEach(row => { row.classList.remove('active'); row.classList.add('done'); const icon = row.querySelector('span'); if (icon) icon.textContent = '✓'; });
-  }
+  window.AssessmentScanner?.stop();
+  const status = $('#processingStatus');
+  if (status) status.textContent = '';
   if (modal) { modal.classList.remove('show'); modal.setAttribute('aria-hidden', 'true'); }
   syncInteractionInertness();
 }
@@ -1746,13 +1749,14 @@ async function analyze() {
   const controller = new AbortController(); state.assessmentController = controller;
   state.assessmentId = null; state.resultImageUrl = null; state.resultPersistence = null;
   showAssessmentFeedback('');
+  clearTimeout(toast.timer); $('#toast').classList.remove('show'); $('#toast').hidden = true;
   state.assessmentInFlight = true;
   state.reviewResultReady = false;
   setAssessmentInputBusy(true);
   button.disabled = true; button.innerHTML = 'Reviewing <span>…</span>';
   transitionAssessment(AssessmentState.INPUT_VALIDATING, 'VALIDATING INPUT');
-  openProcessing(state.area);
   try {
+    openProcessing(state.area);
     let data;
     transitionAssessment(AssessmentState.PREPROCESSING, 'SERVER-SIDE PREPROCESSING');
     transitionAssessment(AssessmentState.ANALYZING, 'ASSESSMENT RUNNING');
@@ -1792,7 +1796,7 @@ async function analyze() {
         : terminalResultState === 'uncertain' || outcomeCode === 'UNCERTAIN' || data.research_classifier?.uncertainty?.status === 'LOW_CONFIDENCE'
           ? AssessmentState.LOW_CONFIDENCE
           : AssessmentState.RESULT_READY;
-    finishProcessing(true);
+    finishProcessing();
     transitionAssessment(finalState, finalState === AssessmentState.INVALID_IMAGE ? 'IMAGE NEEDS IMPROVEMENT' : finalState === AssessmentState.OOD_IMAGE ? 'IMAGE OUTSIDE SUPPORTED SCOPE' : finalState === AssessmentState.LOW_CONFIDENCE ? 'RESULT UNCERTAIN' : 'RESULT READY');
     state.assessmentId = data.assessment_id;
     state.resultArea = data.area; state.resultPersistence = data.persistence;
@@ -1832,7 +1836,7 @@ async function analyze() {
     showResultTab('summary'); openDialog($('#resultModal'), '.modal-close', button);
   } catch (error) {
     if (requestId !== state.assessmentRequestId || workspaceVersion !== state.workspaceVersion) return;
-    finishProcessing(false);
+    finishProcessing();
     state.reviewResultReady = false;
     handleChangedProcessingNotice(error);
     const rejectedResultState = String(error?.payload?.assessment_result?.result_state || '').toLowerCase();
@@ -2298,7 +2302,7 @@ function applyTheme(theme) {
   $('#themeToggle').innerHTML = dark ? '<span aria-hidden="true">☀</span><b>Light</b>' : '<span aria-hidden="true">☾</span><b>Dark</b>';
   const settingsButton = $('#settingsThemeButton');
   if (settingsButton) settingsButton.textContent = dark ? 'Use light theme' : 'Use dark theme';
-  document.querySelector('meta[name="theme-color"]').content = dark ? '#111315' : '#f6f8fa';
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.body).getPropertyValue('--dm-bg').trim();
   window.WorkspaceUI?.theme();
 }
 

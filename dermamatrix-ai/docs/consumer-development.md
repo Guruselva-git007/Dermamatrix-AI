@@ -211,3 +211,23 @@ socket paths; a PID reused after reboot cannot establish database readiness.
 It preserves occupied ports/live sockets and removes only a verified stale
 project socket lock. A fake-binary test covers an unrelated live process, and
 the existing local app/database were recovered through this path.
+
+### Sky restoration and request-bound scanner (30 October 2026)
+
+The restored white/sky-blue and navy/cyan tokens live in `frontend/product.css`;
+IBM Plex and the established layouts remain. `frontend/scanner.js` supplies only
+original decorative SVG art. `app.js` starts it at actual request preparation and
+removes all graphics on completion, failure, Stop waiting or workspace clearing.
+The processing status is indeterminate; the task list describes scope rather than
+live server milestones. No canvas/photo, timer, network or storage API is used by
+the scanner. CSS supplies two animations, paused on hidden-document signals and
+disabled by both motion preferences. The existing canonical result is shown
+without a minimum animation duration. Starting a retry clears the prior toast so
+an earlier failure cannot obscure the result.
+
+`browser-sky-scanner.js` adds 13 focused checks to the existing sequential runner,
+including computed colors/contrast and five-width reflow across seven destinations,
+four actual-request variants, interruption/error/success, focus, reduced motion
+and stale-work disposal. Its PNG is synthetic; image requests are held before
+inference and cancelled. A real synthetic questionnaire response verifies the
+result handoff. This does not measure image-model speed or physical-device input.

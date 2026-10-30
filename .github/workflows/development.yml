@@ -53,6 +53,7 @@ jobs:
           PYTHONPATH=backend python backend/scripts/migrate_database.py --apply
           DERMAMATRIX_RUN_MYSQL_INTEGRATION_TESTS=1 PYTHONPATH=backend:backend/tests python -m unittest discover -s backend/tests -v
           node --test frontend/tests/*.test.cjs
+          node --check frontend/scanner.js
           node --check frontend/app.js
           node --check frontend/consumer.js
           node --check frontend/engagement.js

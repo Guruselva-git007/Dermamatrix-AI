@@ -281,3 +281,134 @@ OWNER/POLICY DECISION REQUIRED. Provider choice and deployment stay deferred.
 Stop this batch after available corrections/regressions, documentation, scoped
 push and owned-resource cleanup. New refinements should follow actual device or
 participant findings, not cosmetic speculation.
+
+## White + sky blue restoration and original scanner — 30 October 2026
+
+Owner explicitly superseded the neutral Achromatic ledger palette. This batch
+restores white/sky-blue day mode and navy/cyan night mode while retaining the
+existing layout, IBM Plex, navigation, controls, evidence and ownership contracts.
+One primary worker; development only. No phone setup, provider or deployment.
+
+### Recovery and exact scope
+
+Git `eebb526` removed theme/reference/experience/design-system/premium/studio
+stylesheets from the index and replaced them with `product.css`. The last active
+`studio.css` before it is available at parent
+`c1e5ba4c86e92c815b58b65374da320e20668edf` (file last changed in `9d537c0`). Earlier
+sky themes are also visible in `4e5c947`, `b9cb615` and `8747320`. Current tokens
+are adapted from the final active historical layer; no files/commits were reverted.
+The screenshot references supply aesthetic inspiration only, not copied artwork.
+
+| Role | Recovered historical value | Current decision |
+|---|---|---|
+| Day surface | `#ffffff` | Recovered unchanged, dominant cards/panels |
+| Day ground | `#f4f9ff` | Reconstructed cooler white `#f7fbff` |
+| Day ink / secondary | `#173454` / `#536f8c` | Recovered unchanged; faint text uses readable secondary |
+| Sky / strong blue | `#1683cb` / `#0868af` | Recovered; darker blue owns text/white-text actions for contrast |
+| Day soft blue / wash | `#e2f2ff` / `#f0f8ff` | Recovered unchanged |
+| Night ground / panels | `#08182e` / `#102b49` / `#123252` | Recovered unchanged |
+| Night ink / secondary | `#edf7ff` / `#b6cfe4` | Recovered unchanged |
+| Night blue / soft blue | `#78c6ff` / `#173f65` | Recovered unchanged; navy text on bright primary controls |
+| Borders, hover and scan lighting | No single accessible historic set | Adapted control borders, stronger hover and new cyan drawing tokens |
+
+Semantic error/success colors remain distinct. The existing maintained stylesheet
+owns all presentation; retired layers stay inactive. Browser theme-color now reads
+the same theme token. No framework, font, stock art, animation service or dependency
+was added. Native PDF/JSON content/format is unchanged; app report/export controls
+inherit the restored system.
+
+### Observed changes and reproduction
+
+| Priority / area | Observed before / reproduction | Minimal correction and final behavior | Evidence |
+|---|---|---|---|
+| Owner-required identity | Today light grey/black actions; charcoal dark mode; compare same guest routes | Recovered white/sky and navy tokens across shell, navigation, forms, cards, tabs, search, dialogs/results | `before-{route}-{theme}-1440.png` versus `visual/` and `after-today-{theme}.png` |
+| Owner-required scanner | Submit questionnaire; CSS hid `.scan-visual` | Original face mesh/iris/ridges, hair strands, nail outline and questionnaire droplet variants; moving cyan beam/pulse only during active request | Actual request holds, transform samples, 2 CSS animations, screenshots and `scanner-preview.webm` |
+| P1 selected dark forms | Open Sweating after changing theme; old selects rendered white with pale `#edf7ff` text | Existing screen form selector now explicitly uses current surface/ink and 16px Plex; all four selected paths checked | `before-sweat-controls-dark.png`; `input-{area}-{theme}.png`; computed-style assertions |
+| P2 consent surface | Selected dark photo flow retained a bright legacy consent panel | Current semantic surface/border/ink tokens on existing panel | Before scanner screenshots versus final selected input/screenshots |
+| P2 stale retry message | Trigger 503 then immediately retry successfully; prior failure toast remained over result | Starting assessment atomically hides prior toast and cancels its timer; next toast can show normally | `before-stale-error-on-retry.png`; successful retry assertion and final result captures |
+| P2 short-screen action | At 320×600 the scanner pushed part of Stop waiting below the card viewport | Smaller decorative stage only on short/narrow screens; status and control retained, enlarged text remains scrollable | `after-scanner-320-short.png`; button-bound and overflow assertions |
+
+`app.js` keeps the established assessment state machine and abort/idempotency /
+workspace guards. Processing begins inside the existing recovery try/catch. The
+capability list describes review scope, explicitly not live server completion.
+There is no fabricated percentage, model outcome or artificial minimum duration.
+The accessible status is concise text; the SVG is aria-hidden/nonfocusable and
+never receives a photo, biometric or clinical localization. Stop removes all
+vector children, immediately ending animation. Hidden-document signals pause CSS;
+system and app motion preferences disable it. Results use actual canonical evidence.
+
+### Verification and measurable limits
+
+Local source tests: **258 backend / 90 frontend pass**. Local browser receipts
+cover **77 Chrome + 77 WebKit checks** using the existing runner and focused
+supplements: core15, continuity12, quality21, accessibility12, sky/scanner13 and
+real origin outage/recovery4. Final exact CI receipt is recorded below when done.
+Existing cross-feature flows include saved assessment/episode/history, routines,
+check-in correction, clinician brief, guide/bookmarks/search and account isolation.
+The new suite adds 70 route/theme/width samples (seven destinations × two themes ×
+320/390/768/1280/1440), both themes for every selected input path, four actual
+request variants, failure, cancellation, successful guest questionnaire, duplicate
+submission prevention and workspace clearing. Image requests use an in-memory
+synthetic PNG and are cancelled before inference; this does not test model accuracy.
+
+Representative computed contrast (light / dark): body text **12.20 / 16.39:1**,
+secondary **5.22 / 8.90:1**, primary text **5.82 / 9.59:1**, selected navigation
+**5.09 / 5.85:1**, control boundary **3.33 / 4.68:1**. Keyboard focus containment,
+heading-first processing focus and reachable cancellation pass. Both system and
+app reduced motion retain the status and cancellation. The 200% test is computed
+text enlargement at 320px, not physical-device/native speech acceptance.
+
+A local active-stage Chrome sample observed 38 frames over 616.5ms, median16.7ms /
+p95 16.8ms and zero non-input layout shift during that sample. WebKit observed 38
+frames over605ms, median17ms/p95 18ms; its layout-shift API is unavailable, so zero
+is not a WebKit measurement. Held-response release to actual questionnaire result
+was11ms Chrome /16ms WebKit. These short synthetic samples are not model speed,
+end-to-end latency benchmarks or proof about ordinary phones. Production adds no
+timer/RAF/interval. The scanner SVG contains22–30 elements across variants.
+
+Accessibility/visual review: typography, alignment, hierarchy, spacing,
+consistency and responsive navigation were sampled in the captured screens;
+selected-form contrast and short-screen action issues were corrected. No remaining
+issue observed in the inspected final samples. Focus/semantics/reflow/motion checks
+are targeted evidence, not WCAG certification. Actual VoiceOver/TalkBack speech,
+physical touch/camera/gallery, iPhone Safari and representative consumer sessions
+remain unverified. Owner-deferred Samsung testing stays deferred.
+
+Design references: the supplied graphics and recovered project styles establish
+the look. [W3C motion guidance](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html)
+and [APG dialog guidance](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
+inform the motion preference, text status and focus behavior. Generic skill bans
+on navy/glow/blue navigation are superseded by the explicit owner request. Scoped
+product/scanner app-mode design lint:0FAIL/38WARN; warnings include existing
+labels/form conventions and intentional restrained shadows. The single beam fade
+is documented as an owner-requested exception. A mistaken `--help` invocation
+also scanned legacy files and reported non-app style flags; it is not a product
+quality pass and did not cause unrelated rewrites.
+
+Test-development failures are retained, not counted as passes: baseline script
+first selected a category without the explicit user-selection flag; initial new
+Hair/Nail/Sweat template construction invoked strings as functions and was fixed;
+an early combined Chrome run inherited reduced-motion media from the preceding
+accessibility suite, so the animation-on fixture now explicitly requests normal
+motion. A unit DOM fixture gained getComputedStyle for token-driven browser chrome;
+its existing preference-ordering assertion remains intact. Final exact CI verifies
+the final implementation and all suites together. No assertion was removed or
+weakened to obtain a pass.
+
+Private evidence root: `local-artifacts/sky-blue-restoration-2026-10-30/` at project
+root. Before/after images, motion video, exact tool output, failed attempts,
+computed samples, sizes/hashes, CI receipt and cleanup identities stay ignored.
+Backend/schema/model/scoring/evidence/privacy/report sources remain byte-identical
+to `f365218`; only frontend presentation/controller wiring changes. No medical
+records were migrated, rewritten or deleted. No trained model or provider changed.
+Source photos stay in existing current-tab/in-memory paths; guest results remain
+unpersisted. Normal8000/3307 are preserved. Task services and sleep hold close only
+after final verification; no deployment/default-branch merge is authorized.
+
+Asset receipt (raw bytes / local gzip bytes; not a transfer benchmark):
+
+| File | Before raw | After raw | After gzip |
+|---|---:|---:|---:|
+| `product.css` | 74702 | 79807 | 15063 |
+| `app.js` | 219741 | 220231 | 54880 |
+| `scanner.js` | 0 | 4829 | 2096 |

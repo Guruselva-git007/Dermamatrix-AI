@@ -13,7 +13,7 @@ function harness() {
     setAttribute(){}, removeAttribute(){}, querySelector(){return null;}, querySelectorAll(){return [];},
     closest(){return node();}, focus(){} });
   const get = key => { if (!elements.has(key)) elements.set(key,node()); return elements.get(key); };
-  const context = vm.createContext({document:{querySelector:get,querySelectorAll:()=>[],body:node()},window:{location:{protocol:'http:'},setTimeout,clearTimeout},localStorage:{setItem(){},getItem(){return null;}},console,AbortController,setTimeout,clearTimeout,URL,crypto:require('node:crypto').webcrypto});
+  const context = vm.createContext({document:{querySelector:get,querySelectorAll:()=>[],body:node()},window:{location:{protocol:'http:'},setTimeout,clearTimeout},localStorage:{setItem(){},getItem(){return null;}},getComputedStyle:()=>({getPropertyValue:()=> 'synthetic-css-token'}),console,AbortController,setTimeout,clearTimeout,URL,crypto:require('node:crypto').webcrypto});
   vm.runInContext(definitions+'\nglobalThis.api={state,analyze,requestJSON,selectArea,persistenceMessage,AssessmentState,transitionAssessment,persistPreferences};',context);
   return {context,api:context.api,get};
 }
