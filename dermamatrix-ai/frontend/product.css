@@ -70,6 +70,10 @@ textarea { min-height: 88px; resize: vertical; }
   font: 400 16px/1.5 var(--dm-font); min-height: 96px;
   background: var(--dm-surface); color: var(--dm-ink); border-color: var(--dm-line-strong);
 }
+:is(#routineForm, #checkinForm) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select) {
+  font: 400 16px/1.5 var(--dm-font);
+  background: var(--dm-surface); color: var(--dm-ink); border-color: var(--dm-line-strong);
+}
 input::placeholder, textarea::placeholder { color: var(--dm-faint); opacity: 1; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--dm-blue); width: 20px; height: 20px; flex: none; }
 label { color: var(--dm-ink); font-size: 14px; font-weight: 500; }
@@ -269,7 +273,7 @@ small { font-size: 13px; }
 .journey-empty-state .consumer-actions { margin-top: 20px; }
 .progress-layout { display: grid; grid-template-columns: 1fr; gap: 20px; }
 .routine-list-card .section-label p, .checkin-card .section-label p { font-size: 14px; color: var(--dm-muted); margin: 5px 0; }
-.section-label h3 { font-size: 17px; margin: 0 0 8px; }
+.section-label h3 { font-size: 17px; margin: 0 0 8px; color: var(--dm-ink); }
 .section-label .eyebrow { display: none; }
 .routine-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; border: 0; border-bottom: 1px solid var(--dm-line); border-radius: 0; background: transparent; }
 .routine-item:last-child { border-bottom: 0; }
@@ -313,7 +317,7 @@ small { font-size: 13px; }
 .progress-summary article { display: flex; flex-direction: column-reverse; gap: 6px; align-items: start; padding: 0 20px 0 0; border: 0; border-right: 1px solid var(--dm-line); border-radius: 0; background: transparent; }
 .progress-summary article:last-child { border-right: 0; }
 .progress-summary article > span { display: none; }
-.progress-summary strong { font-size: 21px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.progress-summary strong { font-size: 21px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--dm-ink); }
 .progress-summary small { font-size: 12px; color: var(--dm-muted); }
 .monitoring-note { font-size: 13px; color: var(--dm-muted); margin: 14px 0 0; }
 .checkin-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
@@ -824,6 +828,13 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
 .continuity-form input[type=checkbox], #continuityDialog input[type=checkbox] { width: 20px; height: 20px; margin: 10px 8px 10px 0; accent-color: var(--dm-ink); }
 #briefSelection label { display: flex; align-items: center; overflow-wrap: anywhere; min-height: 44px; }
 #continuityDialog form { display: grid; gap: 16px; }
+#continuityDialog h2 { margin: 0; scroll-margin-top: 16px; }
+#continuityDialog .review-summary { display: grid; grid-template-columns: minmax(100px, .4fr) minmax(0, 1fr); gap: 12px 20px; margin: 0 0 20px; }
+#continuityDialog .review-summary dt { font-weight: 600; }
+#continuityDialog .review-summary dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+#continuityDialogStatus { margin: 0; }
+#continuityDialogStatus:empty { display: none; }
+#continuityDialog .consumer-actions { margin-top: 0; }
 #continuityDialog label { margin-top: 12px; }
 .continuity-row { padding: 16px 0; border-bottom: 1px solid var(--dm-line); overflow-wrap: anywhere; }
 .continuity-row h3, .continuity-row p { margin: 4px 0 8px; }
@@ -855,6 +866,8 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
 #visitBriefForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #visitBriefForm > label:first-child, #visitBriefForm > label:has(textarea), #visitBriefForm > p, #visitBriefForm > div, #visitBriefForm > button { grid-column: 1 / -1; }
 #visitBriefForm > button { justify-self: start; }
+#visitBriefForm > button, #visitBriefForm > p { margin: 0; }
+#briefSelection:empty { display: none; }
 #visitBrief { padding: 16px 22px; margin: 20px 0; }
 #briefSelection { display: grid; gap: 8px; }
 @media (min-width: 900px) { #episodeForm { grid-template-columns: 1.5fr 1fr 1fr; align-items: end; } #episodeForm button { grid-column: 1 / -1; justify-self: start; } }
@@ -866,4 +879,6 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .concern-controls { flex-direction: column; align-items: stretch; }
   .journey-row-actions { grid-column: 1; grid-row: auto; max-width: none; margin-top: 8px; }
   #visitBrief { padding: 16px; }
+  #continuityDialog .review-summary { grid-template-columns: 1fr; gap: 4px; }
+  #continuityDialog .review-summary dd { margin-bottom: 12px; }
 }

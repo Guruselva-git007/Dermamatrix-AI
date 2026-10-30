@@ -7,7 +7,7 @@
   const button = (text, fn, cls='button quiet') => {const n=el('button',text,cls);n.type='button';n.onclick=fn;return n;};
   const signed = () => Boolean(window.ConsumerClient?.enabled && state.profile?.patient_id);
   const owner = () => state.profile?.patient_id || '';
-  let epoch=0, loadedOwner='', episodes=[], links={}, bookmarks=[], loading=null, scheduleLink={}, searchCursor=null, searchQuery='', searchCategory='',briefSignature='',searchVersion=0,loadVersion=0,reminderVersion=0;
+  let epoch=0, loadedOwner='', episodes=[], links={}, bookmarks=[], loading=null, scheduleLink={}, searchCursor=null, searchQuery='', searchCategory='',briefSignature='',searchVersion=0,loadVersion=0,reminderVersion=0,briefVersion=0,dialogVersion=0;
   const retryKeys=new Map();
   const active = (version, account) => epoch===version && owner()===account;
   const message = (id, text) => {if($(id))$(id).textContent=text;};
@@ -39,21 +39,36 @@
   }
   async function changed() {
     const version=epoch,account=owner();if(!signed())return;
+    invalidateBrief('Your records changed. Preview again before downloading; your dates and questions are preserved.');
     await load(true);if(!active(version,account))return;
-    briefSignature='';$('briefSelection')?.replaceChildren();message('briefStatus','Your records changed. Preview again before downloading; your dates and questions are preserved.');
     await loadProgress({force:true});if(!active(version,account))return;
     await window.EngagementUI?.refresh();
     if($('unifiedSearchDialog')?.open)await search(true);
   }
-  function dialog(title, content, save, label='Save correction') {
-    const opener=document.activeElement,d=$('continuityDialog');d.replaceChildren();const form=el('form');form.append(el('h2',title));
+  function dialog(title, content, save, label='Save correction', trigger) {
+    const opener=trigger||document.activeElement,d=$('continuityDialog'),instance=++dialogVersion;d.replaceChildren();const form=el('form');form.append(el('h2',title));
     const heading=form.firstChild;heading.id='continuityDialogTitle';d.setAttribute('aria-labelledby',heading.id);
+    heading.tabIndex=-1;
     form.append(content);const status=el('p');status.id='continuityDialogStatus';status.setAttribute('role','status');form.append(status);
     const actions=el('div',undefined,'consumer-actions'),submit=el('button',label,'button primary');submit.type='submit';
     actions.append(button('Back',()=>d.close()),submit);form.append(actions);d.append(form);
     const version=epoch,account=owner();
-    form.onsubmit=async event=>{event.preventDefault();if(submit.disabled)return;submit.disabled=true;message('continuityDialogStatus','Saving…');try{await save();if(active(version,account)){d.close();await changed();if(active(version,account)){const focus=opener?.isConnected?opener:(document.querySelector('.page-active [role=tab][aria-selected=true]')||document.querySelector('.page-active h1'));if(focus){if(focus.tagName==='H1')focus.tabIndex=-1;focus.focus({preventScroll:true});}toast('Saved. Your original records are preserved.');}}}catch(error){if(active(version,account))message('continuityDialogStatus',`${error.message} This attempt was not confirmed. Your input remains here; retry the same details or reload if another tab changed the record.`);}finally{submit.disabled=false;}};
-    d.showModal();requestAnimationFrame(()=>form.querySelector('select,input,textarea,button')?.focus());
+    const sameDialog=()=>active(version,account)&&dialogVersion===instance&&d.firstChild===form;
+    const restoreFocus=()=>{if(!sameDialog()||d.open)return;const focus=opener?.isConnected?opener:(document.querySelector('.page-active [role=tab][aria-selected=true]')||document.querySelector('.page-active h1'));if(focus){if(focus.tagName==='H1')focus.tabIndex=-1;focus.focus({preventScroll:true});}};
+    let saved=false;
+    d.onclose=()=>{if(!saved)restoreFocus();};
+    form.onsubmit=async event=>{
+      event.preventDefault();if(submit.disabled||!sameDialog()||!d.open)return;
+      submit.disabled=true;status.textContent='Saving… You can go back, but this request may already be saved.';
+      try{
+        await save();if(!active(version,account))return;
+        const wasOpen=sameDialog()&&d.open;saved=true;if(wasOpen)d.close();
+        await changed();
+        if(wasOpen&&sameDialog()&&!d.open){restoreFocus();toast('Saved. Your original records are preserved.');}
+      }catch(error){if(sameDialog()&&d.open)status.textContent=`${error.message} This attempt was not confirmed. Your input remains here; retry the same details or reload if another tab changed the record.`;}
+      finally{submit.disabled=false;}
+    };
+    d.showModal();d.scrollTop=0;requestAnimationFrame(()=>{if(sameDialog()&&d.open)heading.focus({preventScroll:true});});
   }
   function correctEvent(id, revision, title) {
     const content=el('div');content.append(el('p',title),el('p','The original action remains in history. Choose the effective status now.'));
@@ -72,29 +87,59 @@
     const noteLabel=el('label','Note (optional)'),note=el('textarea');note.maxLength=2000;note.value=item.note||'';noteLabel.append(note);content.append(noteLabel);fields.note=note;
     return fields;
   }
-  function correctCheckin(item) {
+  function correctCheckin(item, trigger) {
     const content=el('div');content.append(el('p','This corrects your self-report, not an image measurement. The original remains available in your account export.'));
     const fields=checkinFields(content,item),remove=el('label','Remove this mistaken check-in from current tracking'),check=el('input');check.type='checkbox';remove.prepend(check);content.append(remove);
-    dialog('Correct check-in',content,()=>write('/api/corrections/checkin/'+encodeURIComponent(item.checkin_id),check.checked?{revision:item.revision||0,voided:true}:{revision:item.revision||0,reported_trend:fields.trend.value,discomfort:fields.discomfort.value,change:fields.change.value,checkin_date:fields.date.value,note:fields.note.value}));
+    dialog('Correct check-in',content,()=>write('/api/corrections/checkin/'+encodeURIComponent(item.checkin_id),check.checked?{revision:item.revision||0,voided:true}:{revision:item.revision||0,reported_trend:fields.trend.value,discomfort:fields.discomfort.value,change:fields.change.value,checkin_date:fields.date.value,note:fields.note.value}),'Save correction',trigger);
   }
   function renderCheckinHistory() {
     const list=$('checkinCorrections');if(!list)return;list.hidden=!signed();if($('progressHistory'))$('progressHistory').hidden=signed();if(!signed())return;list.replaceChildren();
     for(const item of state.checkins||[]){const row=el('article',undefined,'continuity-row');row.append(el('strong',item.voided?'Removed from current tracking':`${readableStatus(item.reported_trend)} — self-reported`),el('p',`${item.checkin_date} · ${item.routine_name}`));
       if(item.note)row.append(el('p',item.note));const link=links['checkin:'+item.checkin_id];if(link?.label)row.append(el('p','Concern: '+link.label));
-      row.append(button('Correct check-in',()=>correctCheckin(item)));
+      row.append(button('Correct check-in',event=>correctCheckin(item,event.currentTarget)));
       if(item.corrections?.length){const details=el('details');details.append(el('summary','Correction history'),el('p',`Original: ${item.original.reported_trend} · ${item.original.checkin_date}`));for(const revision of item.corrections)details.append(el('p',`${new Date(revision.created_at).toLocaleString()} · ${revision.data.effective.voided?'Removed from tracking':revision.data.effective.reported_trend} · account actor ${revision.data.actor_id}`));row.append(details);}list.append(row);
     }
     if(!list.children.length)list.append(el('p','No saved check-ins. Choose a routine above to record your first update.'));
     // One history list owns the correction actions; avoid two competing lists.
     if($('progressHistory'))$('progressHistory').hidden=true;
   }
+  function checkinInput() {return{routine_id:$('checkinRoutine').value,checkin_date:$('checkinDate').value,reported_trend:$('checkinTrend').value,discomfort:$('checkinDiscomfort').value,change:$('checkinChange').value,note:$('checkinNote').value,episode_id:$('checkinEpisode').value};}
   async function reviewCheckin() {
     const form=$('checkinForm');if(!form.reportValidity())return;
-    const payload={routine_id:$('checkinRoutine').value,checkin_date:$('checkinDate').value,reported_trend:$('checkinTrend').value,discomfort:$('checkinDiscomfort').value,change:$('checkinChange').value,note:$('checkinNote').value,episode_id:$('checkinEpisode').value};
+    const payload=checkinInput(),signature=JSON.stringify(payload);
     const content=el('div');const routine=state.routines.find(r=>r.routine_id===payload.routine_id);const episode=episodes.find(r=>r.episode_id===payload.episode_id);
-    content.append(el('p',`${routine?.routine_name||'Choose a routine'} · ${payload.checkin_date}`),el('p',`${readableStatus(payload.reported_trend)} — self-reported`),el('p',`Discomfort: ${$('checkinDiscomfort').selectedOptions[0].textContent}. Change: ${$('checkinChange').selectedOptions[0].textContent}.`),el('p',`Concern: ${episode?.label||'Unassigned'}. Confirm this is the right concern.`));if(payload.note)content.append(el('p',payload.note));content.append(el('p','No image is used to measure healing or saved with this check-in.'));
+    const summary=el('dl',undefined,'review-summary');
+    for(const [name,value] of [['Routine',routine?.routine_name||'Choose a routine'],['Date',payload.checkin_date],['Trend',`${readableStatus(payload.reported_trend)} — self-reported`],['Discomfort',$('checkinDiscomfort').selectedOptions[0].textContent],['Recent change',$('checkinChange').selectedOptions[0].textContent],['Concern',episode?.label||'Unassigned'],...(payload.note?[['Note',payload.note]]:[])])summary.append(el('dt',name),el('dd',value));
+    content.append(summary,el('p','Confirm this is the right concern. No image is used to measure healing or saved with this check-in.'));
     const version=epoch,account=owner();
-    dialog('Review your check-in',content,async()=>{await write('/api/progress-checkins',payload);if(active(version,account)){form.reset();$('checkinDate').value=currentDate();}},'Save check-in');
+    dialog('Review your check-in',content,async()=>{await write('/api/progress-checkins',payload);if(active(version,account)&&JSON.stringify(checkinInput())===signature){form.reset();$('checkinDate').value=currentDate();}},'Save check-in',form.querySelector('[type=submit]'));
+  }
+  function briefInput() {return{episode_id:$('briefEpisode').value,start:$('briefStart').value,end:$('briefEnd').value,questions:$('briefQuestions').value};}
+  function resetBriefDates() {
+    if(!$('briefStart')||!$('briefEnd'))return;
+    const end=currentDate(),start=new Date(end+'T12:00:00');start.setDate(start.getDate()-30);
+    $('briefEnd').value=end;$('briefStart').value=`${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
+  }
+  function invalidateBrief(text='Preview selected records before downloading.') {
+    briefVersion++;briefSignature='';$('briefSelection')?.replaceChildren();
+    if($('downloadBrief'))$('downloadBrief').disabled=true;
+    if($('previewBrief')){$('previewBrief').disabled=false;$('previewBrief').removeAttribute('aria-busy');}
+    message('briefStatus',text);
+  }
+  async function previewBrief() {
+    if(!$('visitBriefForm').reportValidity())return;
+    invalidateBrief('Loading the selected records…');
+    const generation=epoch,account=owner(),requestVersion=briefVersion,payload=briefInput(),signature=JSON.stringify(payload),control=$('previewBrief');
+    const current=()=>active(generation,account)&&briefVersion===requestVersion&&JSON.stringify(briefInput())===signature;
+    control.disabled=true;control.setAttribute('aria-busy','true');
+    try{
+      const {brief:data}=await write('/api/visit-brief',payload);if(!current())return;
+      briefSignature=signature;const box=$('briefSelection');box.replaceChildren();
+      for(const row of data.assessments){const label=el('label',`${row.area} assessment · ${new Date(row.created_at).toLocaleString()} (saved time)`),input=el('input');input.type='checkbox';input.checked=true;input.value=row.assessment_id;label.prepend(input);box.append(label);}
+      $('downloadBrief').disabled=false;
+      message('briefStatus',`Available: ${data.counts.assessments} assessments, ${data.counts.checkins} active self-reported check-ins, ${data.counts.routine_actions} routine actions. Uncheck any assessment to omit it. ${data.photo_notice}`);
+    }catch(error){if(current())message('briefStatus',`${error.message} No brief was generated. Preview again to retry.`);}
+    finally{if(active(generation,account)&&briefVersion===requestVersion){control.disabled=false;control.removeAttribute('aria-busy');}}
   }
   function linkAssessment(result) {
     const content=el('div');content.append(el('p','Choose explicitly. Matching labels never merge assessments automatically. Existing labels and original findings remain unchanged.'));
@@ -169,12 +214,12 @@
     $('checkinRoutine').closest('label').after(pick('checkinEpisode','Concern (confirm before saving)'));
     $('checkinRoutine').addEventListener('change',()=>{$('checkinEpisode').value=links['routine:'+$('checkinRoutine').value]?.episode_id||'';});
     const history=el('section');history.id='checkinCorrections';$('progressHistory')?.after(history);
-    const brief=el('details');brief.id='visitBrief';brief.innerHTML='<summary>Prepare a clinician-visit brief</summary><form id="visitBriefForm" class="continuity-form"><label>From<input id="briefStart" type="date" required></label><label>To<input id="briefEnd" type="date" required></label><label>Personal questions (optional)<textarea id="briefQuestions" maxlength="3000"></textarea></label><p>Assessment dates use UTC save times; check-ins and routine actions use recorded local dates. Original photos are unavailable. Full reports and account JSON remain available.</p><button type="button" class="button quiet" id="previewBrief">Choose assessments / preview</button><div id="briefSelection"></div><button class="button primary" type="submit">Download visit brief PDF</button><p id="briefStatus" role="status"></p></form>';
-    brief.className='consumer-panel';$('completeJourney').after(brief);if($('historyExport'))$('historyExport').querySelector('summary').textContent='Download recent history (all concerns)';$('visitBriefForm').prepend(pick('briefEpisode','Concern'));$('briefEnd').value=currentDate();$('briefStart').value=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
-    briefSignature='';
-    const briefInput=()=>({episode_id:$('briefEpisode').value,start:$('briefStart').value,end:$('briefEnd').value,questions:$('briefQuestions').value});
-    $('previewBrief').onclick=async()=>{const generation=epoch,account=owner(),payload=briefInput();try{const {brief:data}=await write('/api/visit-brief',payload);if(!active(generation,account))return;briefSignature=JSON.stringify(payload);const box=$('briefSelection');box.replaceChildren();for(const row of data.assessments){const label=el('label',`${row.area} assessment · ${new Date(row.created_at).toLocaleString()} (saved time)`),input=el('input');input.type='checkbox';input.checked=true;input.value=row.assessment_id;label.prepend(input);box.append(label);}message('briefStatus',`Available: ${data.counts.assessments} assessments, ${data.counts.checkins} active self-reported check-ins, ${data.counts.routine_actions} routine actions. Uncheck any assessment to omit it. ${data.photo_notice}`);}catch(error){if(active(generation,account))message('briefStatus',`${error.message} No brief was generated.`);}};
-    $('visitBriefForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;const payload=briefInput();if(briefSignature!==JSON.stringify(payload)){message('briefStatus','Preview this concern and date range before downloading.');return;}submit.disabled=true;const generation=epoch,account=owner(),controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);try{const options=await window.ConsumerClient.prepare({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,assessment_ids:[...$('briefSelection').querySelectorAll('input:checked')].map(n=>n.value),format:'pdf'})});if(!active(generation,account))return;const response=await fetch('/api/visit-brief',{...options,credentials:'same-origin',signal:controller.signal});if(!response.ok)throw Error((await response.json()).error||'Brief generation failed.');const blob=await response.blob();if(!active(generation,account))return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='dermamatrix-visit-brief.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('briefStatus','Brief generated from the selected saved metadata. Original records are unchanged.');}catch(error){if(active(generation,account))message('briefStatus',`${error.message} No download was confirmed. Retry after previewing.`);}finally{clearTimeout(timeout);submit.disabled=false;}};
+    const brief=el('details');brief.id='visitBrief';brief.innerHTML='<summary>Prepare a clinician-visit brief</summary><form id="visitBriefForm" class="continuity-form"><label>From<input id="briefStart" type="date" required></label><label>To<input id="briefEnd" type="date" required></label><label>Personal questions (optional)<textarea id="briefQuestions" maxlength="3000"></textarea></label><p>Assessment dates use UTC save times; check-ins and routine actions use recorded local dates. Original photos are unavailable. Full reports and account JSON remain available.</p><button type="button" class="button quiet" id="previewBrief">Preview selected records</button><div id="briefSelection"></div><button id="downloadBrief" class="button primary" type="submit" aria-describedby="briefStatus" disabled>Download visit brief PDF</button><p id="briefStatus" role="status"></p></form>';
+    brief.className='consumer-panel';$('completeJourney').after(brief);if($('historyExport'))$('historyExport').querySelector('summary').textContent='Download recent history (all concerns)';$('visitBriefForm').prepend(pick('briefEpisode','Concern'));resetBriefDates();
+    invalidateBrief();
+    $('previewBrief').onclick=previewBrief;
+    $('visitBriefForm').addEventListener('input',event=>{if(!event.target.closest('#briefSelection'))invalidateBrief('Selection changed. Preview the records again before downloading.');});
+    $('visitBriefForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;const payload=briefInput();if(briefSignature!==JSON.stringify(payload)){message('briefStatus','Preview this concern and date range before downloading.');return;}submit.disabled=true;const generation=epoch,account=owner(),requestVersion=briefVersion,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);try{const options=await window.ConsumerClient.prepare({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,assessment_ids:[...$('briefSelection').querySelectorAll('input:checked')].map(n=>n.value),format:'pdf'})});if(!active(generation,account)||requestVersion!==briefVersion)return;const response=await fetch('/api/visit-brief',{...options,credentials:'same-origin',signal:controller.signal});if(!response.ok)throw Error((await response.json()).error||'Brief generation failed.');const blob=await response.blob();if(!active(generation,account)||requestVersion!==briefVersion)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='dermamatrix-visit-brief.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('briefStatus','Brief generated from the selected saved metadata. Original records are unchanged.');}catch(error){if(active(generation,account)&&requestVersion===briefVersion)message('briefStatus',`${error.message} No download was confirmed. Retry after previewing.`);}finally{clearTimeout(timeout);submit.disabled=briefSignature!==JSON.stringify(briefInput());}};
     const saved=el('details');saved.id='savedGuides';saved.innerHTML='<summary>Saved guides</summary><div id="savedGuideList"></div>';$('learnList').before(saved);
     const searchDialog=el('dialog',undefined,'consumer-dialog');searchDialog.id='unifiedSearchDialog';searchDialog.setAttribute('aria-labelledby','unifiedTitle');searchDialog.innerHTML='<h2 id="unifiedTitle">Search your workspace</h2><form id="unifiedSearchForm" class="continuity-form"><label>Search<input id="unifiedQuery" type="search" maxlength="120"></label><label>Category<select id="unifiedCategory"><option value="">All categories</option><option value="assessment">Assessments</option><option value="episode">Concerns</option><option value="routine">Routines</option><option value="checkin">Check-ins</option><option value="guide">Educational guides</option></select></label><button class="button primary" type="submit">Search</button></form><p id="unifiedStatus" role="status"></p><div id="unifiedResults"></div><button id="unifiedMore" type="button" class="button quiet" hidden>Load more results</button>';searchDialog.append(button('Close search',()=>searchDialog.close()));document.body.append(searchDialog);$('unifiedSearchForm').onsubmit=e=>{e.preventDefault();search(true);};$('unifiedMore').onclick=()=>search(false);
     const feedback=el('details');feedback.id='productFeedback';feedback.innerHTML='<summary>Share product feedback</summary><p>Collected in this local account. No monitored support channel is configured. Do not include health notes, identifying details or photographs.</p><form id="feedbackForm" class="continuity-form"><label>Problem category<select id="feedbackCategory"><option>Confusing screen</option><option>Save or loading problem</option><option>Accessibility</option><option>Other</option></select></label><label>Page<select id="feedbackPage"><option>Today</option><option>Check</option><option>Journey</option><option>Learn</option><option>Profile</option></select></label><label>Explanation (optional)<textarea id="feedbackNote" maxlength="2000"></textarea></label><p>Application version: consumer-continuity-v1. No account records or photos are attached automatically.</p><button class="button quiet" type="submit">Save local feedback</button><p id="feedbackStatus" role="status"></p></form>';$('profile-privacy').append(feedback);
@@ -196,8 +241,8 @@
     routineSelected(id){$('checkinEpisode').value=links['routine:'+id]?.episode_id||'';},
     scheduleLoaded(link){reminderVersion++;message('reminderPreview','');scheduleLink=link;$('scheduleEpisode').value=link.episode_id||'';},scheduleLink:()=>({episode_id:$('scheduleEpisode')?.value||'',link_version:scheduleLink.version||0}),
     progress(){page();renderCheckinHistory();},
-    clear(){epoch++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();
-      for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();
+    clear(){epoch++;dialogVersion++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();
+      for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();resetBriefDates();invalidateBrief('');
       for(const id of ['assessmentEpisode','checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id));
       for(const id of ['unifiedResults','savedGuideList','checkinCorrections','briefSelection','briefStatus','continuityStatus','feedbackStatus','reminderPreview','unifiedStatus'])$(id)?.replaceChildren();$('continuityDialog')?.replaceChildren();}
   };

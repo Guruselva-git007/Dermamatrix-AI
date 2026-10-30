@@ -1,9 +1,25 @@
 # Consumer development execution status
 
-Updated: 29 October 2026. Canonical checkpoint. Sequential implementation;
+Updated: 30 October 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
+
+**Current authorized batch — integrated product refinement (30 October):
+implementation/local verification complete; final-source CI receipt pending.**
+Owner renewed optimization/fix/polish authorization, including useful internet
+design research. Reproduced late correction completion closing a replacement
+dialog, delayed check-in completion clearing a later draft, reset brief dates,
+out-of-order brief previews and unreadable inherited Journey dark text/10px fields.
+Fixed these in the existing continuity controller/product stylesheet; added a
+labelled check-in review with heading-first focus. Original records, API/scoring,
+backend/schema/models and architecture remain unchanged. No phone setup,
+provider activation or deployment. 87 frontend tests and 12 runner tests pass.
+Local Chrome/WebKit each passed63 connected/offline checks before the final
+readability CSS/assertion; final Chrome quality21 passes including that addition.
+Responsive review/brief probes cover320/390/768/1440 in both themes, with enlarged
+text simulation. Exact final three-engine CI and cleanup/Git receipt follow;
+do not treat this paragraph as a final all-checks-pass claim.
 
 **Latest continuation — native desktop acceptance (29 October): available
 independent checks complete; physical-phone testing explicitly deferred by owner.**

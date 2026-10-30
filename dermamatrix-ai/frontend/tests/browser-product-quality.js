@@ -238,6 +238,70 @@ async (page, options = {}) => {
     assert(!await page.locator('#resultModal').evaluate(e => e.classList.contains('show')), 'Result keyboard dismissal failed');
     checks.push('result keyboard dismissal and existing focus lifecycle');
 
+    await page.setViewportSize({width:1440,height:960});await nav('progress');await page.locator('#journeyTabs-results').click();
+    assert(await page.locator('#briefEnd').inputValue()===await page.evaluate(()=>currentDate())&&Boolean(await page.locator('#briefStart').inputValue()),'Account entry cleared the brief date defaults');
+    assert(await page.locator('#downloadBrief').isDisabled(),'Brief download is enabled before preview');
+    await page.evaluate(()=>document.querySelector('#visitBrief').open=true);
+    let releaseBrief,briefCaptured,briefRequests=0;const briefGate=new Promise(resolve=>releaseBrief=resolve),briefReady=new Promise(resolve=>briefCaptured=resolve);
+    const briefFixture=(id,notice)=>({brief:{assessments:id?[{assessment_id:id,area:'Sweat',created_at:'2026-10-30T12:00:00Z'}]:[],counts:{assessments:id?1:0,checkins:0,routine_actions:0},photo_notice:notice}});
+    await page.route('**/api/visit-brief',async route=>{briefRequests++;if(briefRequests===1){briefCaptured();await briefGate;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(briefFixture('synthetic-obsolete','Older preview'))});}else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(briefFixture(null,'Latest preview'))});});
+    await page.locator('#briefQuestions').fill('Synthetic previous question');await page.locator('#previewBrief').click();await briefReady;
+    await page.locator('#briefQuestions').fill('Synthetic latest question');await page.locator('#previewBrief').click();await page.waitForFunction(()=>document.querySelector('#briefStatus').textContent.includes('Latest preview'));
+    const oldBriefResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/visit-brief');releaseBrief();await (await oldBriefResponse).finished();await page.waitForTimeout(40);await page.unroute('**/api/visit-brief');
+    assert((await page.locator('#briefStatus').textContent()).includes('Latest preview')&&await page.locator('#briefSelection input').count()===0,'Old clinician preview replaced the latest selection');
+    checks.push('default brief dates survive sign-in and out-of-order previews preserve the latest selection');
+    await page.locator('#briefQuestions').fill('Synthetic changed question');assert(await page.locator('#downloadBrief').isDisabled()&&await page.locator('#briefSelection input').count()===0,'Edited brief can download an obsolete preview');
+    assert((await page.locator('#briefStatus').textContent()).includes('Selection changed'),'Brief editing has no recovery instruction');
+    checks.push('brief editing invalidates download until its selected records are previewed again');
+
+    await page.evaluate(async()=>{
+      const write=(url,payload)=>requestJSON(url,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(payload)});
+      const routine=await write('/api/routines',{condition_label:'Synthetic lifecycle observation',routine_name:'Synthetic lifecycle routine',start_date:currentDate(),notes:'Synthetic only'});
+      for(const note of ['First synthetic lifecycle entry','Second synthetic lifecycle entry'])await write('/api/progress-checkins',{routine_id:routine.routine_id,checkin_date:currentDate(),reported_trend:'unchanged',discomfort:0,change:0,note});
+      await loadProgress({force:true});await window.ContinuityUI.changed();
+    });
+    for(const theme of ['light','dark'])for(const width of [320,390,768,1440]){
+      await page.setViewportSize({width,height:960});await page.evaluate(theme=>applyTheme(theme),theme);
+      const readability=await page.evaluate(()=>{
+        const luminance=color=>color.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+        const targets=[...document.querySelectorAll('.section-label h3,.progress-summary strong')];
+        const ratios=targets.map(e=>{const surface=e.closest('.checkin-card,.routine-form-card,.routine-list-card,.history-card,.journey-status-section');const foreground=luminance(getComputedStyle(e).color),background=luminance(getComputedStyle(surface).backgroundColor);return(Math.max(foreground,background)+.05)/(Math.min(foreground,background)+.05);});
+        const fields=[...document.querySelectorAll('#routineForm input:not([type=checkbox]),#checkinForm input:not([type=file]),#checkinForm select')];
+        return{minContrast:Math.min(...ratios),readableFields:fields.every(e=>parseFloat(getComputedStyle(e).fontSize)>=16&&getComputedStyle(e).fontFamily.includes('IBM Plex Sans'))};
+      });
+      assert(readability.minContrast>=4.5&&readability.readableFields,'Journey heading/field readability failed in '+theme+' at '+width);
+    }
+    await page.setViewportSize({width:1440,height:960});await page.evaluate(()=>applyTheme('light'));
+    checks.push('Journey headings, summary values and routine/check-in fields remain readable in both themes');
+    await page.locator('#journeyTabs-checkins').click();const correctedId=await page.evaluate(()=>state.checkins[0].checkin_id);await page.locator('#checkinCorrections button').first().click();
+    assert(await page.locator('#continuityDialogTitle').evaluate(e=>e===document.activeElement),'Correction heading did not receive focus');
+    let releaseCorrection,correctionCaptured;const correctionGate=new Promise(resolve=>releaseCorrection=resolve),correctionReady=new Promise(resolve=>correctionCaptured=resolve);
+    await page.route('**/api/corrections/checkin/*',async route=>{const response=await route.fetch();correctionCaptured();await correctionGate;await route.fulfill({response});});
+    await page.locator('#correct-trend').selectOption('improving');await page.locator('#continuityDialog [type=submit]').click();await correctionReady;
+    await page.locator('#continuityDialog').getByRole('button',{name:'Back',exact:true}).click();await page.locator('#checkinCorrections button').nth(1).click();
+    await page.locator('#continuityDialog textarea').fill('Synthetic new correction draft');
+    const oldCorrection=page.waitForResponse(r=>new URL(r.url()).pathname.startsWith('/api/corrections/checkin/'));releaseCorrection();await (await oldCorrection).finished();await page.waitForFunction(id=>state.checkins.find(r=>r.checkin_id===id)?.revision===1,correctedId);await page.unroute('**/api/corrections/checkin/*');
+    assert(await page.locator('#continuityDialog').evaluate(e=>e.open)&&await page.locator('#continuityDialog textarea').inputValue()==='Synthetic new correction draft','Old save closed or changed the current correction');
+    assert((await page.locator('#checkinCorrections').textContent()).includes('Original: unchanged'),'Completed correction lost its original record');await page.keyboard.press('Escape');
+    checks.push('late correction completion preserves a replacement dialog, its draft and immutable history');
+
+    const routineId=await page.evaluate(()=>state.routines.find(r=>r.routine_name==='Synthetic lifecycle routine').routine_id);await page.locator('#checkinRoutine').selectOption(routineId);await page.locator('#checkinNote').fill('Synthetic reviewed submission');
+    await page.locator('#checkinForm [type=submit]').click();
+    for(const width of [320,390,768,1440]){
+      await page.setViewportSize({width,height:960});
+      assert(await page.locator('#continuityDialogTitle').evaluate(e=>e.getBoundingClientRect().top>=0),'Review heading is off screen at '+width);
+      assert(await page.locator('#continuityDialog').evaluate(e=>e.scrollWidth<=e.clientWidth),'Review overflows at '+width);
+      assert(await page.locator('.review-summary dt').count()===7,'Review omits an entered field');
+      if([390,1440].includes(width))await page.screenshot({path:root+`quality-checkin-review-${width}.png`});
+    }
+    await page.setViewportSize({width:1440,height:960});let releaseCheckin,checkinCaptured;const checkinGate=new Promise(resolve=>releaseCheckin=resolve),checkinReady=new Promise(resolve=>checkinCaptured=resolve);
+    await page.route('**/api/progress-checkins',async route=>{if(route.request().method()==='POST'){const response=await route.fetch();checkinCaptured();await checkinGate;await route.fulfill({response});}else await route.continue();});
+    await page.locator('#continuityDialog [type=submit]').click();await checkinReady;await page.locator('#continuityDialog').getByRole('button',{name:'Back',exact:true}).click();await page.locator('#checkinNote').fill('Synthetic next unsaved draft');
+    const oldCheckin=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/progress-checkins'&&r.request().method()==='POST');releaseCheckin();await (await oldCheckin).finished();await page.waitForFunction(()=>state.checkins.some(r=>r.note==='Synthetic reviewed submission'));await page.unroute('**/api/progress-checkins');
+    assert(await page.locator('#checkinNote').inputValue()==='Synthetic next unsaved draft','Delayed check-in cleared the next unsaved draft');
+    const savedCount=await page.evaluate(async()=>{const data=await requestJSON('/api/progress-checkins');return data.checkins.filter(r=>r.note==='Synthetic reviewed submission').length;});assert(savedCount===1,'Delayed save duplicated or lost the reviewed check-in');
+    checks.push('structured responsive check-in review and delayed save preserve the next draft without duplicates');
+
     await page.setViewportSize({ width: 1440, height: 960 }); await logout();
     assert(await page.evaluate(() => !state.profile && !document.querySelector('#patientResultContent') && document.querySelector('#authGate').classList.contains('show') && document.querySelector('.app-shell').inert), 'Sign-out did not clear and isolate the private workspace');
     await page.locator('#continueGuestButton').click();
