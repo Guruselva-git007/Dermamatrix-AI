@@ -42,11 +42,43 @@ function harness(width = 375) {
   const body = element();
   document = { body, activeElement: body, querySelector: get, querySelectorAll: selector => selector === '.assessment-steps li' ? steps : [] };
   const context = vm.createContext({ document, window: { innerWidth: width }, URL: { revokeObjectURL() {} }, AbortController, console });
-  vm.runInContext(definitions + '\nglobalThis.api = { state, setAuthTab, updateAssessmentProgress, resetImage, syncInteractionInertness, containKeyboardFocus, setNavigationOpen, processingNoticeVersion, loadProcessingNotices, handleChangedProcessingNotice, downloadAccountData, updateAccountExportControls };', context);
+  vm.runInContext(definitions + '\nglobalThis.api = { state, setAuthTab, updateAssessmentProgress, resetImage, syncInteractionInertness, containKeyboardFocus, setNavigationOpen, processingNoticeVersion, loadProcessingNotices, handleChangedProcessingNotice, downloadAccountData, updateAccountExportControls, revealAssessmentTextarea };', context);
   return { context, api: context.api, get, steps, strip, body, document, element };
 }
 
 function current(h) { return h.steps.findIndex(item => item.getAttribute('aria-current') === 'step') + 1; }
+
+function clippedTextarea(h, rect = { top: 811.5, bottom: 907.5 }) {
+  const field = h.element(); const frames = []; const scrolls = [];
+  field.matches = selector => selector === '#screen textarea';
+  field.isConnected = true; field.value = 'Chosen tracking note';
+  field.getBoundingClientRect = () => rect;
+  field.scrollIntoView = options => scrolls.push(options);
+  h.context.window.innerHeight = 844;
+  h.context.window.requestAnimationFrame = callback => frames.push(callback);
+  h.get('.topbar').getBoundingClientRect = () => ({ bottom: 60 });
+  h.get('#screen').classList.add('page-active'); field.focus();
+  return { field, scrolls, flush: () => frames.splice(0).forEach(callback => callback()) };
+}
+
+test('keyboard focus reveals a clipped assessment textarea without moving chosen focus or text', () => {
+  const h = harness(); const { field, scrolls, flush } = clippedTextarea(h);
+  h.api.revealAssessmentTextarea({ target: field }); flush();
+  assert.equal(scrolls.length, 1);
+  assert.deepEqual({ ...scrolls[0] }, { block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  assert.equal(h.document.activeElement, field); assert.equal(field.value, 'Chosen tracking note');
+});
+
+test('assessment reveal leaves visible controls, newer focus and superseded workspaces alone', () => {
+  const h = harness(); const visible = clippedTextarea(h, { top: 100, bottom: 196 });
+  h.api.revealAssessmentTextarea({ target: visible.field }); visible.flush();
+  assert.equal(visible.scrolls.length, 0);
+  const clipped = clippedTextarea(h);
+  h.api.revealAssessmentTextarea({ target: clipped.field }); h.body.focus(); clipped.flush();
+  assert.equal(clipped.scrolls.length, 0);
+  clipped.field.focus(); h.api.revealAssessmentTextarea({ target: clipped.field }); h.api.state.workspaceVersion++; clipped.flush();
+  assert.equal(clipped.scrolls.length, 0);
+});
 
 test('delayed auth autofocus respects a field already chosen by the user or autofill', () => {
   const h=harness(),first=h.element(),email=h.element(),form=h.get('#registerForm');let queued;

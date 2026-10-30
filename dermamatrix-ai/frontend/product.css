@@ -80,6 +80,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, tex
 }
 select, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) { min-height: 44px; }
 textarea { min-height: 88px; resize: vertical; }
+#screen textarea { scroll-margin-block: 84px 20px; }
 /* Remaining legacy form selectors still carry 10px DM Sans shorthands. These controls
    use the same readable type as the current forms, including entered notes. */
 :is(#routineForm, #checkinForm, #profileForm, #screenDetails) textarea {

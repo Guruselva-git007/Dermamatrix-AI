@@ -493,8 +493,8 @@ WebKit each pass83 checks: core15, continuity12, quality27, accessibility12,
 scanner13 and real owned-origin outage/recovery4. Existing synthetic workflows
 verify guest assessment, concern/follow-up/Journey, routine/check-in/correction,
 brief selection/export, guides/bookmarks/search, account isolation, interruption /
-retry and duplicate protections. No additional behavioral defect was reproduced
-in those covered consumer transitions; their controllers were not rewritten.
+retry and duplicate protections. Those early results precede the two focus corrections described below; the final
+exact-source whole CI must verify them together.
 
 Six new quality checks cover body-resolved aliases, expanded/filled context,
 actual keyboard note focus, technical values, technical reflow and Profile /
@@ -539,24 +539,28 @@ unverified. Independent implementation/regression work completed without waiting
 ### Performance and protections
 
 No demonstrated startup/interaction bottleneck justified a speculative performance
-rewrite. No network, scanner or request-latency behavior was changed. The small
-continuity UI autofocus guard is described below. Asset measurements below are raw/local-gzip sizes, not transfer timings
-or evidence of a speed gain. Baseline hashes confirm backend, main assessment controller, scanner and
-model/scoring/evidence/privacy/schema/report/export paths unchanged.
+rewrite. No network, scanner or request-latency behavior was changed. Small UI focus
+corrections are described below. Asset measurements below are raw/local-gzip sizes, not transfer timings
+or evidence of a speed gain. Baseline hashes confirm backend, scanner and model/scoring/evidence/privacy /
+schema/report/export paths unchanged. app.js only adds a scoped textarea-reveal
+helper/listener; continuity.js only guards deferred heading autofocus.
 No live migration, model install/retraining, provider activation, real medical
 input, default-branch merge or deployment was performed. Synthetic test records
 use the existing isolated fixture; personal database/service remains separate.
 
 Exact final CI/source/Git/cleanup receipt follows after integrated verification.
 
-| Stylesheet | Before raw bytes | After raw bytes | After local gzip bytes |
-|---|---:|---:|---:|
-| `styles.css` | 11233 | 11224 | 3364 |
-| `compliance.css` | 2635 | 2566 | 912 |
-| `discover.css` | 15311 | 14691 | 3545 |
-| `product.css` | 79807 | 80492 | 15263 |
+| Asset | Before raw bytes | After raw bytes | Before local gzip bytes | After local gzip bytes |
+|---|---:|---:|---:|---:|
+| `styles.css` | 11233 | 11224 | 3372 | 3371 |
+| `compliance.css` | 2635 | 2566 | 928 | 913 |
+| `discover.css` | 15311 | 14691 | 3620 | 3559 |
+| `product.css` | 79807 | 80545 | 15174 | 15391 |
+| `continuity.js` | 37898 | 37984 | 11426 | 11450 |
+| `app.js` | 220231 | 221438 | 55024 | 55436 |
 
-Combined raw delta: -13 bytes; combined local-gzip delta: +125 bytes. No loading/latency improvement claimed.
+Deterministic gzip with mtime0, no filename header. These are asset sizes, not
+loading/latency improvements. Source protection receipt records all allowed changes.
 
 First exact CI41072083917 passed backend/unit/advisory gates and all83 browser
 checks in Chrome and Firefox, then Linux WebKit timed out at the newly added
@@ -589,3 +593,22 @@ Focused WebKit27 passes with the stronger case. The existing viewport/outline an
 all previous checks remain; no failure was suppressed or browser omitted. The
 initial focus-probe timeout is not conclusively attributed to this race; final
 whole CI must verify the selected keyboard paths and dialog behavior together.
+
+Third CI41077279135 preserved the draft but failed the unchanged full-viewport
+assertion: the focused96px Tracking note ended at907.5px in an844px viewport,
+with its top811.5px. The same clipping reproduced in local WebKit. A trace showed
+an older smooth focus scroll could finish after the first reveal adjustment.
+The scoped #screen textarea helper now uses an instant nearest reveal after
+focus, with header/viewport margins. It never chooses another field or changes
+text, and rejects superseded focus/workspaces, disconnected/inert fields and an
+inactive assessment page. Already visible fields are left alone. Instant
+correction also respects reduced motion. No timers, network or persistence added.
+
+Two source-executing tests verify clipped-field reveal plus visible/new-focus /
+new-workspace protection; all93 frontend tests pass. The exact previously failing
+two-theme keyboard/reflow sequence now passes locally. The existing quality test
+retains focused-note/full-viewport/solid-outline assertions and records actual
+geometry. Final focused WebKit27 passes with solid3px outline and textarea
+top727.5625/bottom823.5625 inside844px viewport in both themes. The screenshot
+shows the complete focused control. Exact whole CI is pending. None of the three
+incomplete CI runs is represented as a success.

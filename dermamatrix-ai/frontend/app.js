@@ -416,6 +416,26 @@ function handleChangedProcessingNotice(error) {
   void loadProcessingNotices();
 }
 
+// Some browser keyboard paths reveal only the caret of a textarea. After the
+// native focus scroll, reveal the full control without changing chosen focus.
+function revealAssessmentTextarea(event) {
+  const field = event.target;
+  if (!field?.matches?.('#screen textarea')) return;
+  const workspaceVersion = state.workspaceVersion;
+  window.requestAnimationFrame(() => {
+    if (workspaceVersion !== state.workspaceVersion || document.activeElement !== field || !field.isConnected || field.closest('[inert]') || !$('#screen').classList.contains('page-active')) return;
+    const rect = field.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+    const header = $('.topbar')?.getBoundingClientRect().bottom || 0;
+    if (rect.top < header + 8 || rect.bottom > bottom - 8) {
+      // End any older smooth focus scroll; it can otherwise finish with only
+      // the caret visible. Instant correction also respects reduced motion.
+      field.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    }
+  });
+}
+
 function setAssessmentInputBusy(busy) {
   if (busy) {
     state.busyInputs = $$('#screen input, #screen select, #screen textarea, #screen button').map(input => ({ input, disabled: input.disabled }));
@@ -2839,6 +2859,7 @@ const drop = $('#dropZone');
 ['dragenter', 'dragover'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(name => drop.addEventListener(name, event => { event.preventDefault(); drop.classList.remove('dragging'); }));
 drop.addEventListener('drop', event => setImage(event.dataTransfer.files[0]));
+document.addEventListener('focusin', revealAssessmentTextarea);
 $('#analyzeButton').onclick = () => window.AssessmentUX ? window.AssessmentUX.review() : analyze(); $('#saveProgressButton').onclick = saveProgress; $('#viewCareButton').onclick = viewCare;
 [$('#imageConsent'), $('#dermoscopyConsent')].forEach(input => input.addEventListener('change', clearAssessmentConsentError));
 $$('[data-result-tab]').forEach(button => { button.onclick = () => showResultTab(button.dataset.resultTab); });

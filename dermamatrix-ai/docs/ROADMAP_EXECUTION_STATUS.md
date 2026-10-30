@@ -6,32 +6,35 @@ Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
 **Current authorized batch — frontend stability and consumer acceptance
-(30 October): selected corrections implemented; integrated verification pending.**
-Confirmed inherited low-contrast context/Profile/technical text and small Products
-description; legacy aliases froze light-mode values and a textarea focus rule
-removed the keyboard outline. Removed conflicting properties from their older
-owners and bound aliases on the themed body. Expanded technical evidence also
-overflowed mobile; values now wrap without changing/truncating medical content.
-The approved white/sky and navy/cyan tokens, existing layouts and scanner remain.
-Backend/core assessment/scanner/model/schema/data remain unchanged; a small
-continuity-dialog autofocus guard additionally prevents a chosen input losing focus. Product quality adds6 focused
-checks (21→27). Local frontend90, runner12 and integrated Chrome83/WebKit83
-pass. First exact CI41072083917 passed Chrome/Firefox83 each but Linux
-WebKit timed out in the new focus probe. Its setup now uses preceding-field
-keyboard traversal, with visibility/outline assertions unchanged and richer
-failure context. Local WebKit27 passes. Second CI41074357496 failed an earlier correction
-draft assertion; controlled delayed-frame reproduction confirmed heading autofocus
-could steal a chosen textarea and lose keystrokes. Its guard and deterministic
-browser case now pass locally, along with91 frontend tests. Final CI is pending.
+(30 October): corrections implemented; final exact-source verification pending.**
+Corrected inherited context/Profile/technical contrast, small Products type,
+missing textarea outline, root-frozen theme aliases and mobile technical overflow.
+White/sky and navy/cyan identity, IBM Plex, layout/navigation and scanner remain.
+Runtime changes are four CSS files, a dialog-heading focus guard and a scoped
+assessment-textarea reveal helper. Backend/scoring/schema/model/evidence/privacy /
+report/export sources remain unchanged; only focused UI behavior was corrected.
 
-Actual native Safari attempt stopped at its browser-generated HTTPS warning for
-http://127.0.0.1:8001/. The owned tab was closed without Continue or another bypass;
-original Start Page preserved. Native file selection, correction, completed
-PDF/JSON saving and zoom/reflow remain owner-dependent. Phone stays deferred.
-Existing capability proposals were reconciled with completed source, not rebuilt.
-Private evidence: local-artifacts/frontend-stability-2026-10-30/ at project root.
-Next: complete integrated regression, preserve task-owned Git/evidence and clean
-up owned resources; no additional speculative improvements or deployment.
+Initial local Chrome83/WebKit83, frontend90 and runner12 passed the CSS phase.
+CI41072083917 timed out at the new Linux WebKit focus probe; richer diagnostics
+and natural preceding-field keyboard traversal retained all viewport/outline
+assertions. CI41074357496 then failed an earlier correction-draft check. A held
+heading frame proved a real focus-stealing race; its guard and deterministic
+real-typing test pass locally. CI41077279135 diagnosed the focused textarea
+clipped below844px viewport (bottom907.5px). A local reproduction showed an older
+smooth focus scroll could finish after the reveal. Instant scoped correction
+now leaves the full focused control visible, respects chosen text/focus and
+ignores superseded workspaces. Frontend93 and the targeted two-theme keyboard
+path pass; the full focused WebKit27 also passes. Whole three-engine CI is pending.
+
+Actual native Safari stopped at its browser-generated HTTPS warning for the
+isolated HTTP fixture. No Continue/security workaround was attempted; the owned
+tab was closed and original Start Page preserved. Native file selection,
+correction, completed PDF/JSON saving and zoom remain owner-dependent; actual
+speech/participant acceptance unverified. Phone stays deferred. The stale proposal
+list was reconciled with implemented source, not rebuilt. Private evidence:
+local-artifacts/frontend-stability-2026-10-30/ at project root. Next: final
+integrated verification, scoped Git/evidence and guarded cleanup. Development
+only; no providers, deployment, speculative features or medical changes.
 
 **Current authorized batch — white + sky blue restoration and original scanner
 (30 October): complete within the authorized development scope.**

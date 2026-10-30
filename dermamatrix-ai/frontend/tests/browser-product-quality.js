@@ -365,7 +365,7 @@ async (page, options = {}) => {
       assert(traversal,'Tracking note cannot be reached from the preceding field by keyboard');
       try { await page.waitForFunction(()=>{const e=document.querySelector('#concernNote'),r=e.getBoundingClientRect();return e===document.activeElement&&r.top>=64&&r.bottom<=innerHeight;}); }
       catch(error){const context=await page.locator('#concernNote').evaluate(e=>({focus:document.activeElement.id,rect:e.getBoundingClientRect().toJSON(),viewport:innerHeight,scrollY,header:document.querySelector('.topbar').getBoundingClientRect().toJSON()}));throw Error('Tracking-note focus/viewport failed: '+JSON.stringify(context));}
-      const focus=await page.locator('#concernNote').evaluate(e=>({visible:e.matches(':focus-visible'),style:getComputedStyle(e).outlineStyle,width:parseFloat(getComputedStyle(e).outlineWidth)}));
+      const focus=await page.locator('#concernNote').evaluate(e=>({visible:e.matches(':focus-visible'),style:getComputedStyle(e).outlineStyle,width:parseFloat(getComputedStyle(e).outlineWidth),top:e.getBoundingClientRect().top,bottom:e.getBoundingClientRect().bottom,viewport:innerHeight}));
       assert(focus.visible&&focus.style!=='none'&&focus.width>=2,'Tracking-note keyboard focus is absent: '+JSON.stringify(focus));
       samples.push({state:'tracking-note-focus',theme,traversal,...focus});await page.screenshot({path:root+`quality-context-focus-${theme}.png`});
     }

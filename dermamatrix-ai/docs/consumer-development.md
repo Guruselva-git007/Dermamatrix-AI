@@ -257,3 +257,11 @@ steal a field the user had already chosen, losing subsequent keystrokes. The
 continuity dialog now checks that focus is unchanged before its deferred heading
 focus. Existing owner/form/request guards remain. Unit91 and the deterministic
 held-frame browser case verify the chosen textarea and draft are retained.
+
+Assessment textarea focus also receives a scoped nearest reveal after native
+focus scrolling. It uses instant behavior to prevent an older smooth scroll
+ending with only the caret visible, respects header/viewport margins, leaves
+already visible fields alone and rejects changed focus/workspaces/inactive pages.
+It preserves input and chosen focus; it adds no network, timer or data semantics.
+The existing93-test frontend suite includes focused positive/stale-work checks;
+actual browser focus/outline/full-viewport assertions remain mandatory.
