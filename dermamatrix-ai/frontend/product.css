@@ -273,7 +273,7 @@ small { font-size: 13px; }
 .journey-empty-state .consumer-actions { margin-top: 20px; }
 .progress-layout { display: grid; grid-template-columns: 1fr; gap: 20px; }
 .routine-list-card .section-label p, .checkin-card .section-label p { font-size: 14px; color: var(--dm-muted); margin: 5px 0; }
-.section-label h3 { font-size: 17px; margin: 0 0 8px; color: var(--dm-ink); }
+.section-label h3 { font-family: var(--dm-font); font-size: 17px; margin: 0 0 8px; color: var(--dm-ink); }
 .section-label .eyebrow { display: none; }
 .routine-item { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; border: 0; border-bottom: 1px solid var(--dm-line); border-radius: 0; background: transparent; }
 .routine-item:last-child { border-bottom: 0; }
@@ -317,7 +317,7 @@ small { font-size: 13px; }
 .progress-summary article { display: flex; flex-direction: column-reverse; gap: 6px; align-items: start; padding: 0 20px 0 0; border: 0; border-right: 1px solid var(--dm-line); border-radius: 0; background: transparent; }
 .progress-summary article:last-child { border-right: 0; }
 .progress-summary article > span { display: none; }
-.progress-summary strong { font-size: 21px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--dm-ink); }
+.progress-summary strong { font-family: var(--dm-font); font-size: 21px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--dm-ink); }
 .progress-summary small { font-size: 12px; color: var(--dm-muted); }
 .monitoring-note { font-size: 13px; color: var(--dm-muted); margin: 14px 0 0; }
 .checkin-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }

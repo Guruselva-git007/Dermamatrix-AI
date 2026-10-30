@@ -267,7 +267,7 @@ async (page, options = {}) => {
         const targets=[...document.querySelectorAll('.section-label h3,.progress-summary strong')];
         const ratios=targets.map(e=>{const surface=e.closest('.checkin-card,.routine-form-card,.routine-list-card,.history-card,.journey-status-section');const foreground=luminance(getComputedStyle(e).color),background=luminance(getComputedStyle(surface).backgroundColor);return(Math.max(foreground,background)+.05)/(Math.min(foreground,background)+.05);});
         const fields=[...document.querySelectorAll('#routineForm input:not([type=checkbox]),#checkinForm input:not([type=file]),#checkinForm select')];
-        return{minContrast:Math.min(...ratios),readableFields:fields.every(e=>parseFloat(getComputedStyle(e).fontSize)>=16&&getComputedStyle(e).fontFamily.includes('IBM Plex Sans'))};
+        return{minContrast:Math.min(...ratios),readableFields:fields.every(e=>parseFloat(getComputedStyle(e).fontSize)>=16&&getComputedStyle(e).fontFamily.includes('IBM Plex Sans'))&&targets.every(e=>getComputedStyle(e).fontFamily.includes('IBM Plex Sans'))};
       });
       assert(readability.minContrast>=4.5&&readability.readableFields,'Journey heading/field readability failed in '+theme+' at '+width);
     }
