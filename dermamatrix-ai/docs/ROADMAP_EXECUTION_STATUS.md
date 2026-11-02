@@ -1,6 +1,6 @@
 # Consumer development execution status
 
-Updated: 2 November 2026. Canonical checkpoint. Sequential implementation;
+Updated: 3 November 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
@@ -22,6 +22,14 @@ offline4 pass in both engines after making the real cancelled-reload test avoid
 waiting for a load event that must not happen. All retention/ownership assertions
 remain. Exact whole-source three-engine CI is the final pending verification;
 earlier incomplete runs remain failures. No blanket success claim.
+
+First exact CI41432967987 passes backend259/frontend102, source/pinned audit and
+Chrome96/Firefox96, but Linux WebKit stops at guide opening after its PDF check.
+Local unchanged continuity12/offline4 passes. The test now waits for completed
+Acne search and names its result, retaining all assertions and adding failure
+context. Focused current WebKit continuity12/offline4 passes; new exact CI is
+pending. Production remains
+64216df with no additional app change from this follow-up.
 
 Private evidence: local-artifacts/account-drafts-2026-11-02/. Baseline hashes
 protect87 non-test files, including all CSS/index/scanner/schema/medical/report

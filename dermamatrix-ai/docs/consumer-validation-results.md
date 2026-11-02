@@ -767,3 +767,25 @@ explicitly deferred; no participant sessions were manufactured or contacted.
 Final browser, CI, Git synchronization and owned-resource cleanup receipts follow
 after the current verification completes. No blanket product-readiness verdict
 or completed native picker/save/correction claim is implied.
+
+
+### 3 November resume — first exact CI follow-up
+
+CI41432967987 on64216dfc6cf76aea5f7f1c2f4967be9ae9bff0ca passed259 backend,
+102 frontend, explicit synthetic migrations and source/dependency checks, plus
+all96 browser checks each in Chrome and Firefox. Linux WebKit passed smoke15
+then timed out finding guideBookmark after the visit-brief PDF. This is an
+incomplete run, not a whole-suite pass. The same unmodified sequence passes
+locally in WebKit (continuity12 plus offline4); no additional product defect
+was established from this timeout.
+
+The continuity fixture previously clicked the first existing catalogue button
+without waiting for its new search to finish. It now waits for the same completed
+Acne search used by the quality suite and chooses the named Acne action. Bookmark,
+search/reopen/remove and all later assertions remain unchanged. Failure context
+records the synthetic account-presence flag, active page, guide status/title/list,
+gate/focus and a private screenshot instead of a selector-only timeout. No new
+production code or framework is introduced for this follow-up. Current focused
+WebKit continuity12/offline4 passes with the explicit search readiness step. The final exact
+whole-source CI receipt below supersedes this failed run's status without
+representing it as passed.
