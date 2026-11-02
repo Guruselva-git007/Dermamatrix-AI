@@ -762,13 +762,6 @@ Actual VoiceOver/TalkBack speech, physical phone/iPhone/touch/gallery and the
 existing representative-consumer protocol remain unverified. Phone stays
 explicitly deferred; no participant sessions were manufactured or contacted.
 
-### Exact-source closure
-
-Final browser, CI, Git synchronization and owned-resource cleanup receipts follow
-after the current verification completes. No blanket product-readiness verdict
-or completed native picker/save/correction claim is implied.
-
-
 ### 3 November resume — first exact CI follow-up
 
 CI41432967987 on64216dfc6cf76aea5f7f1c2f4967be9ae9bff0ca passed259 backend,
@@ -789,3 +782,51 @@ production code or framework is introduced for this follow-up. Current focused
 WebKit continuity12/offline4 passes with the explicit search readiness step. The final exact
 whole-source CI receipt below supersedes this failed run's status without
 representing it as passed.
+
+
+### Final exact-source verification and closure — 3 November
+
+[CI41504479431](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41504479431)
+passes **6eb5a72ad4b2a599c7ed6065d4e61dcf7fdb54b3**: **259 backend tests,
+102 frontend tests and 288 browser checks**, 96 each Chrome/Firefox/WebKit.
+Explicit synthetic migrations, tracked-secret/source hygiene and pinned advisory
+audit also pass. No known vulnerabilities were reported in that pinned test
+environment. GitHub's push banner separately reported 32 default-branch alerts
+(3 critical, 18 high, 11 moderate); these are unreconciled and not resolved by
+this branch's green audit. No broad dependency upgrades or dismissed warnings.
+The previous failed CI and all local incomplete attempts remain failures.
+
+Runtime implementation64216dfc6cf76aea5f7f1c2f4967be9ae9bff0ca is identical in
+the green source; 6eb5a72 only adds completed-search readiness/failure diagnostics
+and related documentation. All selected ownership/draft, duplicate, viewport,
+outline, bookmark and cross-feature assertions remain. Local focused proof and
+before/after evidence supplement this final whole run; no new application defect
+was inferred merely from the first Linux guide timeout. No selected unresolved
+P0/P1 remains within inspected states, without a blanket product-readiness verdict.
+
+Owned Gunicorn8001/MySQL3308 exited after exact PID/command checks. Only the two
+temporary boundaries_synthetic SQL users were dropped; records/database retained.
+Normal8000/3307 listener PIDs match before/after. The normal backend was not
+restarted/reimported; the changed backend contract was exercised on the isolated
+stack and exact-source CI. CLI reports no browsers; owned Safari tab is closed,
+original Start Page/100% zoom preserved. Task logs remain privately archived.
+Exact caffeinate11125 was released and exit verified; ordinary Mac sleep settings
+apply, without forced sleep or changes to unrelated services.
+
+Native chooser/replacement, correction completion and PDF/JSON final saving,
+actual speech, physical devices and representative consumer sessions remain
+external. The owner is away and deferred the picker; phone stays deferred. The
+first unfinished native action and exact resumption steps above remain current.
+No completed native saving, diagnosis, clinical validation or WCAG conformance
+is claimed. No provider activation, deployment, schema/model/scoring change or
+historical medical-evidence rewrite was included.
+
+Important files: consumer_security.py, app.js, consumer.js and continuity.js;
+existing backend/frontend suites and runner plus browser-account-drafts.js;
+consumer-development/security/device/protocol/experience references; this report
+and ROADMAP_EXECUTION_STATUS.md. The final receipt commit changes documentation
+only after the green source. Private ci-final.json, source-protection.json,
+cleanup.json and completion.json record exact CI, Git synchronization and closure;
+the project task journal/readable archive are refreshed. Preserve the verified
+state and resume owner-assisted acceptance when available rather than inventing
+another redesign or reopening completed capabilities.

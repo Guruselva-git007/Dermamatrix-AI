@@ -5,43 +5,58 @@ Updated: 3 November 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current authorized batch — unfinished work and account boundaries (2 November):
-implementation complete; final focused browser/remote verification in progress.**
+**Current authorized batch — unfinished work and account boundaries
+(2–3 November): independently verifiable development work complete.**
 Actual shared-cookie pages and SQL proved an A-tab routine draft committed under
-B. Requests now pin the existing session token for reads/writes/exports; server
-rejection precedes route access. Cross-tab invalidation and bounded foreground /
-revocation checks protect private views. Unknown verification locks views with
-same-tab recovery; confirmed changes clear input. No persisted health drafts.
-Reproduced late routine-response loss, silent profile-Escape/reload discard,
+B. Requests now pin the existing session token for reads/writes/exports, with
+server rejection before route access, cross-tab invalidation and bounded
+foreground/revocation verification. Unknown verification locks private views
+with same-tab recovery; confirmed changes clear input. No persisted health drafts.
+Reproduced late routine-response loss, silent Profile Escape/reload discard,
 hidden recent-history PDF action and a delayed JSON body ownership gap are fixed.
-Export status honestly says download started. Existing design/evidence remain.
+Exports honestly say download started. Existing design and evidence remain.
 
-Local backend259, frontend102 and runner12 pass. Chrome completes all96 browser
-checks. WebKit completes the existing79, then the focused account/draft13 and
-offline4 pass in both engines after making the real cancelled-reload test avoid
-waiting for a load event that must not happen. All retention/ownership assertions
-remain. Exact whole-source three-engine CI is the final pending verification;
-earlier incomplete runs remain failures. No blanket success claim.
+[Exact CI41504479431](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/41504479431)
+**passes source `6eb5a72ad4b2a599c7ed6065d4e61dcf7fdb54b3`: 259 backend,
+102 frontend and 288 browser checks (96 each Chrome/Firefox/WebKit)**, explicit
+synthetic migrations, tracked-secret/source hygiene and pinned advisory audit.
+Runtime implementation is `64216dfc6cf76aea5f7f1c2f4967be9ae9bff0ca`;
+6eb5a72 only refines the guide-search fixture and records its evidence.
+The first CI41432967987 passed Chrome/Firefox but timed out at WebKit guide
+opening; it remains a failure. The same sequence passed locally. The test now
+waits for completed named Acne search and records useful failure context; no
+assertion was weakened and the final whole CI passes. Local 259/102/runner12,
+Chrome96, focused account/draft13 + offline4 in both engines and final WebKit
+continuity12/offline4 supplement the exact-source whole run.
 
-First exact CI41432967987 passes backend259/frontend102, source/pinned audit and
-Chrome96/Firefox96, but Linux WebKit stops at guide opening after its PDF check.
-Local unchanged continuity12/offline4 passes. The test now waits for completed
-Acne search and names its result, retaining all assertions and adding failure
-context. Focused current WebKit continuity12/offline4 passes; new exact CI is
-pending. Production remains
-64216df with no additional app change from this follow-up.
+Private evidence: local-artifacts/account-drafts-2026-11-02/. Source hashes
+protect 87 non-test files, including all CSS/index/scanner/schema/medical/report
+sources. Four runtime files change. Both themes and five widths were inspected;
+existing keyboard, large-text and reduced-motion checks pass. No selected
+unresolved P0/P1 remains in the verified states. This is not full clinical,
+WCAG, device, human-usability or public-readiness acceptance. The pinned audit
+reports no known vulnerabilities in its tested environment; 32 default-branch
+alerts observed on push (3 critical/18 high/11 moderate) remain a distinct,
+unreconciled follow-up, with no broad upgrades or dismissal in this batch.
 
-Private evidence: local-artifacts/account-drafts-2026-11-02/. Baseline hashes
-protect87 non-test files, including all CSS/index/scanner/schema/medical/report
-sources. Only four runtime files change. Both themes/five widths sampled; no
-performance gain or complete native/clinical/WCAG acceptance claimed.
-Actual Safari synthetic login, fixed history action/Save sheet and200% Journey
-sample observed; original100% restored and owned tab closed, Start Page retained.
-Owner is away and explicitly deferred the native picker. Upload/Save remained
-disabled under automation; no completed native chooser/save/correction claimed.
-Phone/speech/participants remain external. No deployment/provider/schema/model /
-scoring change. Owned8001/3308/helper remain active until scoped save/cleanup;
-normal services and original dirty/untracked work are preserved.
+Actual Safari synthetic login, the fixed history action/Save sheet and a 200%
+Journey sample were observed. Original 100% was restored; owned tab closed and
+Start Page retained. Owner is away and explicitly deferred the native picker.
+Upload/Save stayed disabled through automation; completed native chooser,
+correction and file saving are unverified. Phone/speech/participants remain
+external. Resume at the first unfinished native Upload step in
+consumer-device-checks.md, one action at a time, when the owner is available.
+Do not repeat completed work or restart phone debugging without a new request.
+
+Owned8001/3308 processes and temporary SQL users are closed with identity/exit
+checks; synthetic rows retained. Normal8000/3307 listener PIDs are unchanged;
+their backend was not restarted/reimported as part of this batch. Owned browser
+sessions are closed and temporary logs retained privately. Exact task sleep
+helper11125 was released and exit verified; ordinary Mac sleep settings apply.
+Original dirty/untracked work is preserved. Final Git/doc receipt is a scoped
+documentation-only commit after the green source; completion.json records live
+remote equality, archive and closure. No deployment, provider, schema, model,
+scoring, medical-evidence rewrite or speculative redesign. This batch is finished.
 
 **Previous completed batch — frontend stability and consumer acceptance
 (30 October): independently verifiable development work complete.**
