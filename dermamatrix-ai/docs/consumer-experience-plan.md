@@ -1,6 +1,6 @@
 # Consumer experience: design decisions and next improvements
 
-Updated 30 October 2026. This is a product/design reference; the execution checkpoint is
+Updated 2 November 2026. This is a product/design reference; the execution checkpoint is
 `ROADMAP_EXECUTION_STATUS.md`. Development remains the standing scope until
 Guruselva explicitly requests deployment. Provider activation is also deferred.
 
@@ -72,12 +72,15 @@ own status; recheck them before extending any item.
 | Feedback/support | Existing local capture and recorded-pending-operator status | This is not a monitored support service or confirmed response |
 | Additional languages | Outside English-only scope | Remains deferred |
 
-The selected next batch is frontend stability and independently available
-consumer acceptance: remove confirmed conflicting style ownership, retain the
-approved white/sky and navy identity, verify filled/error/expanded/keyboard states,
-and preserve exact evidence. Avoid reopening already completed features merely
-because a historical idea list names them. Native Safari security warnings require
-owner handling; do not bypass them to manufacture a native test pass.
+The frontend-stability batch is complete. The following bounded account/draft
+batch corrects reproduced shared-cookie ownership and unsaved-input loss while
+keeping the approved visual system. It also restores the existing history PDF
+action to its visible disclosure after refresh. This is reliability work, not
+another redesign or a proposal to rebuild completed capabilities. The canonical
+checkpoint owns final verification/synchronization status. Native chooser/save,
+correction completion, speech and representative consumer acceptance remain
+separate checks. The owner deferred the native picker while away. Any future
+browser security warning still requires owner handling; never bypass it for a pass.
 
 Avoid adding diagnosis chatbots, medicine selection, automatic healing claims,
 unnecessary social feeds or raw-photo journals merely to increase the feature

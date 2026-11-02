@@ -78,6 +78,20 @@ class ConsumerAccounts(unittest.TestCase):
                         return params['token'][0]
         self.fail('No expected synthetic message found')
 
+    def test_old_tab_cannot_read_private_records_after_session_rotation(self):
+        old = self.client.get('/api/security/csrf').get_json()['csrf_token']
+        self.assertEqual(self.call('/api/auth/login', {'email_address': self.email, 'password': self.password}).status_code, 200)
+        current = self.client.get('/api/security/csrf').get_json()['csrf_token']
+        self.assertNotEqual(old, current)
+        for path in ['/api/profile', '/api/progress-checkins', '/api/account-data/download']:
+            stale = self.client.get(path, headers={'X-CSRF-Token': old})
+            self.assertEqual(stale.status_code, 409)
+            self.assertEqual(stale.get_json()['code'], 'WORKSPACE_CHANGED')
+            self.assertNotIn(self.email, stale.get_data(as_text=True))
+            self.assertEqual(self.client.get(path, headers={'X-CSRF-Token': current}).status_code, 200)
+        self.assertEqual(self.client.get('/api/profile').status_code, 200)  # Headerless GET compatibility.
+        self.assertEqual(self.client.get('/api/profile', headers={'X-CSRF-Token': 'invalid-é'}).status_code, 409)
+
     def test_csrf_and_malformed_json(self):
         self.assertEqual(self.client.post('/api/security/verify-email', json={}).status_code, 403)
         self.assertEqual(self.call('/api/security/password', []).status_code, 400)

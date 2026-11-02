@@ -141,17 +141,23 @@ With the existing isolated `*_synthetic` database/server on loopback port 8001,
 .venv/bin/python frontend/tests/run_browser_regressions.py --browsers chrome firefox webkit --reset-synthetic-budgets
 ```
 
-Each engine runs the same 15 core, 12 continuity, 21 quality and 12 targeted
-accessibility/keyboard checks. A
+Each engine runs the same 15 core, 12 continuity, 27 quality, 12 targeted
+accessibility/keyboard, 13 scanner and 13 account/draft checks. A
 separate context runs four real service-worker/origin-outage checks. Per-engine logs,
 screenshots and strict JSON receipts go into a fresh ignored project artifact
-directory. With `--reset-synthetic-budgets`, each engine starts with fresh technical request
+directory. With `--reset-synthetic-budgets`, independent suites start with fresh technical request
 budgets in the explicitly isolated `*_synthetic` database. No accounts, health
 records or history are cleared, and application limits remain enabled. This
 prevents several engines sharing one loopback IP from consuming each other's
 five-minute test quota. The flag refuses a non-test database or enabled mail.
 The runner refuses missing/incomplete/error JSON even if the CLI
 returns exit zero, and closes only its named browser sessions.
+
+Network suites use an owned secondary page, leaving the CLI launcher on
+about:blank. This lets real native confirm/beforeunload events finish their
+assertions rather than making the CLI return an incomplete modal receipt. The
+offline phases retain their existing page and real worker state. No dialog is
+silently accepted globally: each intentional synthetic discard is explicit.
 
 Network-failure tests block service workers so requests remain controllable by
 Playwright routing, as its [network documentation](https://playwright.dev/docs/network#missing-network-events-and-service-workers)
@@ -265,3 +271,44 @@ already visible fields alone and rejects changed focus/workspaces/inactive pages
 It preserves input and chosen focus; it adds no network, timer or data semantics.
 The existing93-test frontend suite includes focused positive/stale-work checks;
 actual browser focus/outline/full-viewport assertions remain mandatory.
+
+### Unfinished work and shared-cookie account boundaries (2 November 2026)
+
+The browser pins the existing per-session CSRF token in memory. Updated reads,
+writes and metadata exports send it through `fetchForWorkspace`; a fresh token
+from another cookie session cannot silently adopt that session for an old draft.
+The server rejects a supplied stale token before route data access: safe reads
+return409/WORKSPACE_CHANGED and unsafe requests retain403/CSRF_REQUIRED.
+Headerless GET clients remain compatible; this optional read header is not
+authentication or a replacement for the server's account-ownership checks.
+Response headers, workspace versions and post-JSON/post-blob checks reject stale
+responses. Explicit auth transitions can adopt their returned session; an older
+response cannot invalidate a later login. No session/schema system was replaced.
+
+BroadcastChannel carries only a generic invalidation signal, never account
+identity, tokens or health data. It never grants access. Focus, pageshow and
+visibility return check the server session without polling, including server-side
+revocation and browsers without the channel. Verification has a15-second deadline.
+A confirmed change clears private views and current-tab input. An unavailable
+verification locks/inerts private views while retaining existing input only in
+that tab; Retry or verified same-account sign-in can resume it. Another account,
+explicit sign-out or guest choice clears it. A sent-but-unconfirmed request may
+already have saved: the UI tells the user to inspect history before retrying.
+
+Derived in-memory form baselines protect demonstrated assessment/profile/routine/
+check-in/correction loss. Normal navigation keeps the existing input without a
+prompt. Actual discard actions and dirty reload use explicit confirmation; clean
+or reverted forms do not attach a beforeunload handler. Newer edits survive a
+submitted save's delayed response; subsequent routine save updates the same
+returned record. Profile and routine form generations reject stale UI effects.
+Correction fields pause during their submitted request, with truthful Back status.
+No health draft, password, photo, token or baseline is persisted in browser
+storage, URL, service-worker cache, logs or telemetry. Browser warnings are best
+effort and cannot guarantee recovery after mobile/OS process termination.
+
+The maintained recent-history disclosure retains its existing PDF action after
+record refresh; it is not moved back into the hidden legacy register. Export
+toasts say download started because native saving has not yet been confirmed.
+The approved white/sky/navy interface, IBM Plex, scanner and evidence remain.
+See the newest validation-results/checkpoint section for exact tested source and
+the deferred native chooser/save/correction/speech/participant boundaries.

@@ -190,11 +190,16 @@ def register_security(app, database, current_user):
         if not enabled() or not request.path.startswith('/api/'):
             return
         unsafe = request.method not in {'GET', 'HEAD', 'OPTIONS'}
-        if unsafe:
+        # The updated browser also sends its pinned session token on reads.
+        # Reject stale tabs before looking up another cookie owner's private data.
+        # Headerless GET clients remain compatible; this is not authentication.
+        if unsafe or 'X-CSRF-Token' in request.headers:
             supplied = request.headers.get('X-CSRF-Token', '')
             expected = session.get('csrf_token', '')
-            if not expected or not hmac.compare_digest(supplied, expected):
-                return jsonify(error='Refresh the page and retry.', code='CSRF_REQUIRED'), 403
+            if not expected or not supplied.isascii() or not hmac.compare_digest(supplied, expected):
+                if unsafe:
+                    return jsonify(error='Your account session changed. Sign in again before retrying.', code='CSRF_REQUIRED'), 403
+                return jsonify(error='Your account session changed. Sign in again before retrying.', code='WORKSPACE_CHANGED'), 409
         # A revoked/legacy cookie must not silently downgrade to guest processing.
         if session.get('user_id') and request.path not in {'/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/security/csrf', '/api/security/reset-password', '/api/security/action'}:
             connection = database()

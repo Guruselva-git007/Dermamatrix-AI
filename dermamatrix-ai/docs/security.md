@@ -17,6 +17,13 @@ repository actually enforces and what remains required before deployment.
 - Authenticated records are resolved from the server-side session; browser
   request bodies cannot select another user's profile, assessment, routine,
   report, or history export.
+- Updated browser requests pin the existing session CSRF token in memory for
+  reads, writes and exports. A supplied stale read token returns409 before route
+  queries; unsafe requests retain403. Headerless reads remain compatible and
+  still require normal cookie authentication/record ownership. Generic cross-tab
+  invalidation and foreground server verification clear a confirmed stale
+  workspace; unavailable verification locks it with a same-tab recovery option.
+  Neither browser signals nor the optional read header grant account access.
 - Local requests must use `localhost`, `127.0.0.1` or `::1`; arbitrary Host
   values are rejected before routes, including DNS-rebinding hostnames.
   Explicit production mode requires configured `DERMAMATRIX_TRUSTED_ORIGINS`

@@ -12,27 +12,104 @@
   const button = (label, action) => { const b = item('button', label); b.type = 'button'; b.className = 'button quiet'; b.onclick = action; return b; };
   const deliveryCopy = value => value?.state === 'sink_written' ? 'Saved to the isolated development mailbox. No real email was sent.' : value?.state === 'provider_accepted' ? 'The email provider accepted the message. Delivery has not been confirmed.' : 'Delivery has not been confirmed.';
 
+  // Existing per-session CSRF tokens also pin requests to this tab's session.
+  // They remain in memory; neither a signal nor this token authorises an account.
+  let clientVersion = 0, locked = false, uncertain = false, resumeProbe = null;
+  const transitions = new Set(['/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/security/action']);
+  const changedMessage = 'Your account session changed. Sign in again or choose guest access. Unsubmitted input was cleared for privacy.';
+  const uncertainMessage = 'Your session could not be verified. Unsubmitted input remains in this tab. Reconnect and retry, or sign in to the same account. Choosing guest access discards it. A request already sent may have saved; check history before retrying it.';
+  const superseded = () => Error('This request belongs to an earlier account session. Nothing was retried.');
+  function sessionChanged() {
+    if (!locked || uncertain) {
+      locked = true; uncertain = false; clientVersion++;
+      window.dispatchEvent(new CustomEvent('dermamatrix-session-ended', { detail: { message: changedMessage } }));
+    }
+    return Error(changedMessage);
+  }
+  function sessionUncertain() {
+    if (!locked) {
+      locked = true; uncertain = true; clientVersion++;
+      window.dispatchEvent(new CustomEvent('dermamatrix-session-uncertain', { detail: { message: uncertainMessage } }));
+    }
+  }
+  const sessionChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('dermamatrix-account-changed') : null;
+  if (sessionChannel) sessionChannel.onmessage = () => { if (availability) sessionChanged(); };
+
+  async function security(signal) {
+    const controller = signal ? null : new AbortController();
+    const timeout = controller ? setTimeout(() => controller.abort(), 15000) : null;
+    try {
+      const response = await fetch('/api/security/csrf', { credentials: 'same-origin', cache: 'no-store', signal: signal || controller.signal });
+      if (availability === null && (response.status === 503 || response.status === 404)) { availability = false; return ''; }
+      if (!response.ok) throw Error('Account security could not be loaded. Retry.');
+      const data = await response.json();
+      if (typeof data.csrf_token !== 'string' || !data.csrf_token) throw Error('Account security could not be verified. Retry.');
+      availability = true; return data.csrf_token;
+    } finally { if (timeout !== null) clearTimeout(timeout); }
+  }
+
   window.ConsumerClient = {
-    async prepare(options = {}) {
-      if (availability === null) {
-        if (!probe) probe = fetch('/api/security/csrf', { credentials: 'same-origin', cache: 'no-store' }).then(async r => {
-          if (r.status === 503 || r.status === 404) { availability = false; return; }
-          if (!r.ok) throw Error('Account security could not be loaded. Retry.');
-          const data = await r.json(); csrf = data.csrf_token; availability = true;
-        }).finally(() => { probe = null; });
-        await probe;
+    async prepare(options = {}, path = '') {
+      const version = clientVersion, transition = transitions.has(path);
+      if (locked && !transition) throw Error(uncertain ? uncertainMessage : changedMessage);
+      if (availability === null || (availability && !csrf)) {
+        if (!probe) probe = security().finally(() => { probe = null; });
+        const token = await probe;
+        if (version !== clientVersion) throw superseded();
+        if (!csrf) csrf = token;
       }
+      let token = csrf;
       if (availability && !['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
-        const response = await fetch('/api/security/csrf', {credentials:'same-origin',cache:'no-store'});
-        if (!response.ok) throw Error('Account security could not be refreshed. Retry.');
-        csrf = (await response.json()).csrf_token;
-        return { ...options, headers: { ...options.headers, 'X-CSRF-Token': csrf } };
+        token = await security(options.signal);
+        if (version !== clientVersion) throw superseded();
+        if (!transition && token !== csrf) throw sessionChanged();
       }
-      return options;
+      return availability ? { ...options, headers: { ...options.headers, 'X-CSRF-Token': token } } : options;
     },
-    observe(response) { const next = response.headers.get('X-CSRF-Token'); if (next) csrf = next; },
-    get enabled() { return availability === true; }
+    observe(response, prepared = {}, path = '') {
+      if (!availability) return;
+      const next = response.headers.get('X-CSRF-Token'), sent = prepared.headers?.['X-CSRF-Token'];
+      if (response.ok && (transitions.has(path) || path === '/api/security/password' && sent === csrf)) {
+        csrf = next || ''; locked = false; uncertain = false; clientVersion++;
+        sessionChannel?.postMessage('changed');
+        return;
+      }
+      if (sent !== csrf) throw superseded();
+      if ((next && next !== csrf) || !next && [401, 403, 409].includes(response.status)) throw sessionChanged();
+    },
+    get enabled() { return availability === true; },
+    revalidate() { return resumeSession(); }
   };
+
+  // Signals never carry account data. Foreground/history checks cover browsers
+  // without BroadcastChannel. Each check has a deadline, with no scheduled polling.
+  function resumeSession() {
+    if (document.hidden || availability !== true || locked && !uncertain || !csrf || resumeProbe) return resumeProbe;
+    const version = clientVersion;
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15000);
+    resumeProbe = security(controller.signal).then(async token => {
+      if (version !== clientVersion) return;
+      if (token !== csrf) throw sessionChanged();
+      const prepared = { credentials: 'same-origin', cache: 'no-store', headers: { 'X-CSRF-Token': csrf }, signal: controller.signal };
+      const response = await fetch('/api/auth/me', prepared);
+      if (version !== clientVersion) return;
+      window.ConsumerClient.observe(response, prepared);
+      if (!response.ok && !(response.status === 401 && owner === null && response.headers.get('X-CSRF-Token') === csrf)) {
+        if (response.status >= 500) throw Error('Session could not be verified.');
+        throw sessionChanged();
+      }
+      if (uncertain) {
+        locked = false; uncertain = false; clientVersion++;
+        window.dispatchEvent(new CustomEvent('dermamatrix-session-resumed'));
+      }
+    })
+      .catch(() => { if (version === clientVersion) sessionUncertain(); })
+      .finally(() => { clearTimeout(timeout); resumeProbe = null; });
+    return resumeProbe;
+  }
+  window.addEventListener('focus', resumeSession);
+  window.addEventListener('pageshow', resumeSession);
+  document.addEventListener('visibilitychange', resumeSession);
 
   async function call(path, payload, method = 'POST', headers = {}) {
     return requestJSON(path, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(payload) });

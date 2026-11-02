@@ -42,11 +42,27 @@ function harness(width = 375) {
   const body = element();
   document = { body, activeElement: body, querySelector: get, querySelectorAll: selector => selector === '.assessment-steps li' ? steps : [] };
   const context = vm.createContext({ document, window: { innerWidth: width }, URL: { revokeObjectURL() {} }, AbortController, console });
-  vm.runInContext(definitions + '\nglobalThis.api = { state, setAuthTab, updateAssessmentProgress, resetImage, syncInteractionInertness, containKeyboardFocus, setNavigationOpen, processingNoticeVersion, loadProcessingNotices, handleChangedProcessingNotice, downloadAccountData, updateAccountExportControls, revealAssessmentTextarea };', context);
+  vm.runInContext(definitions + '\nglobalThis.api = { state, setAuthTab, updateAssessmentProgress, resetImage, syncInteractionInertness, containKeyboardFocus, setNavigationOpen, processingNoticeVersion, loadProcessingNotices, handleChangedProcessingNotice, downloadAccountData, updateAccountExportControls, revealAssessmentTextarea, draftInteraction, hasDraft };', context);
   return { context, api: context.api, get, steps, strip, body, document, element };
 }
 
 function current(h) { return h.steps.findIndex(item => item.getAttribute('aria-current') === 'step') + 1; }
+
+test('leave warnings attach only for meaningful changes, clear on revert and retain newer unsaved revisions', () => {
+  const h=harness(),listeners=new Map(),form=h.element(),field={name:'note',type:'text',value:''};
+  form.isConnected=true;form.querySelectorAll=()=>[field];form.contains=node=>node===field;
+  h.context.window.addEventListener=(name,handler)=>listeners.set(name,handler);
+  h.context.window.removeEventListener=name=>listeners.delete(name);
+  const drafts=h.context.window.DraftUX;drafts.clean(form);assert.equal(listeners.size,0);
+  field.value='Typed synthetic note';h.api.draftInteraction({type:'input',target:field});assert.equal(listeners.size,1);
+  let prevented=false;const event={preventDefault(){prevented=true;}};listeners.get('beforeunload')(event);assert.ok(prevented);assert.equal(event.returnValue,true);
+  field.value='';h.api.draftInteraction({type:'input',target:field});assert.equal(listeners.size,0);
+  field.value='Submitted';h.api.draftInteraction({type:'input',target:field});const submitted=drafts.snapshot(form);
+  field.value='Newer';h.api.draftInteraction({type:'input',target:field});drafts.clean(form,submitted);
+  assert.equal(h.api.hasDraft(form),true);assert.equal(listeners.size,1);
+  drafts.clean(form);assert.equal(h.api.hasDraft(form),false);assert.equal(listeners.size,0);
+  field.value='Private draft';h.api.draftInteraction({type:'input',target:field});drafts.forget(form);assert.equal(listeners.size,0);
+});
 
 function clippedTextarea(h, rect = { top: 811.5, bottom: 907.5 }) {
   const field = h.element(); const frames = []; const scrolls = [];

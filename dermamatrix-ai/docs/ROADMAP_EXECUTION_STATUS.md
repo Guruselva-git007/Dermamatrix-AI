@@ -1,11 +1,41 @@
 # Consumer development execution status
 
-Updated: 30 October 2026. Canonical checkpoint. Sequential implementation;
+Updated: 2 November 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current authorized batch — frontend stability and consumer acceptance
+**Current authorized batch — unfinished work and account boundaries (2 November):
+implementation complete; final focused browser/remote verification in progress.**
+Actual shared-cookie pages and SQL proved an A-tab routine draft committed under
+B. Requests now pin the existing session token for reads/writes/exports; server
+rejection precedes route access. Cross-tab invalidation and bounded foreground /
+revocation checks protect private views. Unknown verification locks views with
+same-tab recovery; confirmed changes clear input. No persisted health drafts.
+Reproduced late routine-response loss, silent profile-Escape/reload discard,
+hidden recent-history PDF action and a delayed JSON body ownership gap are fixed.
+Export status honestly says download started. Existing design/evidence remain.
+
+Local backend259, frontend102 and runner12 pass. Chrome completes all96 browser
+checks. WebKit completes the existing79, then the focused account/draft13 and
+offline4 pass in both engines after making the real cancelled-reload test avoid
+waiting for a load event that must not happen. All retention/ownership assertions
+remain. Exact whole-source three-engine CI is the final pending verification;
+earlier incomplete runs remain failures. No blanket success claim.
+
+Private evidence: local-artifacts/account-drafts-2026-11-02/. Baseline hashes
+protect87 non-test files, including all CSS/index/scanner/schema/medical/report
+sources. Only four runtime files change. Both themes/five widths sampled; no
+performance gain or complete native/clinical/WCAG acceptance claimed.
+Actual Safari synthetic login, fixed history action/Save sheet and200% Journey
+sample observed; original100% restored and owned tab closed, Start Page retained.
+Owner is away and explicitly deferred the native picker. Upload/Save remained
+disabled under automation; no completed native chooser/save/correction claimed.
+Phone/speech/participants remain external. No deployment/provider/schema/model /
+scoring change. Owned8001/3308/helper remain active until scoped save/cleanup;
+normal services and original dirty/untracked work are preserved.
+
+**Previous completed batch — frontend stability and consumer acceptance
 (30 October): independently verifiable development work complete.**
 Corrected inherited context/Profile/technical contrast, small Products type,
 missing textarea outline, root-frozen theme aliases and mobile technical overflow.

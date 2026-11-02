@@ -83,8 +83,8 @@ async (page, options = {}) => {
       let release;
       const gate = new Promise(resolve => { release = resolve; });
       window.qualityPreparation = { original, release, started: false };
-      window.ConsumerClient.prepare = async options => {
-        const prepared = await original(options);
+      window.ConsumerClient.prepare = async (options, path) => {
+        const prepared = await original(options, path);
         if (options.method === 'PATCH' && !window.qualityPreparation.started) {
           window.qualityPreparation.started = true; await gate;
         }
@@ -96,7 +96,8 @@ async (page, options = {}) => {
     page.on('request', recordPatch);
     await page.locator('#profileForm [type=submit]').click();
     await page.waitForFunction(() => window.qualityPreparation.started);
-    await page.locator('#profileForm .profile-actions [data-close-profile]').click();
+    const profileDiscardReady=page.waitForEvent('dialog'),profileClose=page.locator('#profileForm .profile-actions [data-close-profile]').click(),profileDiscard=await profileDiscardReady;
+    assert(profileDiscard.type()==='confirm','Discarding a submitted profile draft must be explicit');await profileDiscard.accept();await profileClose;
     await logout(); await authenticate(emailA);
     await page.evaluate(() => { window.qualityPreparation.release(); window.ConsumerClient.prepare = window.qualityPreparation.original; });
     await page.waitForTimeout(100);
@@ -291,7 +292,10 @@ async (page, options = {}) => {
     }finally{await page.evaluate(()=>{window.requestAnimationFrame=window.qualityDialogFrames.original;delete window.qualityDialogFrames;});}
     const oldCorrection=page.waitForResponse(r=>new URL(r.url()).pathname.startsWith('/api/corrections/checkin/'));releaseCorrection();await (await oldCorrection).finished();await page.waitForFunction(id=>state.checkins.find(r=>r.checkin_id===id)?.revision===1,correctedId);await page.unroute('**/api/corrections/checkin/*');
     assert(await page.locator('#continuityDialog').evaluate(e=>e.open)&&await page.locator('#continuityDialog textarea').inputValue()==='Synthetic new correction draft','Old save closed or changed the current correction');
-    assert((await page.locator('#checkinCorrections').textContent()).includes('Original: unchanged'),'Completed correction lost its original record');await page.keyboard.press('Escape');
+    assert((await page.locator('#checkinCorrections').textContent()).includes('Original: unchanged'),'Completed correction lost its original record');
+    const discardReady=page.waitForEvent('dialog'),closeDraft=page.keyboard.press('Escape'),discard=await discardReady;
+    assert(discard.type()==='confirm','Modified correction must confirm discard');await discard.accept();await closeDraft;
+    assert(!await page.locator('#continuityDialog').evaluate(e=>e.open),'Confirmed discard did not close the correction');
     checks.push('late correction completion preserves a replacement dialog, its draft and immutable history');
 
     const routineId=await page.evaluate(()=>state.routines.find(r=>r.routine_name==='Synthetic lifecycle routine').routine_id);await page.locator('#checkinRoutine').selectOption(routineId);await page.locator('#checkinNote').fill('Synthetic reviewed submission');

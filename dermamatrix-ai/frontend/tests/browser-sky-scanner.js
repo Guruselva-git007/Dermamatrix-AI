@@ -13,7 +13,9 @@ async (page, options = {}) => {
   }
   async function choose(area) {
     await page.evaluate(() => showPage('home', { scrollToTop: false }));
-    await page.locator(`.area-choice [data-area=${area}]`).click();
+    const discardsPhoto=await page.evaluate(area=>state.area!==area&&Boolean(state.file)&&hasDraft(document.querySelector('#screen')),area);
+    if(discardsPhoto){const ready=page.waitForEvent('dialog'),choose=page.locator(`.area-choice [data-area=${area}]`).click(),dialog=await ready;assert(dialog.type()==='confirm','Changing concern must confirm photo discard');await dialog.accept();await choose;}
+    else await page.locator(`.area-choice [data-area=${area}]`).click();
     if (area !== 'Sweat') {
       // Original synthetic PNG fixture made in memory; never a person's photo.
       const png = await page.evaluate(async () => {

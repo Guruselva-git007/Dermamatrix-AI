@@ -78,7 +78,7 @@ for (const method of ['downloadSavedReport', 'downloadHistory']) {
       await download;
       assert.equal(h.urls.length, 0, 'discard before creating a sensitive object URL');
       assert.equal(h.links.length, 0, 'discard before creating a download link');
-      assert.equal(h.toasts.some(message => /downloaded/i.test(message)), false);
+      assert.equal(h.toasts.some(message => /download started/i.test(message)), false);
     });
   }
 
@@ -94,7 +94,7 @@ for (const method of ['downloadSavedReport', 'downloadHistory']) {
     assert.equal(h.links[0].clicks, 1);
     assert.equal(h.links[0].href, 'blob:synthetic-owned-pdf');
     assert.match(h.links[0].download, /\.pdf$/);
-    assert.equal(h.toasts.some(message => /downloaded/i.test(message)), true);
+    assert.equal(h.toasts.some(message => /download started/i.test(message)), true);
     for (const timer of h.timers) timer();
     assert.deepEqual(h.revoked, ['blob:synthetic-owned-pdf']);
   });

@@ -29,9 +29,9 @@ small sessions do not establish population performance or clinical validity.
 | Real Android phone / Chrome or Samsung Internet | Camera/gallery, orientation, large photos, native sharing/downloads, keyboard, interruptions, notification handoff | Not physically verified |
 | Real iPhone / Safari | HEIC selection, camera permission, gallery, downloads, standalone installation and resumed sessions | Not physically verified |
 | Desktop Chrome | Onboarding, security, routines, history, Learn, review dialog, mobile emulation, keyboard/zoom, offline boundary | Development browser evidence; see execution status |
-| Desktop Firefox | Complete flows, deep links, focus and download behaviour | 41 Linux CI checks pass, including actual origin outage/recovery. Local Mac test runtime fails before app launch; physical network disruptions remain distinct checks |
-| Desktop WebKit development browser | Same workflows plus real service-worker/offline boundary | 41 checks pass locally and in Linux CI, including worker/cache/origin-outage recovery. This is not actual Safari/iPhone verification |
-| Actual desktop Safari application | Complete flows, focus and downloads | Actual Safari 27.2 guest/consent/review/result/refresh sampled; full account/exports, native picker completion and speech remain pending. See consumer-validation-results.md |
+| Desktop Firefox | Complete flows, deep links, focus and download behaviour | Use the latest exact-source CI receipt in ROADMAP_EXECUTION_STATUS.md, including actual origin outage/recovery. Local Mac runtime previously failed before app launch; physical network disruptions remain distinct checks |
+| Desktop WebKit development browser | Same workflows plus real service-worker/offline boundary | Use the latest local/CI receipts in ROADMAP_EXECUTION_STATUS.md, including worker/cache/origin-outage recovery. This is not actual Safari/iPhone verification |
+| Actual desktop Safari application | Complete flows, focus and downloads | Guest flow and synthetic account login sampled; native correction opened, PDF/JSON Save sheets reached and200% Journey sample observed/restored100%. Completed native picker/save/correction and speech remain pending. Owner deferred picker on2November; see consumer-validation-results.md |
 | VoiceOver/TalkBack and keyboard only | Names, roles, announcements, focus restoration, dialogs, input errors and reading order | Keyboard/focus sampled in browser; actual speech/phone assistive technology not verified |
 
 Test 320px reflow, actual 200%/400% browser zoom, light/dark, reduced motion,

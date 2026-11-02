@@ -11,7 +11,7 @@ function harness() {
     textContent:'', innerHTML:'original', nextElementSibling:{textContent:''},
     classList:{add(){},remove(){},contains(){return false;},toggle(){}},
     setAttribute(){}, removeAttribute(){}, querySelector(){return null;}, querySelectorAll(){return [];},
-    closest(){return node();}, focus(){} });
+    closest(){return node();}, focus(){}, append(child){this.children.push(child);child.parentElement=this;} });
   const get = key => { if (!elements.has(key)) elements.set(key,node()); return elements.get(key); };
   const context = vm.createContext({document:{querySelector:get,querySelectorAll:()=>[],body:node()},window:{location:{protocol:'http:'},setTimeout,clearTimeout},localStorage:{setItem(){},getItem(){return null;}},getComputedStyle:()=>({getPropertyValue:()=> 'synthetic-css-token'}),console,AbortController,setTimeout,clearTimeout,URL,crypto:require('node:crypto').webcrypto});
   vm.runInContext(definitions+'\nglobalThis.api={state,analyze,requestJSON,selectArea,persistenceMessage,AssessmentState,transitionAssessment,persistPreferences};',context);
@@ -54,6 +54,16 @@ test('all API clients inherit the workspace guard even without a caller-supplied
   h.api.state.profile={patient_id:'OWNER-B'};h.api.state.workspaceVersion++;
   release();await assert.rejects(pending,/account changed/i);assert.equal(calls,0);
 });
+test('a private response body finishing after an account change never returns old data',async()=>{
+  const h=harness();let release,reading;
+  const bodyStarted=new Promise(resolve=>{reading=resolve;});
+  h.api.state.profile={patient_id:'OWNER-A'};
+  h.context.fetch=async()=>({ok:true,json:()=>{reading();return new Promise(resolve=>{release=resolve;});}});
+  const pending=h.api.requestJSON('/api/profile');await bodyStarted;
+  h.api.state.profile={patient_id:'OWNER-B'};h.api.state.workspaceVersion++;
+  release({past_history:'Synthetic private A record'});
+  await assert.rejects(pending,/account changed/i);
+});
 for(const switchAccount of [false,true])test('revoked-session response '+(switchAccount?'cannot end a newer account':'still ends its current account'),async()=>{
   const h=harness();let release;const events=[];
   h.api.state.profile={patient_id:'OWNER-A'};
@@ -62,7 +72,7 @@ for(const switchAccount of [false,true])test('revoked-session response '+(switch
   h.context.fetch=()=>new Promise(resolve=>{release=()=>resolve({ok:false,status:401,json:async()=>({code:'SESSION_REVOKED',error:'Session revoked'})});});
   const pending=h.api.requestJSON('/api/profile');
   if(switchAccount){h.api.state.profile={patient_id:'OWNER-B'};h.api.state.workspaceVersion++;}
-  release();await assert.rejects(pending,/Session revoked/);
+  release();await assert.rejects(pending,switchAccount?/account changed/:/Session revoked/);
   assert.deepEqual(events,switchAccount?[]:['dermamatrix-session-ended']);
 });
 test('the owner guard stays in the client and preserves normal request headers',async()=>{

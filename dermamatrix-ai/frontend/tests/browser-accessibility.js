@@ -101,7 +101,14 @@ async (page, options = {}) => {
   await page.keyboard.press('Escape');
   assert(!await page.locator('#resultModal').evaluate(e => e.classList.contains('show')), 'Result Escape did not close');
   checks.push('guest questionnaire result retains clear evidence and keyboard dismissal');
-  await page.reload();
+  // Guest results remain current-tab only, so the unfinished input warning is
+  // intentional. Explicitly discard this synthetic guest draft before reload.
+  const leaveDialog = page.waitForEvent('dialog');
+  const reload = page.reload();
+  const warning = await leaveDialog;
+  assert(warning.type() === 'beforeunload', 'Guest reload did not protect unsaved current-tab input');
+  await warning.accept();
+  await reload;
   await page.locator('#authGate.show').waitFor();
   assert(await page.evaluate(() => !state.profile && !state.isGuest && !state.assessmentId && state.analyses.length === 0), 'Guest result survived reload as private account evidence');
   assert(!errors.length, errors.join('; '));

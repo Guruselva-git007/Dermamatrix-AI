@@ -22,6 +22,7 @@ function harness(){
     focus(){document.activeElement=this;}
     reset(){for(const child of this.children){child.value='';child.checked=false;child.reset?.();}}
     reportValidity(){return this.valid;}
+    querySelectorAll(selector){const tags=selector.split(',').map(s=>s.toUpperCase());return this.children.flatMap(child=>[...(tags.includes(child.tagName)?[child]:[]),...(child.querySelectorAll?.(selector)||[])]);}
     querySelector(selector){
       for(const child of this.children){if(selector==='[type=submit]'&&child.type==='submit')return child;const found=child.querySelector?.(selector);if(found)return found;}
       return null;

@@ -649,3 +649,121 @@ receipt. Ordinary Mac sleep is allowed after closure. Important files: the four
 selected stylesheets, app.js/continuity.js focus handling, the existing frontend
 unit/quality suite and runner, reconciled experience/development references, this
 report and ROADMAP_EXECUTION_STATUS.md. No deployment or provider activation.
+
+## Unfinished work and account boundaries — 2 November 2026
+
+One primary worker continued from31cdfa93b5f539bdb715abc35075af1047c18f44.
+Existing synthetic8001/MySQL3308, fixtures, suites and runner were reused. Normal
+8000/3307 and the original dirty/untracked work were preserved. No deployment,
+provider activation, schema migration against normal records, model/scoring change,
+new framework or physical-phone retry was included. The owner deferred native
+file-picker interaction while away; independent verification continued.
+
+### Reproduced findings and minimal corrections
+
+| Finding | Original observation/reproduction and consumer impact | Correction and demonstrated result |
+|---|---|---|
+| AB-01 / P0 shared-cookie wrong-owner write | Two actual pages share cookies. A edits a routine; B signs in on the other page; A submits. Before: fresh CSRF preparation silently adopts B and returns201; SQL joins the submitted routine to B. A private draft is stored under the wrong account. | Pin the existing session token in memory; validate supplied tokens on safe reads as well as writes; reject stale work before route access. Generic channel invalidation plus bounded foreground verification clear stale private UI. New browser cases verify shared-cookie clearing, server rejection of stale profile/history/report/account reads and writes, and an account change during held preparation without BroadcastChannel. B receives no old draft. |
+| AB-02 / P1 late routine response loses newer edits | Hold the real routine POST response after commit; type another name; release. Before: name and edit ID become empty. | Bind UI effects to the form generation and submitted snapshot. Newer text survives, the returned routine ID remains associated, and the next save updates that record instead of creating another. Actual browser/SQL-backed checks verify it. |
+| AB-03 / P1 silent profile discard | Edit the profile name, Escape, reopen. Before: the old saved name silently replaces the draft. | Route Escape/Cancel/backdrop through the same dirty guard. Cancel keeps input; explicit discard closes. Delayed profile saves keep newer edits/form instances; a source test simulates event.currentTarget becoming null after dispatch. |
+| AB-04 / P1 reload loses unfinished assessment | Enter a concern note and reload. Before: no warning, note becomes empty. | Attach beforeunload only while a meaningful tracked input differs from its baseline. Actual browser dismiss retains the note; reverting removes the warning. Navigation that retains fields stays unobstructed; privacy clearing always wins. Photo concern changes and correction discard receive proportionate confirmation. |
+| AB-05 / P1 hidden recent-history export | Actual Safari Journey disclosure has explanatory text but no action after refresh. A Chrome DOM probe confirms the button is in the consumer-hidden legacy register. | Keep the existing button in the installed historyExport disclosure, with legacy fallback only before installation. New browser test refreshes records, verifies visibility and downloads a completed PDF through that button. Native Safari now reaches its PDF Save sheet. |
+| AB-06 / P1 stale response-body race | Source-executing request test holds JSON decoding, changes the workspace, then releases a private A body. Before: missing expected rejection; the helper returns A data to its caller. | Recheck owner/workspace after decoding, alongside the existing pre/post-fetch and export post-blob checks. The same focused test rejects the old response after correction; all102 frontend tests pass. This is a helper invariant, not evidence that every downstream view previously leaked. |
+| AB-07 / P2 premature export confirmation | Native saving can remain pending or be cancelled while saved-report/history copy already says downloaded. | Copy now says download started; no native OS completion is claimed. Positive/negative download tests retain blob/link/revocation assertions and match the truthful status. |
+
+Unknown session identity is distinct from a confirmed change. A failed server
+verification locks/inerts private views and keeps only existing current-tab input;
+verified same-account Retry/sign-in restores it. Explicit guest/different account
+clears it. Browser cases cover temporary failure/retry, no-channel foreground
+checking, server revocation and interrupted preparation. No health draft/password/
+photo/token is written to browser persistence, URL, telemetry, worker caches or
+logs. Browser leave warnings remain best effort, especially on mobile/OS kill.
+
+### Verification evidence and limitations
+
+Private root: `local-artifacts/account-drafts-2026-11-02/`. Original evidence is
+retained in multitab-before.json/txt, multitab-before-db.json, drafts-before.json/
+txt and history-control-before.json/txt. source-protection.json compares baseline
+hashes:87 protected non-test files remain identical. Runtime edits are limited to
+consumer_security.py and app.js/consumer.js/continuity.js. CSS/index/scanner,
+schema, canonical medical evidence/research limits, scoring, report generation,
+photo processing/non-retention and disabled-provider implementation are unchanged.
+No historical medical record was silently discarded or rewritten. Existing
+regressions exercise consent, guests, original events/revisions, episodes,
+routines, check-ins, cross-view corrections, briefs, reports and exports.
+
+Local backend259 and frontend102 pass; runner12 pass. Chrome whole96 pass. WebKit existing79 pass, then focused account/draft13 plus
+offline4 pass in both engines on the final test setup. The exact whole-source
+CI outcome is recorded in the closure below. New
+account/draft suite has13 checks. Existing quality/scanner/accessibility fixture
+steps now explicitly accept intentional synthetic discard dialogs; their prior
+assertions/thresholds remain. Runner uses an owned secondary page so real native
+dialogs complete rather than yielding incomplete CLI output. Technical-budget
+resets occur only between independent synthetic suites with disabled mail and
+production limits unchanged. No framework was added or error status suppressed.
+
+Initial integration attempts are retained as failures: the CLI returned before
+modal assertions completed, existing profile/correction/photo fixture steps did
+not answer the new discard prompts, and the guest accessibility reload waited
+on beforeunload. A separate capability receipt verifies a real confirm event;
+tests now explicitly accept those intended discards. A full-unit attempt after
+truthful export wording found two old toast expectations; both positive and
+negative tests now expect download started, retaining download side-effect checks.
+The cancelled-reload helper initially attached its rejection handler too late
+for WebKit. Its earlier handler fixed WebKit, but Chrome waits for a nonexistent
+load after a cancelled navigation; the final test triggers real location.reload()
+without waiting for that load. The same native-dialog and retained-input
+assertions pass in both engines. An initial backend attempt used the wrong global consumer mode; the documented
+CI-style false default with opt-in integration fixtures passes259. None of these
+failed attempts is counted as a completed run.
+
+Browser samples cover recovery/profile states at320/390/768/1280/1440 in both
+themes, no horizontal overflow, visible focus, cancellation/retained input and
+existing large-text/reduced-motion checks. Representative screenshots were
+inspected. Some captures include an export toast or compositor transition;
+these are not native-device or screen-reader passes. No style redesign or
+measured usability/performance gain is claimed. Local deterministic gzip sizes:
+
+| Asset | Before raw / gzip bytes | After raw / gzip bytes |
+|---|---:|---:|
+| app.js |221438 /55436|229752 /57579|
+| consumer.js |17593 /5205|22188 /6404|
+| continuity.js |37984 /11450|38846 /11667|
+
+These are source-asset sizes, not load-time measurements. Added checks are
+event-driven and bounded; no autosave or recurring verification poll was added.
+
+### Actual Safari and owner-dependent continuation
+
+Native Safari reached the isolated app without a warning on this attempt; no
+warning was bypassed. Synthetic account login worked; password saving was
+declined. The real PNG picker opened, but Upload remained disabled through bounded
+AX/keyboard/exact-path attempts. The owner replied “I’m away; defer this native
+check”; the panel was cancelled and no further picker attempt was made.
+The check-in correction dialog visibly opened, but its fields were omitted from
+the tool AX tree and bounded coordinate attempts returned noWindowsAvailable.
+Escape closed it; no correction was submitted. This is not proof of an app or
+spoken-accessibility defect. Native JSON and fixed history-PDF actions reached
+their correctly named Save sheets; Save remained disabled under automation and
+both were cancelled. No completed native export file was found or claimed.
+
+Native Website Settings explicitly confirmed200%; enlarged Journey/navigation
+was sampled, then the original100% was restored and confirmed. This is a
+representative sample, not full native large-text/keyboard acceptance. The owned
+test tab was closed and original Safari Start Page preserved. native-safari.json
+records the outcomes. Automated WebKit remains separate evidence.
+
+First unfinished owner action: after the developer restarts the isolated fixture,
+Safari → guest → Skin → Choose photo → project
+`local-artifacts/consumer-validation-2026-10-28/fixtures/synthetic-colour.png`;
+select it manually and report whether Upload enables. Continue one action at a
+time with replacement, synthetic correction and completed PDF/JSON saving.
+Actual VoiceOver/TalkBack speech, physical phone/iPhone/touch/gallery and the
+existing representative-consumer protocol remain unverified. Phone stays
+explicitly deferred; no participant sessions were manufactured or contacted.
+
+### Exact-source closure
+
+Final browser, CI, Git synchronization and owned-resource cleanup receipts follow
+after the current verification completes. No blanket product-readiness verdict
+or completed native picker/save/correction claim is implied.

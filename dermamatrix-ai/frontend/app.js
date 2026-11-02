@@ -113,6 +113,58 @@ function updateAssessmentProgress() {
   }
 }
 
+// Derived, current-tab-only baselines. No draft enters storage or a request.
+const draftBaselines = new Map();
+let draftWarningAttached = false;
+let suspendedWorkspace = null;
+function draftSnapshot(root) {
+  return JSON.stringify([...root.querySelectorAll('input:not([type=hidden]):not([type=password]), select, textarea')].map(input => [input.name || input.id, input.type === 'file' ? [...input.files].map(file => [file.name, file.size, file.lastModified]) : ['checkbox', 'radio'].includes(input.type) ? input.checked : input.value]));
+}
+function hasDraft(root) {
+  const entry = draftBaselines.get(root);
+  return Boolean(entry?.touched && root.isConnected && draftSnapshot(root) !== entry.value);
+}
+function warnDraftUnload(event) {
+  if ([...draftBaselines.keys()].some(hasDraft)) { event.preventDefault(); event.returnValue = true; }
+}
+function syncDraftWarning() {
+  const dirty = [...draftBaselines.keys()].some(hasDraft);
+  if (dirty === draftWarningAttached) return;
+  draftWarningAttached = dirty;
+  window[dirty ? 'addEventListener' : 'removeEventListener']('beforeunload', warnDraftUnload);
+}
+function cleanDraft(root, value = draftSnapshot(root)) {
+  draftBaselines.set(root, { value, touched: draftSnapshot(root) !== value }); syncDraftWarning();
+}
+function forgetDraft(root) {
+  if (suspendedWorkspace?.dialogs.some(view => view.form === root)) return;
+  draftBaselines.delete(root); syncDraftWarning();
+}
+function allowDraftDiscard(root, message = 'Discard unsaved changes? Choose Cancel to keep editing.') {
+  return !hasDraft(root) || window.confirm(message);
+}
+window.DraftUX = { snapshot: draftSnapshot, clean: cleanDraft, forget: forgetDraft, allowDiscard: allowDraftDiscard };
+function draftInteraction(event) {
+  for (const [root, entry] of draftBaselines) if (root.contains(event.target)) {
+    // Capture asynchronously populated defaults before the first real edit.
+    if (event.type === 'focusin' && !entry.touched) entry.value = draftSnapshot(root);
+    else if (event.type !== 'focusin') entry.touched = true;
+  }
+  syncDraftWarning();
+}
+
+async function fetchForWorkspace(url, options = {}) {
+  const workspaceVersion = state.workspaceVersion, patientId = state.profile?.patient_id;
+  const current = () => workspaceVersion === state.workspaceVersion && patientId === state.profile?.patient_id;
+  const { ownerGuard, ...requestOptions } = options;
+  const prepared = window.ConsumerClient ? await window.ConsumerClient.prepare(requestOptions, url) : requestOptions;
+  if (!current() || (ownerGuard && !ownerGuard())) throw Error('The account changed before submission. Nothing was sent for this attempt.');
+  const response = await fetch(url, prepared);
+  if (!current()) throw Error('The account changed while this request was running. Nothing was retried.');
+  window.ConsumerClient?.observe(response, prepared, url);
+  return response;
+}
+
 async function requestJSON(url, options = {}, timeoutMs = 15000) {
   if (window.location.protocol === 'file:') {
     throw Error('Open DermaMatrix through the local app server at http://127.0.0.1:8000. Opening index.html directly cannot reach its secure local API.');
@@ -125,16 +177,13 @@ async function requestJSON(url, options = {}, timeoutMs = 15000) {
   if (options.signal?.aborted) controller.abort();
   const timeout = window.setTimeout(abort, timeoutMs);
   try {
-    const { ownerGuard, ...requestOptions } = options;
-    const prepared = window.ConsumerClient ? await window.ConsumerClient.prepare(requestOptions) : requestOptions;
-    if (!current() || (ownerGuard && !ownerGuard())) throw Error('The account changed before submission. Nothing was sent for this attempt.');
-    const response = await fetch(url, { ...prepared, signal: controller.signal });
-    if (current()) window.ConsumerClient?.observe(response);
+    const response = await fetchForWorkspace(url, { ...options, signal: controller.signal });
     let payload;
     try { payload = await response.json(); } catch {
       if (response.ok) throw Error('The server returned an unreadable response. Please retry.');
       payload = {};
     }
+    if (!current()) throw Error('The account changed while this response was loading. Nothing was retried.');
     if (response.ok && (!payload || typeof payload !== 'object' || Array.isArray(payload))) throw Error('The server returned an incomplete response. Please retry.');
     if (!response.ok) {
       if (payload.code === 'SESSION_REVOKED' && current()) window.dispatchEvent(new CustomEvent('dermamatrix-session-ended'));
@@ -164,9 +213,14 @@ function toast(message) {
   clearTimeout(toast.timer); toast.timer = setTimeout(() => element.classList.remove('show'), 3200);
 }
 
+function clearToast() {
+  clearTimeout(toast.timer); $('#toast').classList.remove('show'); $('#toast').hidden = true;
+}
+
 function selectArea(area, { userSelected = false } = {}) {
   if (state.assessmentInFlight) { toast('Please wait for the current assessment to finish before changing the health area.'); return false; }
   const areaChanged = state.area !== area;
+  if (areaChanged && userSelected && state.file && !allowDraftDiscard($('#screen'), 'Changing concern removes the selected photo. Discard the unfinished photo input?')) return false;
   if (areaChanged) {
     resetImage();
     $('#imageConsent').checked = false;
@@ -470,6 +524,9 @@ function interruptAssessment() {
 }
 
 function clearWorkspaceEvidence() {
+  clearToast();
+  suspendedWorkspace = null;
+  if ($('#retrySessionCheck')) $('#retrySessionCheck').hidden = true;
   window.ConsumerUI?.clear();
   window.EngagementUI?.clear();
   window.AssessmentUX?.clear();
@@ -477,7 +534,7 @@ function clearWorkspaceEvidence() {
   window.ContinuityUI?.clear();
   state.workspaceVersion += 1;
   if (state.assessmentInFlight) interruptAssessment();
-  closeResult(); closeProfile();
+  closeResult(); closeProfile({ force: true });
   state.resultImageUrl = null; state.resultArea = null; state.resultPersistence = null;
   state.assessmentId = null; state.submissionKey = null; state.submissionSignature = null;
   state.routines = []; state.checkins = []; state.analyses = []; state.progressLoadedFor = null; state.progressLoadPromise = null; state.progressLoadContext = null; state.reportVisibleCount = 6;
@@ -494,6 +551,8 @@ function clearWorkspaceEvidence() {
   $('#patientResultContent')?.remove();
   $('#resultImage')?.removeAttribute('src'); $('#attentionMap')?.removeAttribute('src'); $('#segmentationOverlay')?.removeAttribute('src');
   showAssessmentFeedback('');
+  draftBaselines.clear();
+  ['#screen', '#profileForm', '#routineForm', '#checkinForm'].forEach(selector => cleanDraft($(selector)));
 }
 
 function persistenceMessage(persistence) {
@@ -535,6 +594,8 @@ function openProfile() {
   form.elements.past_history.value = state.profile.past_history || '';
   form.elements.current_history.value = state.profile.current_history || '';
   form.elements.health_data_consent.checked = false;
+  state.profileFormVersion = (state.profileFormVersion || 0) + 1;
+  cleanDraft(form);
   openDialog($('#profileModal'), 'input[name="full_name"]');
 }
 const dialogOpeners = new WeakMap();
@@ -557,7 +618,13 @@ function closeDialog(dialog) {
   if (opener?.isConnected && !opener.disabled && opener.getClientRects().length) opener.focus({ preventScroll: true });
   dialogOpeners.delete(dialog);
 }
-function closeProfile() { closeDialog($('#profileModal')); }
+function closeProfile({ force = false } = {}) {
+  if (!$('#profileModal').classList.contains('show')) return true;
+  if (!force && !allowDraftDiscard($('#profileForm'))) return false;
+  closeDialog($('#profileModal')); cleanDraft($('#profileForm'));
+  state.profileFormVersion = (state.profileFormVersion || 0) + 1;
+  return true;
+}
 function closeResult() { closeDialog($('#resultModal')); }
 
 function clearAssessmentConsentError() {
@@ -740,9 +807,12 @@ function applyAccount(account, preferences = null) {
 }
 
 async function enterAccount(authentication, message) {
-  applyAccount(authentication.user || authentication.account, authentication.preferences); hideAuthGate();
+  const account = authentication.user || authentication.account;
+  const resumeDrafts = suspendedWorkspace?.owner && suspendedWorkspace.owner === account.patient_id;
+  applyAccount(account, authentication.preferences);
+  if (resumeDrafts) resumeSuspendedWorkspace(); else hideAuthGate();
   const current = accountWorkspaceGuard();
-  showPage('dashboard');
+  if (!resumeDrafts) showPage('dashboard');
   await hydrateProfile();
   if (!current()) return;
   await loadProgress({ force: true });
@@ -1769,7 +1839,7 @@ async function analyze() {
   const controller = new AbortController(); state.assessmentController = controller;
   state.assessmentId = null; state.resultImageUrl = null; state.resultPersistence = null;
   showAssessmentFeedback('');
-  clearTimeout(toast.timer); $('#toast').classList.remove('show'); $('#toast').hidden = true;
+  clearToast();
   state.assessmentInFlight = true;
   state.reviewResultReady = false;
   setAssessmentInputBusy(true);
@@ -1852,6 +1922,7 @@ async function analyze() {
     updateResultContinuation(data);
     state.submissionKey = null; state.submissionSignature = null;
     state.reviewResultReady = true;
+    if (data.persistence === 'mysql') cleanDraft($('#screen'));
     updateAssessmentProgress();
     showResultTab('summary'); openDialog($('#resultModal'), '.modal-close', button);
   } catch (error) {
@@ -2005,11 +2076,13 @@ function chooseDirectoryQuery(query) {
 
 async function saveProfile(event) {
   event.preventDefault();
+  const formElement = event.currentTarget;
   const current = accountWorkspaceGuard();
   if (!current()) return;
-  const form = new FormData(event.currentTarget); const payload = Object.fromEntries(form.entries());
+  const submittedDraft = draftSnapshot(formElement), formVersion = state.profileFormVersion;
+  const form = new FormData(formElement); const payload = Object.fromEntries(form.entries());
   payload.health_data_consent = form.get('health_data_consent') === 'on';
-  const button = event.currentTarget.querySelector('[type="submit"]'); button.disabled = true;
+  const button = formElement.querySelector('[type="submit"]'); button.disabled = true;
   try {
     payload.consent_notice_version = processingNoticeVersion('health_history');
     const data = await requestJSON('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), ownerGuard: current });
@@ -2017,7 +2090,11 @@ async function saveProfile(event) {
     const profile = data.profile;
     state.profile = { ...state.profile, ...profile };
     persistBrowserProfile();
-    $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; updateDashboardIdentity(); closeProfile(); await loadProgress({ force: true }); if (current()) toast('Profile saved in the local project database.');
+    $('#profileName').textContent = profile.full_name; $('#profileMeta').textContent = profile.patient_id; updateDashboardIdentity();
+    const unchanged = formVersion === state.profileFormVersion && draftSnapshot(formElement) === submittedDraft;
+    if (formVersion === state.profileFormVersion) cleanDraft(formElement, submittedDraft);
+    if (unchanged) closeProfile({ force: true });
+    await loadProgress({ force: true }); if (current()) toast(unchanged ? 'Profile saved in the local project database.' : 'Submitted profile saved. Your open form was kept; newer edits are not saved yet.');
   } catch (error) { if (current()) { handleChangedProcessingNotice(error); toast(error.message || 'Unable to save profile.'); } }
   finally { if (current()) button.disabled = false; }
 }
@@ -2491,6 +2568,8 @@ function renderDashboard() {
 function resetRoutineForm() {
   $('#routineForm').reset(); $('#editingRoutineId').value = ''; $('#routineStartDate').value = currentDate();
   $('#routineFormTitle').textContent = 'Add a routine'; $('#cancelRoutineEdit').hidden = true;
+  state.routineDraftVersion = (state.routineDraftVersion || 0) + 1;
+  cleanDraft($('#routineForm'));
 }
 
 function reportClassification(summary) {
@@ -2522,7 +2601,10 @@ function renderReportRegister() {
   register.innerHTML = `<div class="report-register-heading"><div><p class="eyebrow">PAST RESULTS</p><h3>Your previous checks</h3><p>Open a saved result whenever you want to look back.</p></div><span>${analyses.length} saved</span><div class="report-register-actions"></div></div><div class="report-compact-list">${cards}</div>${analyses.length > 6 ? `<div class="report-list-navigation"><p class="report-list-note" role="status">Showing ${visibleCount} of ${analyses.length} recent saved results.</p>${visibleCount < analyses.length ? `<button type="button" class="button quiet" data-show-more-reports>Show ${Math.min(6, analyses.length - visibleCount)} more results</button>` : ''}</div>` : ''}`;
   if (downloadButton) {
     downloadButton.hidden = false;
-    register.querySelector('.report-register-actions')?.append(downloadButton);
+    // The maintained disclosure owns this action after workspace installation;
+    // the legacy register is hidden for consumer accounts.
+    const actions = $('#historyExport') || register.querySelector('.report-register-actions');
+    actions?.append(downloadButton);
   }
   const more = register.querySelector('[data-show-more-reports]');
   if (more) more.onclick = () => {
@@ -2579,7 +2661,7 @@ async function downloadSavedReport(assessmentId) {
   const workspaceVersion = state.workspaceVersion;
   const current = () => state.profile?.patient_id === owner && state.workspaceVersion === workspaceVersion;
   try {
-    const response = await fetch(`/api/reports/${encodeURIComponent(assessmentId)}/download`);
+    const response = await fetchForWorkspace(`/api/reports/${encodeURIComponent(assessmentId)}/download`);
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       throw Error(payload.error || 'Unable to generate the PDF report.');
@@ -2589,7 +2671,7 @@ async function downloadSavedReport(assessmentId) {
     const url = URL.createObjectURL(blob); const link = document.createElement('a');
     link.href = url; link.download = `dermamatrix-discussion-brief-${String(item?.created_at || currentDate()).slice(0, 10)}.pdf`; link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    toast('PDF discussion brief downloaded.');
+    toast('PDF discussion brief download started.');
   } catch (error) {
     if (!current()) return;
     toast(error.message || 'Unable to generate the PDF report.');
@@ -2605,7 +2687,7 @@ async function downloadHistory() {
   const workspaceVersion = state.workspaceVersion;
   const current = () => state.profile?.patient_id === owner && state.workspaceVersion === workspaceVersion;
   try {
-    const response = await fetch('/api/history/download');
+    const response = await fetchForWorkspace('/api/history/download');
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       throw Error(payload.error || 'Unable to generate the history export.');
@@ -2615,7 +2697,7 @@ async function downloadHistory() {
     const url = URL.createObjectURL(blob); const link = document.createElement('a');
     link.href = url; link.download = `dermamatrix-personal-history-${currentDate()}.pdf`; link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    toast('Recent history PDF downloaded (up to 50 assessments, 50 routines and 100 check-ins).');
+    toast('Recent history PDF download started (up to 50 assessments, 50 routines and 100 check-ins).');
   } catch (error) {
     if (!current()) return;
     toast(error.message || 'Unable to generate the history export.');
@@ -2635,6 +2717,7 @@ async function downloadAccountData() {
   }
   if (downloadAccountData.inFlight) return;
   const owner = state.profile.patient_id;
+  const workspaceVersion = state.workspaceVersion;
   const button = $('#downloadAccountDataButton');
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 60000);
@@ -2643,7 +2726,7 @@ async function downloadAccountData() {
   button.setAttribute('aria-busy', 'true');
   button.textContent = 'Preparing account data…';
   try {
-    const response = await fetch('/api/account-data/download', { credentials: 'same-origin', signal: controller.signal });
+    const response = await fetchForWorkspace('/api/account-data/download', { credentials: 'same-origin', signal: controller.signal });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       const error = Error(payload.error || 'Unable to download local account data.');
@@ -2652,6 +2735,7 @@ async function downloadAccountData() {
     }
     if (!String(response.headers.get('Content-Type') || '').toLowerCase().includes('application/json')) throw Error('The server did not return an account-data JSON file. Please try again.');
     const blob = await response.blob();
+    if (state.workspaceVersion !== workspaceVersion) return;
     if (state.profile?.patient_id !== owner) return toast('The account changed before the download was ready. Sign in to the intended account and try again.');
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -2659,6 +2743,7 @@ async function downloadAccountData() {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     toast('Local account-data download started.');
   } catch (error) {
+    if (state.workspaceVersion !== workspaceVersion) return;
     if (error.status === 401) showAuthGate('login');
     toast(error.name === 'AbortError' ? 'The account-data download took too long. Please try again.' : error.message || 'Unable to download local account data.');
   } finally {
@@ -2773,10 +2858,13 @@ async function loadProgress({ force = false } = {}) {
 function editRoutine(routineId) {
   const routine = state.routines.find(item => item.routine_id === routineId);
   if (!routine) return;
+  if (!allowDraftDiscard($('#routineForm'))) return;
   window.WorkspaceUI?.reveal('routines');
   $('#editingRoutineId').value = routine.routine_id; $('#conditionLabel').value = routine.condition_label; $('#routineName').value = routine.routine_name;
   $('#routineStartDate').value = routine.start_date; $('#routineNotes').value = routine.notes || '';
   $('#routineFormTitle').textContent = 'Edit routine'; $('#cancelRoutineEdit').hidden = false;
+  state.routineDraftVersion = (state.routineDraftVersion || 0) + 1;
+  cleanDraft($('#routineForm'));
   $('#routineForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -2791,19 +2879,29 @@ function startRoutineCheckin(routineId) {
 
 async function saveRoutine(event) {
   event.preventDefault();
+  const formElement = event.currentTarget;
   if (!state.profile?.patient_id) { openProfile(); return toast('Set up a profile before saving routines.'); }
-  const submitButton = event.currentTarget.querySelector('[type="submit"]');
+  const submitButton = formElement.querySelector('[type="submit"]');
   if (submitButton.disabled) return;
   const payload = { condition_label: $('#conditionLabel').value, routine_name: $('#routineName').value, start_date: $('#routineStartDate').value, notes: $('#routineNotes').value };
   const editingId = $('#editingRoutineId').value;
+  const submittedDraft = draftSnapshot(formElement), draftVersion = state.routineDraftVersion;
   const workspaceVersion = state.workspaceVersion;
   submitButton.disabled = true;
   try {
     const saved = await requestJSON(editingId ? `/api/routines/${editingId}` : '/api/routines', { method: editingId ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json', ...(!editingId&&window.ContinuityUI?.enabled()?{'Idempotency-Key':window.ContinuityUI.retryKey('/api/routines',payload)}:{}) }, body: JSON.stringify(payload), ownerGuard:()=>workspaceVersion===state.workspaceVersion });
     if(workspaceVersion!==state.workspaceVersion)return;
-    resetRoutineForm(); await loadProgress({ force: true }); toast(editingId ? 'Routine updated.' : 'Routine added.');
-    if (!editingId && saved.routine_id) await window.WorkspaceUI?.routineSaved(saved.routine_id);
-  } catch (error) { toast(error.message || 'Could not save this routine.'); }
+    const sameDraft = draftVersion === state.routineDraftVersion;
+    const unchanged = sameDraft && draftSnapshot(formElement) === submittedDraft;
+    if (unchanged) resetRoutineForm();
+    else if (sameDraft) {
+      $('#editingRoutineId').value = editingId || saved.routine_id;
+      $('#routineFormTitle').textContent = 'Edit routine'; $('#cancelRoutineEdit').hidden = false;
+      cleanDraft(formElement, submittedDraft);
+    }
+    await loadProgress({ force: true }); toast(unchanged ? editingId ? 'Routine updated.' : 'Routine added.' : 'Submitted routine saved. Your newer edits are still unsaved.');
+    if (unchanged && !editingId && saved.routine_id) await window.WorkspaceUI?.routineSaved(saved.routine_id);
+  } catch (error) { if (workspaceVersion === state.workspaceVersion) toast(error.message || 'Could not save this routine.'); }
   finally { submitButton.disabled = false; }
 }
 
@@ -2825,12 +2923,17 @@ async function saveCheckin(event) {
   if (submitButton.disabled) return;
   const file = $('#checkinImage').files[0];
   const payload = { routine_id: $('#checkinRoutine').value, checkin_date: $('#checkinDate').value, reported_trend: $('#checkinTrend').value, discomfort: $('#checkinDiscomfort').value, change: $('#checkinChange').value, note: $('#checkinNote').value };
+  const submittedDraft = draftSnapshot(form), current = accountWorkspaceGuard();
   submitButton.disabled = true;
   try {
-    const data = await requestJSON('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    form.reset(); $('#checkinDate').value = currentDate(); await loadProgress({ force: true });
-    toast(file ? `${data.progress_label}. The comparison image was not stored.` : `${data.progress_label}. Check-in saved.`);
-  } catch (error) { toast(error.message || 'Could not save this check-in.'); }
+    const data = await requestJSON('/api/progress-checkins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), ownerGuard: current });
+    if (!current()) return;
+    const unchanged = draftSnapshot(form) === submittedDraft;
+    if (unchanged) { form.reset(); $('#checkinDate').value = currentDate(); cleanDraft(form); }
+    else cleanDraft(form, submittedDraft);
+    await loadProgress({ force: true });
+    if (current()) toast(unchanged ? file ? `${data.progress_label}. The comparison image was not stored.` : `${data.progress_label}. Check-in saved.` : 'Submitted check-in saved. Your newer edits are still unsaved.');
+  } catch (error) { if (current()) toast(error.message || 'Could not save this check-in.'); }
   finally { submitButton.disabled = false; }
 }
 
@@ -2918,7 +3021,7 @@ document.addEventListener('keydown', event => {
     containKeyboardFocus(event, $('.sidebar'));
   }
   if (event.key === 'Escape') {
-    if (activeDialog) { event.preventDefault(); closeDialog(activeDialog); }
+    if (activeDialog) { event.preventDefault(); if (activeDialog.id === 'profileModal') closeProfile(); else closeDialog(activeDialog); }
     else if (document.body.classList.contains('nav-open')) setNavigationOpen(false);
   }
 });
@@ -2948,14 +3051,45 @@ $('#downloadAccountDataButton').onclick = downloadAccountData;
 $('#affiliateInfoButton').onclick = () => toast('Partner links are labelled. They never change screening results or clinician-first guidance.');
 $('#themeToggle').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; persistPreferences({ theme: next }); };
 $('#settingsThemeButton').onclick = () => { const next = document.body.dataset.theme === 'dark' ? 'light' : 'dark'; persistPreferences({ theme: next }); };
-$('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = resetRoutineForm; $('#checkinForm').onsubmit = saveCheckin; $('#downloadHistoryButton').onclick = downloadHistory;
+$('#routineForm').onsubmit = saveRoutine; $('#cancelRoutineEdit').onclick = () => { if (allowDraftDiscard($('#routineForm'))) resetRoutineForm(); }; $('#checkinForm').onsubmit = saveCheckin; $('#downloadHistoryButton').onclick = downloadHistory;
 window.addEventListener('popstate', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
 window.addEventListener('hashchange', () => showPage(location.hash.replace('#', '') || 'dashboard', { syncHistory: false }));
-window.addEventListener('dermamatrix-session-ended', () => {
-  clearWorkspaceEvidence(); state.profile = null; state.isGuest = false;
-  showAuthGate('login'); setAuthMessage('Your session ended. Sign in again to continue.');
+const retrySessionCheck = document.createElement('button');
+retrySessionCheck.id = 'retrySessionCheck'; retrySessionCheck.type = 'button'; retrySessionCheck.className = 'button quiet'; retrySessionCheck.hidden = true; retrySessionCheck.textContent = 'Retry session check';
+$('#authMessage').after(retrySessionCheck);
+retrySessionCheck.onclick = async () => { retrySessionCheck.disabled = true; try { await window.ConsumerClient?.revalidate(); } finally { retrySessionCheck.disabled = false; } };
+function resumeSuspendedWorkspace() {
+  if (!suspendedWorkspace) return;
+  const previous = suspendedWorkspace; suspendedWorkspace = null;
+  hideAuthGate(); retrySessionCheck.hidden = true;
+  for (const view of previous.dialogs) if (view.dialog.isConnected) {
+    if (view.native) view.dialog.showModal(); else openDialog(view.dialog, '.modal-close');
+    if (view.baseline) draftBaselines.set(view.form, view.baseline);
+  }
+  syncDraftWarning();
+  if (previous.focus?.isConnected && !previous.focus.disabled && previous.focus.getClientRects().length) previous.focus.focus({ preventScroll: true });
+}
+window.addEventListener('dermamatrix-session-uncertain', event => {
+  clearToast();
+  if (!suspendedWorkspace) {
+    const dialogs = $$('dialog[open], #profileModal.show, #resultModal.show').map(dialog => ({ dialog, native: dialog.tagName === 'DIALOG', form: dialog.querySelector('form'), baseline: draftBaselines.get(dialog.querySelector('form')) }));
+    suspendedWorkspace = { owner: state.profile?.patient_id, focus: document.activeElement, dialogs };
+    state.workspaceVersion++;
+    if (state.assessmentInFlight) interruptAssessment();
+    for (const view of dialogs) { if (view.native) view.dialog.close(); else closeDialog(view.dialog); }
+  }
+  showAuthGate('login'); retrySessionCheck.hidden = false; setAuthMessage(event.detail.message);
 });
-window.addEventListener('beforeunload', () => { if (state.imageUrl) URL.revokeObjectURL(state.imageUrl); });
+window.addEventListener('dermamatrix-session-resumed', () => {
+  resumeSuspendedWorkspace(); void hydrateProfile(); void loadProgress({ force: true });
+});
+window.addEventListener('dermamatrix-session-ended', event => {
+  clearWorkspaceEvidence(); state.profile = null; state.isGuest = false;
+  showAuthGate('login'); setAuthMessage(event.detail?.message || 'Your session ended. Sign in again to continue.');
+});
+['focusin', 'input', 'change'].forEach(name => document.addEventListener(name, draftInteraction));
+// Replacement/reset/privacy clearing revoke object URLs. The browser releases
+// remaining URLs on actual document destruction, not on a cancelled unload.
 
 async function initialiseApp() {
   if (window.location.protocol === 'file:') {
@@ -2986,6 +3120,7 @@ async function initialiseApp() {
   });
   resetRoutineForm();
   $('#checkinDate').value = currentDate();
+  ['#screen', '#profileForm', '#checkinForm'].forEach(selector => cleanDraft($(selector)));
   $('#clearProfileButton').textContent = 'Sign out';
   $('#profileModal .profile-actions [data-close-profile]').textContent = 'Cancel';
   $('#resultTitle').textContent = 'Your assessment';

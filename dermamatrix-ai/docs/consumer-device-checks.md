@@ -7,6 +7,8 @@ restart connection probes or debugging setup without a new request. A suggested
 USB-authorization reset was not confirmed completed. See the newest native
 acceptance section in `consumer-validation-results.md` for available Safari
 results and the remaining native Save/Upload/dialog/zoom/speech checks.
+**2 November:** the owner is away and explicitly deferred the native picker.
+No unattended picker retries or phone setup are pending background work.
 
 When an interactive device session is requested again, prepare the existing
 isolated environment first, give one action at a time, wait for actual owner
@@ -82,11 +84,18 @@ is separate from automated WebKit evidence. The native upload panel listed both
 generated HEIC and PNG as eligible, but its Upload action stayed disabled under
 this automation. It was cancelled; no native image upload success is claimed.
 
-During the isolated session, open `http://127.0.0.1:8001/` in Safari → guest →
-Skin → choose the generated `synthetic-colour.heic` or `.png` from the task's
-private `fixtures/` directory. Click Upload yourself and report whether the
+After the developer restarts the isolated session, open
+`http://127.0.0.1:8001/` in Safari → guest → Skin → choose the generated
+`synthetic-colour.png` from
+`local-artifacts/consumer-validation-2026-10-28/fixtures/` at project root.
+Click Upload yourself and report whether the
 button enables. Also cancel/reopen once. Use no personal photo. This distinguishes
-a native-panel/tooling limitation from an actual Safari selection defect.
+a native-panel/tooling limitation from an actual Safari selection defect. This
+is the first unfinished native step; do not repeat already verified guest/login
+interactions. Continue one step at a time with replacement, a synthetic check-in
+correction, then history PDF/account JSON saving. Native Save stayed disabled
+through automation too; the panels were cancelled and no completed file claimed.
+If a browser security warning appears on a future attempt, handle it yourself.
 
 Safari website settings exposed 200% and 300% page zoom (300% was the maximum
 listed), and zoom was restored to its original 100%. Enlarged auth content was
@@ -97,6 +106,10 @@ record what you see. Safari may require Option-Tab to traverse all controls; tha
 reached Back/Confirm in this session without a settings change. Do not claim
 400% Safari testing or native speech from those
 partial observations. Remote automation was not enabled or security changed.
+
+The2November attempt additionally confirmed actual200% in the native site
+popover, sampled enlarged Journey/navigation, then explicitly restored and
+confirmed100%. It does not establish full native large-text/focus acceptance.
 
 ## VoiceOver and TalkBack: genuine spoken-output checks
 

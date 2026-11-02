@@ -46,19 +46,23 @@
     if($('unifiedSearchDialog')?.open)await search(true);
   }
   function dialog(title, content, save, label='Save correction', trigger) {
-    const opener=trigger||document.activeElement,d=$('continuityDialog'),instance=++dialogVersion;d.replaceChildren();const form=el('form');form.append(el('h2',title));
+    const opener=trigger||document.activeElement,d=$('continuityDialog'),instance=++dialogVersion;window.DraftUX?.forget(d.firstChild);d.replaceChildren();const form=el('form');form.append(el('h2',title));
     const heading=form.firstChild;heading.id='continuityDialogTitle';d.setAttribute('aria-labelledby',heading.id);
     heading.tabIndex=-1;
     form.append(content);const status=el('p');status.id='continuityDialogStatus';status.setAttribute('role','status');form.append(status);
     const actions=el('div',undefined,'consumer-actions'),submit=el('button',label,'button primary');submit.type='submit';
-    actions.append(button('Back',()=>d.close()),submit);form.append(actions);d.append(form);
+    actions.append(button('Back',()=>{if(submit.disabled||!window.DraftUX||window.DraftUX.allowDiscard(form))d.close();}),submit);form.append(actions);d.append(form);
+    window.DraftUX?.clean(form);
+    d.oncancel=event=>{if(!submit.disabled&&window.DraftUX&&!window.DraftUX.allowDiscard(form))event.preventDefault();};
     const version=epoch,account=owner();
     const sameDialog=()=>active(version,account)&&dialogVersion===instance&&d.firstChild===form;
     const restoreFocus=()=>{if(!sameDialog()||d.open)return;const focus=opener?.isConnected?opener:(document.querySelector('.page-active [role=tab][aria-selected=true]')||document.querySelector('.page-active h1'));if(focus){if(focus.tagName==='H1')focus.tabIndex=-1;focus.focus({preventScroll:true});}};
     let saved=false;
-    d.onclose=()=>{if(!saved)restoreFocus();};
+    d.onclose=()=>{if(!d.open){window.DraftUX?.forget(form);if(!saved)restoreFocus();}};
     form.onsubmit=async event=>{
       event.preventDefault();if(submit.disabled||!sameDialog()||!d.open)return;
+      const controls=[...form.querySelectorAll('input,select,textarea')].map(input=>[input,input.disabled]);
+      controls.forEach(([input])=>{input.disabled=true;});
       submit.disabled=true;status.textContent='Saving… You can go back, but this request may already be saved.';
       try{
         await save();if(!active(version,account))return;
@@ -66,7 +70,7 @@
         await changed();
         if(wasOpen&&sameDialog()&&!d.open){restoreFocus();toast('Saved. Your original records are preserved.');}
       }catch(error){if(sameDialog()&&d.open)status.textContent=`${error.message} This attempt was not confirmed. Your input remains here; retry the same details or reload if another tab changed the record.`;}
-      finally{submit.disabled=false;}
+      finally{controls.forEach(([input,disabled])=>{input.disabled=disabled;});submit.disabled=false;}
     };
     d.showModal();d.scrollTop=0;const initialFocus=document.activeElement;
     requestAnimationFrame(()=>{if(sameDialog()&&d.open&&document.activeElement===initialFocus)heading.focus({preventScroll:true});});
@@ -107,13 +111,13 @@
   function checkinInput() {return{routine_id:$('checkinRoutine').value,checkin_date:$('checkinDate').value,reported_trend:$('checkinTrend').value,discomfort:$('checkinDiscomfort').value,change:$('checkinChange').value,note:$('checkinNote').value,episode_id:$('checkinEpisode').value};}
   async function reviewCheckin() {
     const form=$('checkinForm');if(!form.reportValidity())return;
-    const payload=checkinInput(),signature=JSON.stringify(payload);
+    const payload=checkinInput(),signature=JSON.stringify(payload),submittedDraft=window.DraftUX?.snapshot(form);
     const content=el('div');const routine=state.routines.find(r=>r.routine_id===payload.routine_id);const episode=episodes.find(r=>r.episode_id===payload.episode_id);
     const summary=el('dl',undefined,'review-summary');
     for(const [name,value] of [['Routine',routine?.routine_name||'Choose a routine'],['Date',payload.checkin_date],['Trend',`${readableStatus(payload.reported_trend)} — self-reported`],['Discomfort',$('checkinDiscomfort').selectedOptions[0].textContent],['Recent change',$('checkinChange').selectedOptions[0].textContent],['Concern',episode?.label||'Unassigned'],...(payload.note?[['Note',payload.note]]:[])])summary.append(el('dt',name),el('dd',value));
     content.append(summary,el('p','Confirm this is the right concern. No image is used to measure healing or saved with this check-in.'));
     const version=epoch,account=owner();
-    dialog('Review your check-in',content,async()=>{await write('/api/progress-checkins',payload);if(active(version,account)&&JSON.stringify(checkinInput())===signature){form.reset();$('checkinDate').value=currentDate();}},'Save check-in',form.querySelector('[type=submit]'));
+    dialog('Review your check-in',content,async()=>{await write('/api/progress-checkins',payload);if(!active(version,account))return;if(JSON.stringify(checkinInput())===signature){form.reset();$('checkinDate').value=currentDate();window.DraftUX?.clean(form);}else window.DraftUX?.clean(form,submittedDraft);},'Save check-in',form.querySelector('[type=submit]'));
   }
   function briefInput() {return{episode_id:$('briefEpisode').value,start:$('briefStart').value,end:$('briefEnd').value,questions:$('briefQuestions').value};}
   function resetBriefDates() {
@@ -220,7 +224,7 @@
     invalidateBrief();
     $('previewBrief').onclick=previewBrief;
     $('visitBriefForm').addEventListener('input',event=>{if(!event.target.closest('#briefSelection'))invalidateBrief('Selection changed. Preview the records again before downloading.');});
-    $('visitBriefForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;const payload=briefInput();if(briefSignature!==JSON.stringify(payload)){message('briefStatus','Preview this concern and date range before downloading.');return;}submit.disabled=true;const generation=epoch,account=owner(),requestVersion=briefVersion,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);try{const options=await window.ConsumerClient.prepare({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,assessment_ids:[...$('briefSelection').querySelectorAll('input:checked')].map(n=>n.value),format:'pdf'})});if(!active(generation,account)||requestVersion!==briefVersion)return;const response=await fetch('/api/visit-brief',{...options,credentials:'same-origin',signal:controller.signal});if(!response.ok)throw Error((await response.json()).error||'Brief generation failed.');const blob=await response.blob();if(!active(generation,account)||requestVersion!==briefVersion)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='dermamatrix-visit-brief.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('briefStatus','Brief generated from the selected saved metadata. Original records are unchanged.');}catch(error){if(active(generation,account)&&requestVersion===briefVersion)message('briefStatus',`${error.message} No download was confirmed. Retry after previewing.`);}finally{clearTimeout(timeout);submit.disabled=briefSignature!==JSON.stringify(briefInput());}};
+    $('visitBriefForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;const payload=briefInput();if(briefSignature!==JSON.stringify(payload)){message('briefStatus','Preview this concern and date range before downloading.');return;}submit.disabled=true;const generation=epoch,account=owner(),requestVersion=briefVersion,workspaceVersion=state.workspaceVersion,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);try{if(!active(generation,account)||requestVersion!==briefVersion||workspaceVersion!==state.workspaceVersion)return;const response=await fetchForWorkspace('/api/visit-brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,assessment_ids:[...$('briefSelection').querySelectorAll('input:checked')].map(n=>n.value),format:'pdf'}),credentials:'same-origin',signal:controller.signal,ownerGuard:()=>active(generation,account)&&requestVersion===briefVersion&&workspaceVersion===state.workspaceVersion});if(!response.ok)throw Error((await response.json()).error||'Brief generation failed.');const blob=await response.blob();if(!active(generation,account)||requestVersion!==briefVersion||workspaceVersion!==state.workspaceVersion)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='dermamatrix-visit-brief.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('briefStatus','Brief generated from the selected saved metadata. Original records are unchanged.');}catch(error){if(active(generation,account)&&requestVersion===briefVersion)message('briefStatus',`${error.message} No download was confirmed. Retry after previewing.`);}finally{clearTimeout(timeout);submit.disabled=briefSignature!==JSON.stringify(briefInput());}};
     const saved=el('details');saved.id='savedGuides';saved.innerHTML='<summary>Saved guides</summary><div id="savedGuideList"></div>';$('learnList').before(saved);
     const searchDialog=el('dialog',undefined,'consumer-dialog');searchDialog.id='unifiedSearchDialog';searchDialog.setAttribute('aria-labelledby','unifiedTitle');searchDialog.innerHTML='<h2 id="unifiedTitle">Search your workspace</h2><form id="unifiedSearchForm" class="continuity-form"><label>Search<input id="unifiedQuery" type="search" maxlength="120"></label><label>Category<select id="unifiedCategory"><option value="">All categories</option><option value="assessment">Assessments</option><option value="episode">Concerns</option><option value="routine">Routines</option><option value="checkin">Check-ins</option><option value="guide">Educational guides</option></select></label><button class="button primary" type="submit">Search</button></form><p id="unifiedStatus" role="status"></p><div id="unifiedResults"></div><button id="unifiedMore" type="button" class="button quiet" hidden>Load more results</button>';searchDialog.append(button('Close search',()=>searchDialog.close()));document.body.append(searchDialog);$('unifiedSearchForm').onsubmit=e=>{e.preventDefault();search(true);};$('unifiedMore').onclick=()=>search(false);
     const feedback=el('details');feedback.id='productFeedback';feedback.innerHTML='<summary>Share product feedback</summary><p>Collected in this local account. No monitored support channel is configured. Do not include health notes, identifying details or photographs.</p><form id="feedbackForm" class="continuity-form"><label>Problem category<select id="feedbackCategory"><option>Confusing screen</option><option>Save or loading problem</option><option>Accessibility</option><option>Other</option></select></label><label>Page<select id="feedbackPage"><option>Today</option><option>Check</option><option>Journey</option><option>Learn</option><option>Profile</option></select></label><label>Explanation (optional)<textarea id="feedbackNote" maxlength="2000"></textarea></label><p>Application version: consumer-continuity-v1. No account records or photos are attached automatically.</p><button class="button quiet" type="submit">Save local feedback</button><p id="feedbackStatus" role="status"></p></form>';$('profile-privacy').append(feedback);

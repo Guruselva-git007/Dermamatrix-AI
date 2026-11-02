@@ -20,7 +20,7 @@ from urllib.request import build_opener, ProxyHandler
 
 
 APP = Path(__file__).resolve().parents[2]
-SUITES = (("browser-smoke.js", 15), ("browser-continuity.js", 12), ("browser-product-quality.js", 27), ("browser-accessibility.js", 12), ("browser-sky-scanner.js", 13))
+SUITES = (("browser-smoke.js", 15), ("browser-continuity.js", 12), ("browser-product-quality.js", 27), ("browser-accessibility.js", 12), ("browser-sky-scanner.js", 13), ("browser-account-drafts.js", 13))
 
 
 def reset_synthetic_budgets() -> None:
@@ -148,7 +148,12 @@ def run_suite(cli: str, session: str, filename: str, minimum: int, folder: Path,
     source = (APP / "frontend/tests" / filename).read_text(encoding="utf-8").strip()
     wrapper = suite / "run.js"
     options = json.dumps({"artifactRoot": str(suite) + "/", **extra_options})
-    wrapper.write_text(f"async page => await ({source})(page, {options})\n", encoding="utf-8")
+    if phase:
+        wrapper.write_text(f"async page => await ({source})(page, {options})\n", encoding="utf-8")
+    else:
+        # The CLI yields early for its launcher's native dialogs. An owned page
+        # lets real dialog events be handled and assertions finish with a result.
+        wrapper.write_text(f"async host => {{ await host.goto('about:blank'); const page = await host.context().newPage(); try {{ await page.bringToFront(); return await ({source})(page, {options}); }} finally {{ await page.close(); }} }}\n", encoding="utf-8")
     output = command(cli, session, ["--raw", "run-code", "--filename=" + str(wrapper)], suite / "result.json")
     try:
         result = verified_result(output, minimum)
@@ -163,7 +168,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browsers", nargs="+", choices=("chrome", "firefox", "webkit"), default=["chrome"])
     parser.add_argument("--artifacts", type=Path)
-    parser.add_argument("--reset-synthetic-budgets", action="store_true", help="Reset only technical request budgets before each engine in the isolated synthetic database")
+    parser.add_argument("--reset-synthetic-budgets", action="store_true", help="Reset only technical request budgets between independent suites in the isolated synthetic database")
     args = parser.parse_args()
     cli = shutil.which("playwright-cli")
     if not cli:
@@ -196,14 +201,17 @@ def main() -> int:
         origin = TestOrigin()
         try:
             if args.reset_synthetic_budgets:
-                reset_synthetic_budgets()
                 record["technical_budget_fixture_reset"] = True
-                print(f"{browser}: reset only synthetic technical request budgets; app limits unchanged", flush=True)
+                record["technical_budget_fixture_resets"] = []
+                print(f"{browser}: reset only synthetic technical request budgets between independent suites; app limits unchanged", flush=True)
             arguments = ["open", summary["target"], "--browser=" + browser, "--config=" + str(config)]
             command(cli, session, arguments, folder / "open.txt", 60)
             metadata = command(cli, session, ["--raw", "run-code", "async page => ({userAgent: await page.evaluate(() => navigator.userAgent)})"], folder / "engine.json")
             record.update(json.loads(metadata))
             for filename, minimum in SUITES:
+                if args.reset_synthetic_budgets:
+                    reset_synthetic_budgets()
+                    record["technical_budget_fixture_resets"].append(filename)
                 run_suite(cli, session, filename, minimum, folder, record)
             command(cli, session, ["close"], folder / "close-network.txt", 30)
             config.write_text(json.dumps({"browser": {"contextOptions": {"serviceWorkers": "allow"}}}), encoding="utf-8")

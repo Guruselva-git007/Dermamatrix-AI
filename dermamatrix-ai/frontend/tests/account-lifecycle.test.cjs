@@ -64,7 +64,7 @@ test('profile save cannot submit an old draft after asynchronous request prepara
     if (options.ownerGuard && !options.ownerGuard()) throw Error('Account changed');
     sent += 1; return { profile: { patient_id: 'OWNER-A', past_history: 'Old draft' } };
   };
-  const pending = h.saveProfile({ preventDefault() {}, currentTarget: { data: { full_name: 'Account A', past_history: 'Old draft', health_data_consent: 'on' }, querySelector: () => h.element('submit') } });
+  const pending = h.saveProfile({ preventDefault() {}, currentTarget: { data: { full_name: 'Account A', past_history: 'Old draft', health_data_consent: 'on' }, querySelector: () => h.element('submit'), querySelectorAll() { return Object.entries(this.data).map(([name,value]) => ({name,value,type:'text'})); } } });
   h.state.profile = { patient_id: 'OWNER-B' }; h.state.workspaceVersion += 1;
   preparation.resolve(); await pending;
   assert.equal(sent, 0); assert.equal(h.state.profile.patient_id, 'OWNER-B');
@@ -73,7 +73,7 @@ test('profile save cannot submit an old draft after asynchronous request prepara
 
 test('a committed profile save response cannot paint or close the next account workspace', async () => {
   const h = harness(), response = deferred(); h.bridge.request = () => response.promise;
-  const pending = h.saveProfile({ preventDefault() {}, currentTarget: { data: { full_name: 'Account A', health_data_consent: 'on' }, querySelector: () => h.element('submit') } });
+  const pending = h.saveProfile({ preventDefault() {}, currentTarget: { data: { full_name: 'Account A', health_data_consent: 'on' }, querySelector: () => h.element('submit'), querySelectorAll() { return Object.entries(this.data).map(([name,value]) => ({name,value,type:'text'})); } } });
   h.state.profile = { patient_id: 'OWNER-B' }; h.state.workspaceVersion += 1;
   response.resolve({ profile: { patient_id: 'OWNER-A', full_name: 'Old response' } }); await pending;
   assert.equal(h.state.profile.patient_id, 'OWNER-B'); assert.deepEqual(h.effects, []);
@@ -84,7 +84,7 @@ test('profile hydration and save still update the same current account', async (
   h.bridge.request = async path => path === '/api/profile' ? { patient_id: 'OWNER-A', full_name: 'Current profile' } : {};
   await h.hydrateProfile(); assert.equal(h.state.profile.full_name, 'Current profile');
   h.bridge.request = async () => ({ profile: { patient_id: 'OWNER-A', full_name: 'Saved profile' } });
-  await h.saveProfile({ preventDefault() {}, currentTarget: { data: { full_name: 'Saved profile', health_data_consent: 'on' }, querySelector: () => h.element('submit') } });
+  await h.saveProfile({ preventDefault() {}, currentTarget: { data: { full_name: 'Saved profile', health_data_consent: 'on' }, querySelector: () => h.element('submit'), querySelectorAll() { return Object.entries(this.data).map(([name,value]) => ({name,value,type:'text'})); } } });
   assert.equal(h.state.profile.full_name, 'Saved profile'); assert.ok(h.effects.some(([kind]) => kind === 'progress'));
 });
 
@@ -94,6 +94,19 @@ test('old account-entry continuation cannot refresh or announce success in a new
   h.state.profile = { patient_id: 'OWNER-B' }; h.state.workspaceVersion += 1;
   response.resolve({ patient_id: 'OWNER-A' }); await pending;
   assert.equal(h.state.profile.patient_id, 'OWNER-B'); assert.deepEqual(h.effects, []);
+});
+
+test('a saved profile revision cannot close or mark newer form edits as saved', async () => {
+  const h = harness(), response = deferred(); h.bridge.request = () => response.promise;
+  const form = { data: {full_name:'Submitted synthetic name'}, querySelector:()=>h.element('submit'), querySelectorAll(){return Object.entries(this.data).map(([name,value])=>({name,value,type:'text'}));} };
+  const event = {preventDefault(){}, currentTarget:form}; const pending = h.saveProfile(event);
+  event.currentTarget = null;  // Native events clear currentTarget after dispatch.
+  form.data.full_name = 'Newer unsaved name';
+  response.resolve({profile:{patient_id:'OWNER-A',full_name:'Submitted synthetic name'}}); await pending;
+  assert.equal(h.state.profile.full_name,'Submitted synthetic name');
+  assert.equal(form.data.full_name,'Newer unsaved name');
+  assert.ok(!h.effects.some(([kind])=>kind==='close'));
+  assert.match(h.effects.find(([kind])=>kind==='toast')[1],/newer edits are not saved/);
 });
 
 test('startup authentication cannot replace a newer explicitly selected account', async () => {
