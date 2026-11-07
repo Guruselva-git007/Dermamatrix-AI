@@ -142,7 +142,7 @@ With the existing isolated `*_synthetic` database/server on loopback port 8001,
 ```
 
 Each engine runs the same 15 core, 12 continuity, 27 quality, 12 targeted
-accessibility/keyboard, 13 scanner and 13 account/draft checks. A
+accessibility/keyboard, 13 scanner, 13 account/draft and 8 editing-lifecycle checks. A
 separate context runs four real service-worker/origin-outage checks. Per-engine logs,
 screenshots and strict JSON receipts go into a fresh ignored project artifact
 directory. With `--reset-synthetic-budgets`, independent suites start with fresh technical request
@@ -312,3 +312,19 @@ toasts say download started because native saving has not yet been confirmed.
 The approved white/sky/navy interface, IBM Plex, scanner and evidence remain.
 See the newest validation-results/checkpoint section for exact tested source and
 the deferred native chooser/save/correction/speech/participant boundaries.
+
+
+### Schedule, label and concern editing lifecycle (7 November)
+
+The existing memory-only DraftUX baseline is also registered for schedule and
+concern forms after privacy clearing. Schedule loads retain same-routine edits;
+actual switches confirm discard. Initial load disables controls, a failed load
+hides stale fields, and selecting again retries. Save callbacks retain newer
+text/concern selections and distinguish submitted success from unsaved edits.
+Label dialogs use their own instance counter plus account generation, preventing
+old completions from closing/unlocking/focusing a later form. Dirty Cancel/Escape
+use existing native confirmation; in-flight Cancel honestly cannot undo a request.
+Concern creation compares submitted/current values and rechecks account/workspace
+following refresh. These are derived UI views of authoritative records, not a new
+draft store or duplicated medical source. browser-editing.js verifies8 connected
+cases; the complete runner now requires104 checks per engine including offline4.

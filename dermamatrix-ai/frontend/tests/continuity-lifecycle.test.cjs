@@ -31,19 +31,19 @@ function harness(){
   const get=id=>{if(!nodes.has(id)){const node=new Element();node.id=id;}return nodes.get(id);};
   const fallback=new Element('h1'),trigger=new Element('button');
   document={getElementById:get,createElement:tag=>new Element(tag),readyState:'loading',addEventListener(){},querySelector:()=>fallback,activeElement:trigger};
-  const context={window:{ConsumerClient:{enabled:true},EngagementUI:{refresh:async()=>{}}},state:{profile:{patient_id:'owner-A'},checkins:[],routines:[]},document,Option:class{constructor(text,value){this.text=text;this.value=value;}},crypto:require('node:crypto').webcrypto,currentDate:()=> '2026-10-30',Date,URLSearchParams,requestAnimationFrame:fn=>frames.push(fn),toast(){},loadProgress:async()=>true,console,
-    requestJSON:url=>{
-      if(url==='/api/episodes')return Promise.resolve({episodes:[],body_areas:[]});
+  const context={window:{ConsumerClient:{enabled:true},EngagementUI:{refresh:async()=>{},filterEpisode(){}}},state:{profile:{patient_id:'owner-A'},checkins:[],routines:[]},document,Option:class{constructor(text,value){this.text=text;this.value=value;}},crypto:require('node:crypto').webcrypto,currentDate:()=> '2026-10-30',Date,URLSearchParams,requestAnimationFrame:fn=>frames.push(fn),toast(){},loadProgress:async()=>true,console,
+    requestJSON:(url,options)=>{
+      if(url==='/api/episodes'&&!options)return Promise.resolve({episodes:[],body_areas:[]});
       if(url==='/api/episode-links')return Promise.resolve({links:{}});
       if(url==='/api/bookmarks')return Promise.resolve({bookmarks:[]});
       return new Promise((resolve,reject)=>pending.push({url,resolve,reject}));
     }};
   let source=fs.readFileSync(path.join(__dirname,'../continuity.js'),'utf8');
-  source=source.replace('  window.ContinuityUI={','  globalThis.api={dialog,previewBrief,invalidateBrief,resetBriefDates};\n  window.ContinuityUI={');
+  source=source.replace('  window.ContinuityUI={','  globalThis.api={dialog,previewBrief,invalidateBrief,resetBriefDates,createEpisode};\n  window.ContinuityUI={');
   vm.createContext(context);vm.runInContext(source,context);
   get('continuityDialog');const brief=get('visitBriefForm');for(const id of ['briefStart','briefEnd','briefQuestions'])brief.append(get(id));
   get('briefStart').value='2026-10-01';get('briefEnd').value='2026-10-30';
-  return{api:context.api,ui:context.window.ContinuityUI,get,pending,frames,document,trigger,content:()=>new Element(),state:context.state};
+  return{context,api:context.api,ui:context.window.ContinuityUI,get,pending,frames,document,trigger,content:()=>new Element(),state:context.state};
 }
 const submit=h=>h.get('continuityDialog').firstChild.onsubmit({preventDefault(){}});
 const preview=(id,notice)=>({brief:{assessments:id?[{assessment_id:id,area:'Sweat',created_at:'2026-10-30T12:00:00Z'}]:[],counts:{assessments:id?1:0,checkins:0,routine_actions:0},photo_notice:notice}});
@@ -100,4 +100,37 @@ test('account clear removes private brief input and restores a usable default da
 });
 test('invalid brief fields are rejected before sending a request',async()=>{
   const h=harness();h.get('visitBriefForm').valid=false;await h.api.previewBrief();assert.equal(h.pending.length,0);
+});
+
+
+function episodeForm(h) {
+  const form=h.get('episodeForm'),button=h.content();button.type='submit';form.append(button);
+  h.get('episodeLabel').value='Submitted concern';h.get('episodeArea').value='Skin';h.get('episodeBody').value='Face';
+  h.context.window.DraftUX={snapshot:()=>JSON.stringify([h.get('episodeLabel').value,h.get('episodeArea').value,h.get('episodeBody').value]),clean(){}};
+  return {form,button,event:{preventDefault(){},currentTarget:form}};
+}
+test('a delayed concern creation keeps newer input and does not move the active selection',async()=>{
+  const h=harness(),{form,button,event}=episodeForm(h);h.get('journeyEpisodeId').value='current-concern';
+  const pending=h.api.createEpisode(event);h.get('episodeLabel').value='Newer unsaved concern';
+  h.pending[0].resolve({episode_id:'created-concern'});await pending;
+  assert.equal(h.get('episodeLabel').value,'Newer unsaved concern');assert.equal(h.get('journeyEpisodeId').value,'current-concern');assert.equal(button.disabled,false);
+  assert.match(h.get('continuityStatus').textContent,/newer input.*not been saved/);
+});
+test('concern creation rechecks the account after its authoritative refresh',async()=>{
+  const h=harness(),{event}=episodeForm(h);let release,refreshStarted;
+  const started=new Promise(resolve=>refreshStarted=resolve),original=h.context.requestJSON;
+  h.context.requestJSON=(url,options)=>url==='/api/episodes'&&!options?new Promise(resolve=>{release=resolve;refreshStarted();}):original(url,options);
+  const pending=h.api.createEpisode(event);h.pending[0].resolve({episode_id:'created-A'});await started;
+  h.ui.clear();h.state.profile={patient_id:'owner-B'};h.get('episodeLabel').value='Private B draft';
+  release({episodes:[],body_areas:[]});await pending;
+  assert.equal(h.get('episodeLabel').value,'Private B draft');assert.equal(h.get('continuityStatus').textContent,'');
+});
+
+test('unverified workspace interruption during concern refresh retains the suspended draft',async()=>{
+  const h=harness(),{event,button}=episodeForm(h);let release,started;
+  const ready=new Promise(resolve=>started=resolve),original=h.context.requestJSON;
+  h.context.requestJSON=(url,options)=>url==='/api/episodes'&&!options?new Promise(resolve=>{release=resolve;started();}):original(url,options);
+  const pending=h.api.createEpisode(event);h.pending[0].resolve({episode_id:'created-A'});await ready;
+  h.state.workspaceVersion=1;h.get('episodeLabel').value='Current suspended draft';release({episodes:[],body_areas:[]});await pending;
+  assert.equal(h.get('episodeLabel').value,'Current suspended draft');assert.equal(button.disabled,false);assert.equal(h.get('continuityStatus').textContent,'');
 });

@@ -3,7 +3,7 @@
   'use strict';
   let generation = 0, historyCursor = null, historyQuery = '', historyArea = '', historyEpisode='',historyBodyArea='',historyEpisodeId='',historyLoading = false, todayFlight = null, todayRequestVersion=0;
   let historyRequestVersion=0, historySnapshotKey=null;
-  let schedule = null, scheduleId = '', scheduleLoadVersion = 0, guideVersion = 0;
+  let schedule = null, scheduleId = '', scheduleLoadedId = '', scheduleLoadVersion = 0, scheduleSaveVersion = 0, contextVersion = 0, guideVersion = 0;
   let guideListVersion = 0, guideOpener = null, guideRetry = null;
   const $ = id => document.getElementById(id);
   const node = (tag, text, cls) => { const n = document.createElement(tag); if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n; };
@@ -48,10 +48,22 @@
   }
   async function loadTodayFresh(){todayFlight=null;return loadToday();}
 
+  function scheduleLoading(busy) {
+    const form=$('scheduleEditor');
+    for(const control of form.querySelectorAll('input,select,textarea,button'))control.disabled=busy;
+    form.setAttribute('aria-busy',String(busy));
+  }
   async function loadSchedule(options={}) {
-    const preserveInput=options?.preserveInput===true;
-    const id=$('scheduleRoutine').value;const version=generation;const load=++scheduleLoadVersion;
-    scheduleId=id;if(!preserveInput)schedule=null;$('scheduleEditor').hidden=!id;$('routineEventHistory').replaceChildren();if(!id)return;
+    const form=$('scheduleEditor'),id=$('scheduleRoutine').value;
+    if(id!==scheduleId&&scheduleLoadedId&&window.DraftUX&&!window.DraftUX.allowDiscard(form,'Changing routine discards unsaved schedule changes. Choose Cancel to keep editing.')){
+      $('scheduleRoutine').value=scheduleId;return false;
+    }
+    // Reopening the same loaded routine refreshes its history, never its draft.
+    const preserveInput=Boolean(id&&id===scheduleId&&id===scheduleLoadedId);
+    const version=generation,load=++scheduleLoadVersion;
+    scheduleId=id;
+    if(!preserveInput){schedule=null;scheduleLoadedId='';scheduleSaveVersion++;window.DraftUX?.forget(form);scheduleLoading(Boolean(id));}
+    form.hidden=!id;$('routineEventHistory').replaceChildren();if(!id)return;
     status('scheduleStatus','Loading schedule…');
     try {
       const data=await requestJSON(`/api/routine-schedules/${encodeURIComponent(id)}`);
@@ -63,12 +75,20 @@
       $('routineScheduleArea').value=c.area;$('routineScheduleStatus').value=c.status;$('routineEpisode').value=c.episode;$('routineBodyArea').value=c.body_area;
       $('routineReminderOptIn').checked=c.reminders;$('quietStart').value=c.quiet_start;$('quietEnd').value=c.quiet_end;
       document.querySelectorAll('[name=routine_day]').forEach(input=>input.checked=c.days.includes(Number(input.value)));
+      scheduleLoadedId=id;window.DraftUX?.clean(form);
       status('scheduleStatus',schedule?'Schedule loaded. Edits preserve past completion records.':'Add your own steps and schedule. This does not create a medical treatment plan.');
       }else status('scheduleStatus','Completion history refreshed. Your current schedule input is preserved. Save explicitly to apply changes.');
       for(const event of data.events){const row=node('li',`${event.date} ${event.time} · ${event.step_text} · ${event.action} · schedule version ${event.schedule_version}`);row.append(action('Correct',()=>window.ContinuityUI?.correctEvent(event.id,event.revision,event.step_text)));if(event.corrections?.length){const details=node('details'),title=node('summary','Correction history');details.append(title,node('p',`Original action: ${event.original.action}`));for(const c of event.corrections)details.append(node('p',`${new Date(c.created_at).toLocaleString()} · ${c.data.effective.action} · account actor ${c.data.actor_id}${c.data.reason?' · '+c.data.reason:''}`));row.append(details);}$('routineEventHistory').append(row);}
       if(!data.events.length)$('routineEventHistory').append(node('li','No completion events recorded.'));
-    }catch(e){if(current(version)&&load===scheduleLoadVersion)status('scheduleStatus',e.message);}
+    }catch(e){if(current(version)&&load===scheduleLoadVersion){
+      if(!preserveInput)form.hidden=true;
+      status('scheduleStatus',`${e.message} Schedule loading was not confirmed. Choose the routine again to retry; no schedule input was saved.`);
+    }}finally{if(version===generation&&load===scheduleLoadVersion&&!preserveInput)scheduleLoading(false);}
   }
+  async function saveSchedule(event){event.preventDefault();const form=event.currentTarget,b=form.querySelector('[type=submit]');if(b.disabled||!scheduleLoadedId)return;b.disabled=true;const version=generation,id=scheduleId,saveVersion=++scheduleSaveVersion,submittedDraft=window.DraftUX?.snapshot(form);const sameSave=()=>current(version)&&scheduleId===id&&scheduleSaveVersion===saveVersion;
+      try{const payload={version:schedule?.version||0,steps:$('routineSteps').value.split('\n').map(s=>s.trim()).filter(Boolean),days:[...document.querySelectorAll('[name=routine_day]:checked')].map(i=>Number(i.value)),times:$('routineTimes').value.split(',').map(s=>s.trim()),timezone:$('routineTimezone').value,area:$('routineScheduleArea').value,status:$('routineScheduleStatus').value,episode:$('routineEpisode').value,body_area:$('routineBodyArea').value,reminders:$('routineReminderOptIn').checked,quiet_start:$('quietStart').value,quiet_end:$('quietEnd').value};Object.assign(payload,window.ContinuityUI?.scheduleLink()||{});const data=await put('/api/routine-schedules/'+encodeURIComponent(id),payload);if(sameSave()){const unchanged=submittedDraft===undefined||window.DraftUX.snapshot(form)===submittedDraft,linkedDraft=$('scheduleEpisode')?.value;schedule=data.schedule;window.ContinuityUI?.scheduleLoaded(data.episode_link||{});if(!unchanged&&$('scheduleEpisode'))$('scheduleEpisode').value=linkedDraft;if(submittedDraft!==undefined)window.DraftUX.clean(form,submittedDraft);status('scheduleStatus',unchanged?data.message:'Submitted schedule saved. Your newer edits are still unsaved.');await loadTodayFresh();if(sameSave())await loadProgress({force:true});}}
+      catch(e){if(sameSave())status('scheduleStatus',e.message);}finally{if(sameSave())b.disabled=false;}}
+
   function updateRoutines(){
     if(!$('scheduleRoutine'))return;
     const selected=$('scheduleRoutine').value, select=$('scheduleRoutine');
@@ -104,13 +124,34 @@
     finally{if(version===generation&&requestVersion===historyRequestVersion){historyLoading=false;$('journeyMore').disabled=false;}}
   }
 
+  function closeContext() {
+    const form=$('resultContextForm');
+    if(!form.querySelector('[type=submit]').disabled&&window.DraftUX&&!window.DraftUX.allowDiscard(form))return false;
+    $('resultContextDialog').close();return true;
+  }
   function editContext(result){
     $('contextEpisode').value=result.context?.episode||'';$('contextBodyArea').value=result.context?.body_area||'';
-    const dialog=$('resultContextDialog'),version=generation;
+    const dialog=$('resultContextDialog'),form=$('resultContextForm'),version=generation,instance=++contextVersion,opener=document.activeElement;
+    const sameDialog=()=>current(version)&&contextVersion===instance;
+    const controls=[...form.querySelectorAll('input,select,textarea')],submit=form.querySelector('[type=submit]');
+    for(const control of controls)control.disabled=false;submit.disabled=false;
+    let saved=false;
+    const restoreFocus=()=>{if(sameDialog()&&!dialog.open&&opener?.isConnected&&!opener.disabled&&opener.getClientRects().length)opener.focus({preventScroll:true});};
+    window.DraftUX?.clean(form);
+    dialog.oncancel=event=>{if(!submit.disabled&&window.DraftUX&&!window.DraftUX.allowDiscard(form))event.preventDefault();};
+    dialog.onclose=()=>{if(!dialog.open){window.DraftUX?.forget(form);if(!saved)restoreFocus();}};
     $('contextStatus').textContent='Personal labels do not alter findings or link records. Use Link concern to associate this result with a saved concern.';
-    $('resultContextForm').onsubmit=async event=>{event.preventDefault();const button=event.currentTarget.querySelector('[type=submit]');if(button.disabled)return;button.disabled=true;
-      try{const data=await put('/api/journey/assessments/'+encodeURIComponent(result.assessment_id)+'/context',{episode:$('contextEpisode').value,body_area:$('contextBodyArea').value});if(current(version)){dialog.close();await loadHistory(true);toast(data.message);}}
-      catch(e){if(current(version))status('contextStatus',e.message);}finally{button.disabled=false;}};
+    form.onsubmit=async event=>{event.preventDefault();if(submit.disabled||!sameDialog()||!dialog.open)return;
+      const payload={episode:$('contextEpisode').value,body_area:$('contextBodyArea').value};
+      submit.disabled=true;for(const control of controls)control.disabled=true;
+      status('contextStatus','Saving labels… You can cancel, but this request may already be saved.');
+      try{const data=await put('/api/journey/assessments/'+encodeURIComponent(result.assessment_id)+'/context',payload);if(!current(version))return;
+        const wasOpen=sameDialog()&&dialog.open;if(wasOpen){saved=true;dialog.close();}
+        const focusAfterClose=document.activeElement;
+        await loadHistory(true);if(wasOpen&&sameDialog()&&!dialog.open){if(document.activeElement===focusAfterClose)restoreFocus();toast(data.message);}
+      }catch(e){if(sameDialog()&&dialog.open)status('contextStatus',`${e.message} This attempt was not confirmed. Your input remains here.`);}
+      finally{if(sameDialog()){submit.disabled=false;for(const control of controls)control.disabled=false;}}
+    };
     dialog.showModal();$('contextEpisode').focus();
   }
 
@@ -164,8 +205,8 @@
     filterEpisode(id){$('journeyEpisodeId').value=id;loadHistory(true);},
     openGuide,closeGuide,
     clear(){
-      generation++;scheduleLoadVersion++;historyRequestVersion++;guideListVersion++;closeGuide({restoreFocus:false});$('learnDetail')?.replaceChildren();$('learnForm')?.reset();historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;
-      historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';historyEpisodeId='';schedule=null;scheduleId='';
+      generation++;contextVersion++;scheduleLoadVersion++;scheduleSaveVersion++;historyRequestVersion++;guideListVersion++;closeGuide({restoreFocus:false});$('learnDetail')?.replaceChildren();$('learnForm')?.reset();historyLoading=false;todayFlight=null;historyCursor=null;historySnapshotKey=null;
+      historyQuery='';historyArea='';historyEpisode='';historyBodyArea='';historyEpisodeId='';schedule=null;scheduleId='';scheduleLoadedId='';scheduleLoading(false);window.DraftUX?.forget($('scheduleEditor'));
       $('resultContextDialog')?.close();
       for(const id of ['scheduleEditor','journeySearchForm','resultContextForm'])$(id)?.reset();
       for(const id of ['todayTasks','journeySearchResults','routineEventHistory','scheduleStatus','reminderStatus','journeySearchStatus','engagementStatus','contextStatus'])$(id)?.replaceChildren();
@@ -190,13 +231,11 @@
     schedulePanel.innerHTML=`<h3>Routine steps & schedule</h3><p>Your own tracking plan. This app does not prescribe treatment.</p><label>Saved routine<select id="scheduleRoutine"><option value="">Choose a saved routine</option></select></label><p id="scheduleStatus" role="status" aria-live="polite"></p><form id="scheduleEditor" hidden><label>Steps (one per line)<textarea id="routineSteps" required maxlength="3620" aria-describedby="routineStepsHelp"></textarea></label><small id="routineStepsHelp">1–20 steps, up to 180 characters each.</small><fieldset><legend>Days</legend><div class="routine-day-options">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i)=>`<label><input name="routine_day" type="checkbox" value="${i}" checked>${d}</label>`).join('')}</div></fieldset><label>Times (comma separated)<input id="routineTimes" required placeholder="09:00, 18:00" aria-describedby="routineTimesHelp"></label><small id="routineTimesHelp">Up to four times, using 24-hour HH:MM.</small><label>Timezone<input id="routineTimezone" required list="routineZones" aria-describedby="timezoneHelp"></label><datalist id="routineZones"><option value="Asia/Kolkata"><option value="UTC"><option value="America/New_York"><option value="Europe/London"></datalist><small id="timezoneHelp">Use an IANA name such as Asia/Kolkata. Scheduling follows local daylight-saving rules.</small><label>Area<select id="routineScheduleArea">${['General','Skin','Hair','Nails','Sweat'].map(x=>`<option>${x}</option>`).join('')}</select></label><label>Personal concern label (optional)<input id="routineEpisode" maxlength="120"></label><label>Body-area note (optional)<input id="routineBodyArea" maxlength="80"></label><label>Status<select id="routineScheduleStatus"><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label><label class="consumer-checkbox"><input id="routineReminderOptIn" type="checkbox">I want generic email reminders for this routine</label><label>Quiet hours start<input id="quietStart" type="time" value="21:00" required></label><label>Quiet hours end<input id="quietEnd" type="time" value="08:00" required></label><p>Quiet-hour occurrences are skipped; identical start/end means no quiet window. Email must be verified. Delivery needs a configured transport and an explicitly run worker. This local app does not install a scheduler.</p><button class="button primary" type="submit">Save steps & schedule</button></form><details><summary>Recorded completion history</summary><ul id="routineEventHistory" class="consumer-list"></ul></details><button class="text-button" id="showReminders" type="button">Check reminder status</button><p id="reminderStatus" role="status"></p>`;
     document.querySelector('#progress .progress-layout')?.after(schedulePanel);
     $('scheduleRoutine').onchange=loadSchedule;
-    $('scheduleEditor').onsubmit=async event=>{event.preventDefault();const b=event.currentTarget.querySelector('[type=submit]');if(b.disabled)return;b.disabled=true;const version=generation,id=scheduleId;
-      try{const payload={version:schedule?.version||0,steps:$('routineSteps').value.split('\n').map(s=>s.trim()).filter(Boolean),days:[...document.querySelectorAll('[name=routine_day]:checked')].map(i=>Number(i.value)),times:$('routineTimes').value.split(',').map(s=>s.trim()),timezone:$('routineTimezone').value,area:$('routineScheduleArea').value,status:$('routineScheduleStatus').value,episode:$('routineEpisode').value,body_area:$('routineBodyArea').value,reminders:$('routineReminderOptIn').checked,quiet_start:$('quietStart').value,quiet_end:$('quietEnd').value};Object.assign(payload,window.ContinuityUI?.scheduleLink()||{});const data=await put('/api/routine-schedules/'+encodeURIComponent(id),payload);if(current(version)&&scheduleId===id){schedule=data.schedule;window.ContinuityUI?.scheduleLoaded(data.episode_link||{});status('scheduleStatus',data.message);await loadTodayFresh();await loadProgress({force:true});}}
-      catch(e){if(current(version))status('scheduleStatus',e.message);}finally{b.disabled=false;}};
+    $('scheduleEditor').onsubmit=saveSchedule;
     $('showReminders').onclick=async()=>{const v=generation;try{const d=await requestJSON('/api/reminders');if(!current(v))return;status('reminderStatus',`Transport: ${d.transport}. ${d.jobs.length} recent jobs. ${d.jobs.map(j=>j.state.replaceAll('_',' ')).join(', ')||'No jobs scheduled yet.'} Delivery is not confirmed by queueing.`);}catch(e){if(current(v))status('reminderStatus',e.message);}};
     const history=node('section',undefined,'consumer-panel');history.id='completeJourney';history.hidden=true;history.innerHTML='<h3>Search all saved results</h3><form id="journeySearchForm" class="consumer-filter"><label>Search<input id="journeySearch" type="search" maxlength="120" placeholder="Concern or result text"></label><label>Area<select id="journeyArea"><option value="">All areas</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><label>Personal concern label<input id="journeyEpisode" maxlength="120" placeholder="Exact saved label"></label><label>Body area<input id="journeyBodyArea" maxlength="80" placeholder="Exact saved label"></label><button class="button quiet" type="submit">Search results</button></form><p id="journeySearchStatus" role="status" aria-live="polite"></p><div id="journeySearchResults"></div><button id="journeyMore" type="button" class="button quiet" hidden>Load next results</button>';
     schedulePanel.after(history);$('journeySearchForm').onsubmit=e=>{e.preventDefault();loadHistory(true);};$('journeyMore').onclick=()=>loadHistory();
-    const contextDialog=node('dialog',undefined,'consumer-dialog');contextDialog.id='resultContextDialog';contextDialog.setAttribute('aria-labelledby','contextTitle');contextDialog.innerHTML='<form id="resultContextForm"><h2 id="contextTitle">Organise this result</h2><p id="contextStatus" role="status"></p><label>Personal concern label<input id="contextEpisode" maxlength="120"></label><label>Body area<input id="contextBodyArea" maxlength="80"></label><div class="consumer-actions"><button id="cancelResultContext" type="button" class="button quiet">Cancel</button><button type="submit" class="button primary">Save labels</button></div></form>';document.body.append(contextDialog);$('cancelResultContext').onclick=()=>contextDialog.close();
+    const contextDialog=node('dialog',undefined,'consumer-dialog');contextDialog.id='resultContextDialog';contextDialog.setAttribute('aria-labelledby','contextTitle');contextDialog.innerHTML='<form id="resultContextForm"><h2 id="contextTitle">Organise this result</h2><p id="contextStatus" role="status"></p><label>Personal concern label<input id="contextEpisode" maxlength="120"></label><label>Body area<input id="contextBodyArea" maxlength="80"></label><div class="consumer-actions"><button id="cancelResultContext" type="button" class="button quiet">Cancel</button><button type="submit" class="button primary">Save labels</button></div></form>';document.body.append(contextDialog);$('cancelResultContext').onclick=closeContext;
     const learn=node('section',undefined,'learn-section');learn.id='learn';learn.dataset.page='learn';learn.setAttribute('aria-labelledby','learnTitle');learn.innerHTML='<h1 id="learnTitle">Understand your concerns</h1><p>Source-linked education, separate from your assessment. These guides do not diagnose or prescribe.</p><form id="learnForm" class="consumer-filter"><label>Search guides<input id="learnSearch" type="search" maxlength="120" placeholder="Search a topic"></label><label>Category<select id="learnArea"><option value="">All categories</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><button class="button quiet" type="submit">Find guides</button></form><p id="learnStatus" role="status"></p><div id="learnList"></div><article id="learnDetail" class="consumer-panel" hidden></article>';
     $('products').after(learn);$('learnForm').onsubmit=e=>{e.preventDefault();guides();};
     const retry=action('Try again',()=>guideRetry?.());retry.id='learnRetry';retry.hidden=true;$('learnStatus').after(retry);

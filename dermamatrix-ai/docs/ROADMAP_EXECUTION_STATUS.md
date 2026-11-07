@@ -1,11 +1,43 @@
 # Consumer development execution status
 
-Updated: 3 November 2026. Canonical checkpoint. Sequential implementation;
+Updated: 7 November 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current authorized batch — unfinished work and account boundaries
+**Current batch — consumer editing reliability and project polish (7 November):
+implemented; exact-source cross-feature CI pending.**
+Reproduced schedule switching silently clearing unsaved steps, a delayed label
+save closing the replacement dialog, and concern creation clearing newer input.
+Schedule switching now confirms actual discard; same-routine refresh preserves
+input. Initial loading pauses fields, failed loads hide stale fields with explicit
+retry, and delayed saves retain newer text with honest unsaved-edit status.
+Label dialogs isolate save effects/focus per instance and protect dirty Cancel /
+Escape. Concern creation preserves newer input and rechecks ownership/workspace
+after its authoritative refresh. Existing memory-only draft mechanism is reused.
+
+Local120 frontend tests and12 runner tests pass. Eight new real-browser editing
+checks plus four offline checks pass in Chrome and WebKit. Both themes and five
+widths sampled; no CSS, typography, layout or medical-evidence redesign.128
+protected non-test source hashes match baseline235acf7: all backend, schema,
+models/scoring/evidence, report generation, image processing, CSS and workflow
+remain unchanged. New browser fixture setup failures are retained honestly.
+Final whole-source three-engine CI and scoped Git/cleanup receipt remain pending.
+
+All32 default-branch dependency alerts were reconciled individually: each concerns
+main's older Pillow range >=10,<12, with first patched13.0.0. Current development
+requirements/lock/environment already use13.0.0, outside all32 vulnerable ranges.
+No upgrade is justified for these alerts; remote alerts remain open on main. No
+merge, dismissal or default-branch modification. This covers these advisories,
+not every possible dependency/security issue. Private evidence:
+local-artifacts/project-polish-2026-11-07/.
+
+Native/physical/human checks remain explicitly deferred; no renewed phone/picker
+attempt. Development only, English only, approved white/sky/navy/Plex retained;
+no provider activation, deployment, new classifier, training or schema change.
+Owned8001/3308 and task sleep helper remain until final cleanup.
+
+**Previous completed batch — unfinished work and account boundaries
 (2–3 November): independently verifiable development work complete.**
 Actual shared-cookie pages and SQL proved an A-tab routine draft committed under
 B. Requests now pin the existing session token for reads/writes/exports, with

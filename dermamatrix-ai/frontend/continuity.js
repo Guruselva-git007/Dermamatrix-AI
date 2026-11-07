@@ -206,6 +206,22 @@
     window.WorkspaceUI?.result(root);
     if(signed()&&state.resultPersistence==='mysql'){const version=epoch,account=owner();try{const associations=await requestJSON('/api/episode-links');if(!active(version,account)||!block.isConnected)return;links=associations.links;const link=links['assessment:'+(state.assessmentId||'')];block.prepend(el('p',link?.label?'Concern: '+link.label+' · '+link.body_area:'No concern linked. You can organise this result in Journey.'));const effective=contextualProgress(data,link);if(effective.status==='CONCERN_SCOPE_CHANGED'){block.append(el('p',effective.summary));const old=root.querySelector('[data-result-action=progress]')?.parentElement?.querySelector('p:not(.eyebrow)');if(old)old.textContent=effective.summary;}}catch{if(block.isConnected&&active(version,account))block.prepend(el('p','Concern context could not be loaded. The saved assessment evidence below remains available.'));}}
   }
+  const episodeInput=()=>({label:$('episodeLabel').value,area:$('episodeArea').value,body_area:$('episodeBody').value});
+  async function createEpisode(event) {
+    event.preventDefault();const form=event.currentTarget,submit=form.querySelector('[type=submit]');if(submit.disabled)return;
+    const version=epoch,account=owner(),workspaceVersion=state.workspaceVersion,payload=episodeInput(),signature=JSON.stringify(payload),draft=window.DraftUX?.snapshot(form);
+    const current=()=>active(version,account)&&state.workspaceVersion===workspaceVersion;
+    submit.disabled=true;
+    try {
+      const data=await write('/api/episodes',payload);if(!current())return;
+      await load(true);if(!current())return;
+      const unchanged=JSON.stringify(episodeInput())===signature;
+      if(unchanged){$('journeyEpisodeId').value=data.episode_id;$('assessmentEpisode').value=data.episode_id;form.reset();window.DraftUX?.clean(form);$('episodeWorkspace').querySelector('details').open=false;$('journeyEpisodeId').focus();window.EngagementUI.filterEpisode(data.episode_id);}
+      else window.DraftUX?.clean(form,draft);
+      message('continuityStatus',unchanged?'Concern created. Choose it for a new check or link an existing result.':'Submitted concern created. Your newer input is still here and has not been saved.');
+    }catch(error){if(current())message('continuityStatus',`${error.message} Creation was not confirmed. Your input remains here; retry the same details.`);}
+    finally{if(active(version,account))submit.disabled=false;}
+  }
   function install() {
     if($('continuityDialog'))return;
     const mobileSearch=button('Search',()=>openSearch(''));mobileSearch.id='mobileWorkspaceSearch';mobileSearch.setAttribute('aria-label','Search records and guides');$('themeToggle').before(mobileSearch);
@@ -213,7 +229,7 @@
     const assessment=pick('assessmentEpisode','Concern (optional)');assessment.id='assessmentEpisodeField';assessment.append(el('small','Only the selected concern is linked when an account saves this assessment.'));document.querySelector('#screen .area-choice').after(assessment);
     const workspace=el('section',undefined,'consumer-panel');workspace.id='episodeWorkspace';workspace.innerHTML='<h3>Keep a concern together</h3><p>Link related checks explicitly. Older unassigned results and your existing labels stay available.</p><details><summary>Create a concern</summary><form id="episodeForm" class="continuity-form"><label>Concern label<input id="episodeLabel" required maxlength="120" placeholder="A label you recognise"></label><label>Category<select id="episodeArea"><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option><option>General</option></select></label><label>Body area<select id="episodeBody"></select></label><button class="button primary" type="submit">Create concern</button></form></details><p id="continuityStatus" role="status"></p>';
     $('completeJourney').before(workspace);const picker=pick('journeyEpisodeId','Concern filter');const concernControls=el('div',undefined,'concern-controls');concernControls.append(picker);workspace.querySelector('details').before(concernControls);picker.querySelector('select').onchange=()=>window.EngagementUI.filterEpisode(picker.querySelector('select').value);concernControls.append(button('Start follow-up',followup));
-    $('episodeForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;submit.disabled=true;const version=epoch,account=owner();try{const data=await write('/api/episodes',{label:$('episodeLabel').value,area:$('episodeArea').value,body_area:$('episodeBody').value});if(active(version,account)){await load(true);$('journeyEpisodeId').value=data.episode_id;$('assessmentEpisode').value=data.episode_id;$('episodeForm').reset();workspace.querySelector('details').open=false;$('journeyEpisodeId').focus();window.EngagementUI.filterEpisode(data.episode_id);message('continuityStatus','Concern created. Choose it for a new check or link an existing result.');}}catch(error){if(active(version,account))message('continuityStatus',`${error.message} Creation was not confirmed. Your input remains here; retry the same details.`);}finally{submit.disabled=false;}};
+    $('episodeForm').onsubmit=createEpisode;window.DraftUX?.clean($('episodeForm'));
     $('scheduleEditor').prepend(pick('scheduleEpisode','Linked concern (optional)'));
     const preview=el('div');preview.append(button('Preview reminder schedule',previewReminder));const note=el('p');note.id='reminderPreview';note.setAttribute('role','status');preview.append(note);$('scheduleEditor').append(preview);$('scheduleEditor').addEventListener('input',()=>{reminderVersion++;message('reminderPreview','Schedule input changed. Preview again to calculate the next occurrence. No reminder was queued.');});
     $('checkinRoutine').closest('label').after(pick('checkinEpisode','Concern (confirm before saving)'));
@@ -247,7 +263,7 @@
     scheduleLoaded(link){reminderVersion++;message('reminderPreview','');scheduleLink=link;$('scheduleEpisode').value=link.episode_id||'';},scheduleLink:()=>({episode_id:$('scheduleEpisode')?.value||'',link_version:scheduleLink.version||0}),
     progress(){page();renderCheckinHistory();},
     clear(){epoch++;dialogVersion++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();
-      for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();resetBriefDates();invalidateBrief('');
+      for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();const episodeSubmit=$('episodeForm')?.querySelector('[type=submit]');if(episodeSubmit)episodeSubmit.disabled=false;resetBriefDates();invalidateBrief('');
       for(const id of ['assessmentEpisode','checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id));
       for(const id of ['unifiedResults','savedGuideList','checkinCorrections','briefSelection','briefStatus','continuityStatus','feedbackStatus','reminderPreview','unifiedStatus'])$(id)?.replaceChildren();$('continuityDialog')?.replaceChildren();}
   };

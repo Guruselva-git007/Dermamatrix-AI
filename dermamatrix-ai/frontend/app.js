@@ -552,7 +552,7 @@ function clearWorkspaceEvidence() {
   $('#resultImage')?.removeAttribute('src'); $('#attentionMap')?.removeAttribute('src'); $('#segmentationOverlay')?.removeAttribute('src');
   showAssessmentFeedback('');
   draftBaselines.clear();
-  ['#screen', '#profileForm', '#routineForm', '#checkinForm'].forEach(selector => cleanDraft($(selector)));
+  ['#screen', '#profileForm', '#routineForm', '#checkinForm', '#episodeForm', '#scheduleEditor'].map(selector => $(selector)).filter(Boolean).forEach(root => cleanDraft(root));
 }
 
 function persistenceMessage(persistence) {

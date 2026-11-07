@@ -830,3 +830,72 @@ cleanup.json and completion.json record exact CI, Git synchronization and closur
 the project task journal/readable archive are refreshed. Preserve the verified
 state and resume owner-assisted acceptance when available rather than inventing
 another redesign or reopening completed capabilities.
+
+
+## Consumer editing reliability and project polish — 7 November 2026
+
+This bounded improvement batch starts at235acf798d57afb89e2356b0a754e3824d3ea756.
+The existing isolated synthetic stack, fixtures, memory-only DraftUX and browser
+runner are reused. The approved visual identity and medical/persistence contracts
+are preserved. No new framework, provider, deployment, raw-photo retention,
+classifier, training or schema change. Existing native/phone/human deferrals stand.
+
+| Finding | Reproduction and observed consumer impact | Minimal correction and proof |
+|---|---|---|
+| EP-01 / P1 schedule draft loss | Type unsaved routine steps, select another routine. Real browser before:0 warnings, text becomes empty. Existing tests only covered refresh. | Confirm actual discard and restore old selector on Cancel; same-routine refresh keeps input. Pause fields while initial loading could overwrite them. Failed loads hide stale editable fields, with explicit retry. Submitted saves clean only their submitted snapshot and preserve newer text/concern selection. Source tests fail before/pass after; browser verifies switch Cancel/accept, same-ID refresh, actual delayed commit/newer edit and503/recovery. |
+| EP-02 / P1 old label save affects next task | Hold A's actual label PUT response, Cancel, open B, enter text, release A. Before: replacement dialog closes. | Bind effects to account/dialog instance, pause submitted fields and keep replacement form unlocked. Dirty Cancel/Escape confirms discard. Deferred history completion respects focus already chosen elsewhere. Source regressions cover success, error, account change, cancel, pending controls and chosen focus; browser verifies the real race and cancelled/accepted Escape. |
+| EP-03 / P1 concern creation loses newer input | Hold actual POST after commit, type a new concern, release. Before: text empty and disclosure closes. | Capture submitted values/form synchronously, preserve newer input and report that it is unsaved. Recheck owner/workspace after post-save refresh; interrupted verification does not clear suspended input. Next explicit save creates exactly one distinct concern. Three focused tests cover newer edits, changed account and interrupted workspace; real browser verifies two distinct saved concerns. |
+
+Private evidence: local-artifacts/project-polish-2026-11-07/. probe-diag.json
+records actual schedule loss; episode-before.json and other-before-complete.json
+serve the unchanged baseline controllers and record actual lost input/closed
+replacement. engagement-before.txt / engagement-focus-before.txt retain failing
+source tests. Focused final receipts record positive and stale-work checks.
+Some exploratory fixture attempts failed because sessions were not cleared,
+probes overlapped in a shared cookie context, the Journey concern filter excluded
+unassigned fixtures, or the new test remained on the Routines tab. They are
+retained as setup failures, not application passes or additional product defects.
+The final fixture uses one isolated page, explicit Results navigation and the
+correct all-concerns filter, without weakening ownership or evidence assertions.
+
+All120 frontend tests and12 runner tests pass locally. New browser-editing suite
+has8 checks, plus existing real offline4; focused Chrome and WebKit pass. Browser
+checks compare original assessment summaries after label editing and verify
+private draft clearing on sign-out. Full historical regression and exact-source
+CI status are recorded in the closure below; no pass is inferred from source.
+
+Apple-inspired audit covers all seven dimensions in the affected dialog/form
+states: typography, alignment/layout, hierarchy, spacing and visual consistency
+have no new issue observed in inspected samples; existing IBM Plex and shared
+components remain. Responsive geometry and screenshots cover320/390/768/1280/
+1440 in both themes; focus is visible and both actions remain readable/reachable.
+Targeted keyboard Escape and Cancel/Save states are exercised. Existing large-text,
+reduced-motion, account and cross-feature suites remain required in full CI.
+These samples do not prove native spoken accessibility, complete WCAG conformance
+or representative consumer task success. Native/physical checks remain deferred.
+
+Source-protection receipt verifies128 non-test files unchanged, including all
+backend/schema/models/scoring/evidence, image processing/non-retention, reports,
+CSS/index/scanner and CI configuration. Runtime changes are app.js baseline
+registration, engagement.js editing lifecycle and continuity.js concern submission.
+No original medical record or historical correction was rewritten. Only synthetic
+fixtures were used. Asset sizes are recorded in source-protection.json; no timing
+or usability improvement percentage was manufactured. No periodic polling or
+persisted draft store was added.
+
+### Dependency advisory reconciliation
+
+Read-only GitHub review inspected all32 open alerts (3 critical/18 high/11 medium).
+Every alert targets main's requirements.txt Pillow>=10,<12 declaration and lists
+13.0.0 as first patched. Current development requirements/lock and installed Pillow
+are already13.0.0. Comparisons against each advisory range yield0 affected-version
+matches for this branch. Individual advisory IDs/ranges and manifest/installed
+versions are in dependency-review.json. No dependency update, alert dismissal,
+merge or main modification is justified by these32 alerts. They remain open
+remotely; this finding does not establish complete application security.
+
+### Completion receipt
+
+Exact-source CI, scoped commit/push equality and owned-resource cleanup follow
+once the complete regression run finishes. No blanket project/native/human
+acceptance claim is made while that work remains.
