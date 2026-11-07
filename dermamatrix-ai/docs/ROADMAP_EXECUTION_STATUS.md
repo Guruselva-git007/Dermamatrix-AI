@@ -6,36 +6,50 @@ Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
 **Current batch — consumer editing reliability and project polish (7 November):
-implemented; exact-source cross-feature CI pending.**
-Reproduced schedule switching silently clearing unsaved steps, a delayed label
-save closing the replacement dialog, and concern creation clearing newer input.
-Schedule switching now confirms actual discard; same-routine refresh preserves
-input. Initial loading pauses fields, failed loads hide stale fields with explicit
-retry, and delayed saves retain newer text with honest unsaved-edit status.
-Label dialogs isolate save effects/focus per instance and protect dirty Cancel /
-Escape. Concern creation preserves newer input and rechecks ownership/workspace
-after its authoritative refresh. Existing memory-only draft mechanism is reused.
+complete within the independently verifiable development scope.**
+Reproduced and corrected three P1 editing losses: routine switching cleared
+unsaved steps, an earlier label save closed the replacement dialog, and concern
+creation cleared newer input. Same-routine refresh now preserves input; actual
+switches and dirty label Cancel/Escape confirm discard. Initial loading pauses
+fields; failed schedule loads hide stale fields and offer retry. Save callbacks
+retain newer text/concern choices, report unsaved edits honestly, isolate dialog /
+account/workspace effects and respect focus chosen during history refresh.
+The existing memory-only DraftUX is reused; no extra persisted health source.
 
-Local120 frontend tests and12 runner tests pass. Eight new real-browser editing
-checks plus four offline checks pass in Chrome and WebKit. Both themes and five
-widths sampled; no CSS, typography, layout or medical-evidence redesign.128
-protected non-test source hashes match baseline235acf7: all backend, schema,
-models/scoring/evidence, report generation, image processing, CSS and workflow
-remain unchanged. New browser fixture setup failures are retained honestly.
-Final whole-source three-engine CI and scoped Git/cleanup receipt remain pending.
+[Exact CI42321867295](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42321867295)
+**passes source `cbd53c9957334eb47233f52de6eb69dabf6a119b`: 259 backend,
+120 frontend and312 browser checks (104 each Chrome/Firefox/WebKit)**, explicit
+synthetic migrations, source-secret checks and pinned audit with no known
+vulnerabilities reported. Local120 frontend/12 runner and focused8 editing +4
+offline each Chrome/WebKit pass. Both themes and320/390/768/1280/1440 screenshots
+were inspected; existing large-text/keyboard/reduced-motion suites pass in CI.
+No selected unresolved P0/P1 remains in inspected states; full native/human /
+clinical/WCAG acceptance is not established by automated checks.
 
-All32 default-branch dependency alerts were reconciled individually: each concerns
-main's older Pillow range >=10,<12, with first patched13.0.0. Current development
-requirements/lock/environment already use13.0.0, outside all32 vulnerable ranges.
-No upgrade is justified for these alerts; remote alerts remain open on main. No
-merge, dismissal or default-branch modification. This covers these advisories,
-not every possible dependency/security issue. Private evidence:
-local-artifacts/project-polish-2026-11-07/.
+128 protected non-test source hashes match baseline235acf7: all backend/schema,
+model/scoring/evidence/report generation, image handling, CSS/index/scanner and
+workflow are unchanged. Three frontend runtime files change. No historical
+medical evidence was rewritten. Private before/after/unit/browser/hash receipts:
+local-artifacts/project-polish-2026-11-07/; consumer-validation-results.md records
+actual failures, corrections, fixture setup limitations and remaining acceptance.
 
-Native/physical/human checks remain explicitly deferred; no renewed phone/picker
-attempt. Development only, English only, approved white/sky/navy/Plex retained;
-no provider activation, deployment, new classifier, training or schema change.
-Owned8001/3308 and task sleep helper remain until final cleanup.
+All32 observed default-branch dependency alerts are individually reconciled:
+each concerns main's older Pillow>=10,<12 declaration and lists13.0.0 as first
+patched. This development branch's requirements/lock/environment already use
+13.0.0, outside all32 vulnerable ranges. No upgrade is justified for these32
+alerts. They remain open remotely; no main merge, alert dismissal or claim of
+complete security. Current branch's green pinned audit is separate evidence.
+
+Owned8001/3308, temporary polish_synthetic SQL users and test browsers are closed;
+synthetic records retained. Normal8000/3307 listener PIDs remain unchanged. Exact
+sleep helper41856 was released and exit verified; ordinary Mac sleep settings
+apply. Original dirty/untracked work is preserved. Final synchronization receipt
+changes documentation only after the green source; private completion.json records
+commit/remote equality, archive and cleanup. No deployment/provider activation,
+new classifier, retraining, schema change or speculative redesign. English-only
+white/sky/navy/Plex retained. Native upload/save/correction, speech, physical
+devices and representative consumer sessions remain explicitly deferred; resume
+owner-assisted acceptance from its first unfinished step when available.
 
 **Previous completed batch — unfinished work and account boundaries
 (2–3 November): independently verifiable development work complete.**
