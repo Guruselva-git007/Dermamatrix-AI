@@ -20,7 +20,7 @@ from urllib.request import build_opener, ProxyHandler
 
 
 APP = Path(__file__).resolve().parents[2]
-SUITES = (("browser-smoke.js", 15), ("browser-continuity.js", 15), ("browser-product-quality.js", 27), ("browser-accessibility.js", 12), ("browser-sky-scanner.js", 13), ("browser-account-drafts.js", 13), ("browser-editing.js", 8), ("browser-check-handoff.js", 8), ("browser-product-upgrade.js", 12))
+SUITES = (("browser-smoke.js", 15), ("browser-continuity.js", 15), ("browser-product-quality.js", 27), ("browser-accessibility.js", 12), ("browser-sky-scanner.js", 13), ("browser-account-drafts.js", 13), ("browser-editing.js", 8), ("browser-check-handoff.js", 8), ("browser-product-upgrade.js", 13))
 
 
 def reset_synthetic_budgets() -> None:

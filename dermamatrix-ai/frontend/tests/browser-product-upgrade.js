@@ -78,13 +78,27 @@ async (page,options={})=>{
     assert((await page.locator('#comparisonResult').textContent()).includes('do not establish healing'),'Comparison lost evidence limitation');
     await page.screenshot({path:root+'comparison.png'});checks.push('two original same-concern records compare through existing compatibility rules');
 
-    await page.evaluate(()=>ContinuityUI.search(''));await page.locator('#unifiedCategory').selectOption('checkin');await page.locator('.search-refinements summary').click();
+    await page.evaluate(()=>ContinuityUI.search(''));await page.waitForFunction(()=>document.querySelectorAll('#unifiedResults article').length===20);
+    const originalResult=page.locator('#unifiedResults').getByRole('button',{name:'Open assessment',exact:true}).last();
+    await originalResult.evaluate(button=>button.scrollIntoView({block:'start'}));
+    const originalScroll=await page.locator('#unifiedSearchDialog').evaluate(dialog=>dialog.scrollTop);
+    assert(originalScroll>0,'Search fixture did not exercise a scrolled result');await originalResult.click();await page.locator('#returnWorkspaceSearch').waitFor();await page.locator('#returnWorkspaceSearch').click();
+    const returnedScroll=await page.locator('#unifiedSearchDialog').evaluate(dialog=>dialog.scrollTop);
+    assert(Math.abs(originalScroll-returnedScroll)<=2,'Search return lost the actual result position: '+originalScroll+' -> '+returnedScroll);
+    await page.locator('#unifiedCategory').selectOption('checkin');await page.locator('.search-refinements summary').click();
     await page.locator('#searchArea').selectOption('Sweat');await page.locator('#searchConcern').selectOption(ids.episode);await page.locator('#unifiedSearchForm [type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('#unifiedResults h3'));
     await page.locator('#unifiedResults').getByRole('button',{name:'Open check-in'}).click();await page.locator('#recordReadDialog').waitFor();
     await page.locator('#recordReadDialog').getByRole('button',{name:'Back to search',exact:true}).click();
     assert(await page.locator('#searchArea').inputValue()==='Sweat'&&await page.locator('#searchConcern').inputValue()===ids.episode&&await page.locator('#unifiedResults article').count()===1,'Search return lost scope or position');
     await page.locator('#unifiedSearchDialog').press('Escape');checks.push('filtered search opens read-only details and preserves scope/results on return');
+    await page.evaluate(()=>ContinuityUI.search(''));await page.locator('#unifiedCategory').selectOption('guide');await page.getByRole('button',{name:'Clear filters',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#unifiedResults button'));
+    await page.locator('#unifiedResults').getByRole('button',{name:'Open guide'}).first().click();await page.locator('#returnGuideSearch').waitFor();await page.locator('#guideBookmark').click();await page.waitForFunction(()=>document.getElementById('guideBookmark').textContent==='Remove bookmark');await page.locator('#returnGuideSearch').click();
+    assert(await page.locator('[data-search-guide]:visible').count()===1,'Saved guide badge did not update in existing search');
+    await page.locator('#unifiedResults').getByRole('button',{name:'Open guide'}).first().click();await page.locator('#returnGuideSearch').waitFor();await page.locator('#guideBookmark').click();await page.waitForFunction(()=>document.getElementById('guideBookmark').textContent==='Save guide');await page.locator('#returnGuideSearch').click();
+    assert(await page.locator('[data-search-guide]:visible').count()===0,'Removed bookmark remained in search');
+    assert(await page.locator('#unifiedCategory').inputValue()==='guide'&&await page.locator('#unifiedResults article').count()>0,'Guide return lost its search');await page.locator('#unifiedSearchDialog').press('Escape');
+    checks.push('saved results restore actual search scroll/focus and guides retain a search return path');
 
     await nav('learn');await page.waitForFunction(()=>document.querySelector('#learnList button'));
     await page.locator('#learnList button').first().click();await page.locator('#guideBookmark').click();await page.waitForFunction(()=>document.getElementById('guideBookmark').textContent==='Remove bookmark');

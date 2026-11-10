@@ -10,6 +10,7 @@
   let epoch=0, loadedOwner='', episodes=[], links={}, bookmarks=[], loading=null, scheduleLink={}, searchCursor=null, searchQuery='', searchCategory='',briefSignature='',searchVersion=0,loadVersion=0,reminderVersion=0,briefVersion=0,dialogVersion=0;
   let concernRequest = null;
   let briefDownload = null;
+  let searchReturn = null;
   const retryKeys=new Map();
   const active = (version, account) => epoch===version && owner()===account;
   const message = (id, text) => {if($(id))$(id).textContent=text;};
@@ -42,7 +43,7 @@
       for(const id of ['checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode','searchConcern'])if($(id))choices($(id),$(id).value,['journeyEpisodeId','searchConcern'].includes(id)?'All concerns':'No concern selected');
       assessmentAreaChanged();
       if($('episodeBody')&&!$('episodeBody').options.length)for(const value of ep.body_areas)$('episodeBody').add(new Option(value,value));
-      renderBookmarks();renderCheckinHistory();
+      renderBookmarks();renderCheckinHistory();updateSearchBookmarks();
     }catch(error){if(active(version,account)&&requestVersion===loadVersion)message('continuityStatus',`${error.message} Your current input remains in this tab. Retry by reopening Journey.`);}
     finally{if(loading===flight)loading=null;}})();loading=flight;return flight;
   }
@@ -374,6 +375,11 @@
     for(const item of bookmarks.filter(b=>b.saved)){const row=el('article',undefined,'continuity-row');row.append(el('strong',item.title),el('p',`Saved content version ${item.content_version} · recorded date ${item.content_date}`),button('Read saved guide',()=>window.EngagementUI.openGuide(item.guide_id)),button('Remove bookmark',()=>changeBookmark(item.guide_id,false,item.version)));list.append(row);}
     if(!list.children.length)list.append(el('p','No saved guides yet. Open a topic and choose Save guide.'));
   }
+  function updateSearchBookmarks(){
+    for(const badge of $('unifiedResults')?.querySelectorAll('[data-search-guide]')||[]){
+      badge.hidden=!bookmarks.some(item=>item.guide_id===badge.dataset.searchGuide&&item.saved);
+    }
+  }
   async function changeBookmark(id, save, version) {
     const generation=epoch,account=owner();
     try{await write('/api/bookmarks/'+encodeURIComponent(id)+(save?'':'?version='+version),{version},save?'PUT':'DELETE');if(active(generation,account)){await load(true);const control=$('guideBookmark');if(control?.dataset.guide===id)updateGuideBookmark(control,id);message('learnStatus',save?'Guide saved.':'Bookmark removed.');}}
@@ -388,7 +394,10 @@
     closeResult();
     $('recordReadDialog').close();
     $('unifiedSearchDialog').showModal();
-    $('unifiedQuery').focus();
+    if(searchReturn&&searchReturn.scope===searchQuery&&searchReturn.scope===searchScope()){
+      searchReturn.opener?.focus({preventScroll:true});
+      $('unifiedSearchDialog').scrollTop=searchReturn.scroll;
+    }else $('unifiedQuery').focus();
   }
   async function viewCheckin(id,{fromSearch=false}={}) {
     invalidateSavedReportOpen();
@@ -419,7 +428,7 @@
     const generation=epoch,account=owner(),workspace=state.workspaceVersion,requestVersion=++searchVersion,scope=searchScope();
     const current=()=>active(generation,account)&&workspace===state.workspaceVersion&&requestVersion===searchVersion&&searchScope()===scope;
     if(!$('unifiedSearchForm').reportValidity())return;
-    if(reset){searchCursor=null;searchQuery=scope;$('unifiedResults').replaceChildren();}
+    if(reset){searchCursor=null;searchQuery=scope;searchReturn=null;$('unifiedResults').replaceChildren();}
     else if(scope!==searchQuery)return;
     const params=new URLSearchParams(scope);if(searchCursor)params.set('cursor',searchCursor);
     $('unifiedMore').disabled=true;message('unifiedStatus','Searching…');
@@ -430,10 +439,17 @@
         const row=el('article',undefined,'continuity-row');
         const categoryLabel=item.category==='checkin'?'check-in':item.category;
         const saved=item.created_at?'Saved '+new Date(item.created_at).toLocaleString('en-GB',{timeZone:'UTC'})+' UTC · Record '+item.id.slice(-8):'';
-        const meta=[categoryLabel,item.bookmarked?'Saved guide':'',item.recorded_date||'',item.area||'',saved,item.revision?'Corrected '+item.revision+' times':''].filter(Boolean).join(' · ');
-        row.append(el('small',meta),el('h3',item.title),el('p',item.detail||''),button('Open '+categoryLabel,async()=>{
+        const meta=[categoryLabel,item.recorded_date||'',item.area||'',saved,item.revision?'Corrected '+item.revision+' times':''].filter(Boolean).join(' · ');
+        if(item.category==='guide'){const badge=el('small','Saved guide');badge.dataset.searchGuide=item.id;badge.hidden=!item.bookmarked;row.append(badge);}
+        row.append(el('small',meta),el('h3',item.title),el('p',item.detail||''),button('Open '+categoryLabel,async event=>{
+          searchReturn={scope:searchQuery,scroll:$('unifiedSearchDialog').scrollTop,opener:event.currentTarget};
           try {
-            if(item.category==='guide'){$('unifiedSearchDialog').close();showPage('learn');await window.EngagementUI.openGuide(item.id);return;}
+            if(item.category==='guide'){
+              $('unifiedSearchDialog').close();showPage('learn');await window.EngagementUI.openGuide(item.id);
+              const toolbar=$('learnDetail').querySelector('.guide-toolbar');
+              if(active(generation,account)&&workspace===state.workspaceVersion&&!$('learnDetail').hidden&&toolbar){const back=button('Back to search results',returnSearch,'text-button');back.id='returnGuideSearch';toolbar.append(back);}
+              return;
+            }
             if(item.category==='assessment') {
               $('unifiedSearchDialog').close();await showSavedReport(item.id);
               if(active(generation,account)&&workspace===state.workspaceVersion&&state.assessmentId===item.id&&$('resultModal').classList.contains('show'))$('returnWorkspaceSearch').hidden=false;
@@ -640,7 +656,7 @@
     routineSelected(id){$('checkinEpisode').value=links['routine:'+id]?.episode_id||'';},
     scheduleLoaded(link){reminderVersion++;message('reminderPreview','');scheduleLink=link;$('scheduleEpisode').value=link.episode_id||'';},scheduleLink:()=>({episode_id:$('scheduleEpisode')?.value||'',link_version:scheduleLink.version||0}),
     progress(){page();renderCheckinHistory();},
-    clear(){epoch++;dialogVersion++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();$('recordReadDialog')?.close();$('recordReadContent')?.replaceChildren();if($('returnWorkspaceSearch'))$('returnWorkspaceSearch').hidden=true;
+    clear(){searchReturn=null;epoch++;dialogVersion++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();$('recordReadDialog')?.close();$('recordReadContent')?.replaceChildren();if($('returnWorkspaceSearch'))$('returnWorkspaceSearch').hidden=true;
       clearConcernOverview();
       if ($('visitBrief')) $('visitBrief').open = false;
       for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();const episodeSubmit=$('episodeForm')?.querySelector('[type=submit]');if(episodeSubmit)episodeSubmit.disabled=false;resetBriefDates();invalidateBrief();

@@ -13,7 +13,7 @@ original-record comparison, routine status/plan review/journal/selected-day
 history, scoped discovery, read-only record details, All/Saved guides, account
 response ordering and shared responsive/resource polish. No schema/model/provider
 or deployment change. Local full backend: 269 passed; frontend: 121; runner: 12;
-new Chrome workflows: 12; affected existing Chrome workflows: 67. Visual matrix:
+new Chrome workflows: 13; affected existing Chrome workflows: 67. Visual matrix:
 130 states plus 22 focused refinements, five widths/both themes and enlarged text.
 See the final section of `consumer-validation-results.md` for evidence and limits.
 Native/physical/spoken/participant checks remain deferred by the owner.

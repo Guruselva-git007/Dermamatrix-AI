@@ -1124,7 +1124,10 @@ and dates support routine summaries beyond the latest 100 detail records.
 
 Search adds recognizable saved titles, timestamps/record suffixes, category,
 concern, area and date scope, read-only check-in/routine details, explicit edit
-controls and return to the existing search result list. Cursor validation includes
+controls and return to the existing search result list. A final scrolled-result
+reproduction found a 1475 px position reset to zero. The return now restores the
+actual result scroll and focus. Guides also offer a search return action, and
+bookmark changes update existing search badges without rebuilding the result list. Cursor validation includes
 owner, scope and assessment/check-in/revision snapshots. Learn’s All/Saved library
 uses existing bookmarks; removing a bookmark updates the returned Saved library.
 A 25-assessment synthetic fixture demonstrated 25 unrelated summary parses in the
@@ -1148,7 +1151,7 @@ samples. Seven new backend cases cover activity pagination/scope, effective date
 original associations, comparison compatibility/integrity, discovery parsing,
 owner boundaries, archived day history, plan intervals and DST/quiet-hour rules.
 The complete backend run passed 269 tests locally with the CI configuration;
-121 frontend tests and 12 runner tests passed. Twelve new browser workflows and
+121 frontend tests and 12 runner tests passed. Thirteen new browser workflows and
 67 affected existing Chrome checks passed. The accessibility traversal test now
 counts actual review controls because precise Change buttons legitimately add
 keyboard stops; its Back, confirmation, Escape and focus assertions remain.
