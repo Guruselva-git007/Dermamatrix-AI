@@ -96,6 +96,7 @@
     if($('reportRegister'))$('reportRegister').hidden=!signed()||Boolean(window.ConsumerClient?.enabled);
     $('journeyTabs').hidden=!signed();
     $('historyExport').hidden=!signed();
+    $('openProfileFromProgress').closest('.progress-actions').hidden=Boolean(window.ConsumerClient?.enabled);
     const snapshot=document.querySelector('.health-snapshot');
     if(snapshot)snapshot.hidden=!(state.analyses?.length||state.routines?.length||state.checkins?.length);
     // A single saved result is already in the overview; it is not a trend.

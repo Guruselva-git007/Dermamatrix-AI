@@ -71,6 +71,91 @@ class ConsumerContinuity(unittest.TestCase):
         self.assertEqual(response.status_code,201,response.get_json())
         return response.get_json()['event_id']
 
+    def test_episode_overview_empty_and_private(self):
+        episode = self.episode()
+        path = f'/api/episodes/{episode}/overview'
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'overview': dict(episode_id=episode, latest_assessment=None,
+                                                               latest_checkin=None, linked_routine_count=0)})
+        self.assertEqual(self.app.test_client().get(path).status_code, 401)
+        self.assertEqual(self.client.get('/api/episodes/missing/overview').status_code, 404)
+
+        other = type(self)()
+        other.setUp()
+        try:
+            self.assertEqual(other.client.get(path).status_code, 404)
+        finally:
+            other.tearDown()
+
+    def test_episode_overview_finds_old_link_and_preserves_unreadable_latest(self):
+        episode = self.episode()
+        path = f'/api/episodes/{episode}/overview'
+        readable = f'overview-valid-{self.identifier[:10]}'
+        unreadable = f'overview-corrupt-{self.identifier[:10]}'
+        saved_at = '2025-01-01 09:30:00'
+        rows = [(readable, self.user_id, 'Skin', '{}', saved_at),
+                (unreadable, self.user_id, 'Skin', 'invalid historical result', saved_at)]
+        rows.extend((f'overview-{self.identifier[:10]}-{index}', self.user_id, 'Skin', '{}', '2025-02-01 09:30:00')
+                    for index in range(51))
+        connection = self.module.database()
+        try:
+            with connection.cursor() as cursor:
+                cursor.executemany('INSERT INTO analysis_records(assessment_id,user_id,area,result_json,created_at) VALUES(%s,%s,%s,%s,%s)', rows)
+            connection.commit()
+        finally:
+            connection.close()
+
+        recent = self.client.get('/api/analysis-history').get_json()['analyses']
+        self.assertEqual(len(recent), 50)
+        self.assertNotIn(readable, {row['assessment_id'] for row in recent})
+        for identifier, unavailable in [(readable, False), (unreadable, True)]:
+            with self.subTest(assessment=identifier):
+                self.assertEqual(self.call(f'/api/episode-links/assessment/{identifier}',
+                                           dict(episode_id=episode, version=0), method='PUT').status_code, 200)
+                self.assertEqual(self.client.get(path).get_json()['overview']['latest_assessment'],
+                                 dict(assessment_id=identifier, area='Skin', created_at='2025-01-01T09:30:00Z',
+                                      unavailable=unavailable))
+
+    def test_episode_overview_uses_independent_links_and_effective_checkins(self):
+        routine_episode = self.episode()
+        checkin_episode = self.episode('Synthetic check-in concern')
+        routine = self.routine()
+        archived = self.routine()
+        for identifier in [routine, archived]:
+            self.assertEqual(self.call(f'/api/episode-links/routine/{identifier}',
+                                       dict(episode_id=routine_episode, version=0), method='PUT').status_code, 200)
+        self.assertEqual(self.call(f'/api/routines/{archived}', method='DELETE').status_code, 200)
+
+        checkins = []
+        for day, concern in [('2025-01-01', checkin_episode), ('2025-02-01', checkin_episode), ('2025-05-01', '')]:
+            response = self.keyed('/api/progress-checkins', dict(routine_id=routine, checkin_date=day,
+                                                                reported_trend='unchanged', episode_id=concern))
+            self.assertEqual(response.status_code, 201, response.get_json())
+            checkins.append(response.get_json()['checkin_id'])
+        first, second, _ = checkins
+        routine_view = self.client.get(f'/api/episodes/{routine_episode}/overview').get_json()['overview']
+        self.assertEqual(routine_view['linked_routine_count'], 2)
+        self.assertIsNone(routine_view['latest_checkin'])
+
+        path = f'/api/episodes/{checkin_episode}/overview'
+        initial = self.client.get(path).get_json()['overview']
+        self.assertEqual(initial['linked_routine_count'], 0)
+        self.assertEqual(initial['latest_checkin'], dict(checkin_id=second, checkin_date='2025-02-01',
+                                                        reported_trend='unchanged', revision=0))
+
+        correction = f'/api/corrections/checkin/{first}'
+        updated = self.keyed(correction, dict(revision=0, checkin_date='2025-03-01', reported_trend='improving',
+                                               note='Private synthetic correction'))
+        self.assertEqual(updated.status_code, 200, updated.get_json())
+        self.assertEqual(self.client.get(path).get_json()['overview']['latest_checkin'],
+                         dict(checkin_id=first, checkin_date='2025-03-01', reported_trend='improving', revision=1))
+
+        self.assertEqual(self.keyed(correction, dict(revision=1, voided=True)).status_code, 200)
+        self.assertEqual(self.client.get(path).get_json()['overview']['latest_checkin'], initial['latest_checkin'])
+        self.assertEqual(self.keyed(f'/api/corrections/checkin/{second}', dict(revision=0, voided=True)).status_code, 200)
+        self.assertIsNone(self.client.get(path).get_json()['overview']['latest_checkin'])
+
     def test_corrections_today_history_export_and_recovery(self):
         r=self.routine();self.schedule(r);event=self.event(r)
         path='/api/corrections/event/'+event

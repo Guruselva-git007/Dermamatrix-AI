@@ -8,6 +8,8 @@
   const signed = () => Boolean(window.ConsumerClient?.enabled && state.profile?.patient_id);
   const owner = () => state.profile?.patient_id || '';
   let epoch=0, loadedOwner='', episodes=[], links={}, bookmarks=[], loading=null, scheduleLink={}, searchCursor=null, searchQuery='', searchCategory='',briefSignature='',searchVersion=0,loadVersion=0,reminderVersion=0,briefVersion=0,dialogVersion=0;
+  let concernRequest = null;
+  let briefDownload = null;
   const retryKeys=new Map();
   const active = (version, account) => epoch===version && owner()===account;
   const message = (id, text) => {if($(id))$(id).textContent=text;};
@@ -17,12 +19,18 @@
     if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());
     return requestJSON(path,{method,headers:{'Content-Type':'application/json','Idempotency-Key':retryKeys.get(signature)},body:method==='DELETE'?undefined:JSON.stringify(payload),ownerGuard:()=>active(version,account)});
   }
-  function choices(select, selected='', empty='No concern selected') {
+  function choices(select, selected='', empty='No concern selected', items=episodes) {
     select.replaceChildren(new Option(empty,''));
-    for(const item of episodes)select.add(new Option(`${item.label} · ${item.body_area}`,item.episode_id));
-    select.value=selected;
+    for(const item of items)select.add(new Option(`${item.label} · ${item.body_area}`,item.episode_id));
+    select.value=items.some(item=>item.episode_id===selected)?selected:'';
   }
   function pick(id, title) {const label=el('label',title),select=el('select');select.id=id;label.append(select);choices(select);return label;}
+  function assessmentAreaChanged() {
+    const select = $('assessmentEpisode');
+    if (!select) return;
+    const compatible = episodes.filter(episode => episode.area === state.area || episode.area === 'General');
+    choices(select, select.value, 'No concern selected', compatible);
+  }
   async function load(force=false) {
     if(!signed())return;
     if(loading&&!force)return loading;
@@ -31,7 +39,8 @@
       const [ep,associations,saved]=await Promise.all([requestJSON('/api/episodes'),requestJSON('/api/episode-links'),requestJSON('/api/bookmarks')]);
       if(!active(version,account)||requestVersion!==loadVersion)return;
       episodes=ep.episodes;links=associations.links;bookmarks=saved.bookmarks;loadedOwner=account;
-      for(const id of ['assessmentEpisode','checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id),$(id).value,id==='journeyEpisodeId'?'All concerns':'No concern selected');
+      for(const id of ['checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id),$(id).value,id==='journeyEpisodeId'?'All concerns':'No concern selected');
+      assessmentAreaChanged();
       if($('episodeBody')&&!$('episodeBody').options.length)for(const value of ep.body_areas)$('episodeBody').add(new Option(value,value));
       renderBookmarks();renderCheckinHistory();
     }catch(error){if(active(version,account)&&requestVersion===loadVersion)message('continuityStatus',`${error.message} Your current input remains in this tab. Retry by reopening Journey.`);}
@@ -43,7 +52,91 @@
     await load(true);if(!active(version,account))return;
     await loadProgress({force:true});if(!active(version,account))return;
     await window.EngagementUI?.refresh();
+    if (!active(version, account)) return;
+    refreshConcernOnJourney(true);
     if($('unifiedSearchDialog')?.open)await search(true);
+  }
+  const chosenConcern = () => episodes.find(episode => episode.episode_id === $('journeyEpisodeId')?.value);
+  const areaName = area => ({ Hair: 'Hair & scalp', Sweat: 'Sweating' })[area] || area;
+  const briefDate = value => new Date(`${value}T12:00:00Z`).toLocaleDateString('en-GB', { dateStyle: 'medium', timeZone: 'UTC' });
+
+  function clearConcernOverview() {
+    concernRequest?.controller.abort();
+    concernRequest = null;
+    if (!$('concernOverview')) return;
+    $('concernOverview').hidden = true;
+    $('concernFacts').replaceChildren();
+    $('concernFacts').hidden = true;
+    $('retryConcernOverview').hidden = true;
+    message('concernOverviewStatus', '');
+    message('concernTitle', '');
+    message('concernMeta', '');
+  }
+
+  function renderConcernFacts(overview) {
+    const { latest_assessment: assessment, latest_checkin: checkin, linked_routine_count: routines } = overview;
+    const facts = $('concernFacts');
+    const fact = (label, value, action) => {
+      const row = el('div');
+      const description = el('dd', value);
+      if (action) description.append(action);
+      row.append(el('dt', label), description);
+      return row;
+    };
+    const assessmentDate = assessment ? new Date(assessment.created_at).toLocaleDateString('en-GB', { dateStyle: 'medium' }) : '';
+    const assessmentAction = assessment && !assessment.unavailable
+      ? button('Open latest result', () => showSavedReport(assessment.assessment_id), 'text-button') : null;
+    const assessmentLabel = assessment
+      ? `${assessmentDate} · ${areaName(assessment.area)}${assessment.unavailable ? ' · Record unavailable' : ''}` : 'No linked results yet';
+    const checkinLabel = checkin
+      ? `${readableStatus(checkin.reported_trend)} · ${briefDate(checkin.checkin_date)}` : 'No linked check-ins yet';
+    facts.replaceChildren(fact('Latest saved result', assessmentLabel, assessmentAction), fact('Latest self-reported check-in', checkinLabel), fact('Linked routines', String(routines)));
+    facts.hidden = false;
+  }
+
+  async function refreshConcernOverview(force = false) {
+    if (!$('concernOverview')) return;
+    const concern = signed() && chosenConcern();
+    if (!concern) { clearConcernOverview(); return; }
+    const id = concern.episode_id;
+    const workspaceVersion = state.workspaceVersion;
+    if (!force && concernRequest?.id === id && concernRequest.workspaceVersion === workspaceVersion) return;
+    clearConcernOverview();
+    const version = epoch, account = owner();
+    const request = { id, workspaceVersion, controller: new AbortController() };
+    concernRequest = request;
+    const current = () => concernRequest === request && active(version, account)
+      && state.workspaceVersion === workspaceVersion && $('journeyEpisodeId').value === id;
+    message('concernTitle', concern.label);
+    message('concernMeta', `${areaName(concern.area)} · ${concern.body_area}`);
+    message('concernOverviewStatus', 'Loading saved activity…');
+    $('concernOverview').hidden = false;
+    try {
+      const { overview } = await requestJSON(`/api/episodes/${encodeURIComponent(id)}/overview`, {
+        signal: request.controller.signal, ownerGuard: current
+      });
+      if (!current()) return;
+      if (overview?.episode_id !== id || !Number.isInteger(overview.linked_routine_count)) throw Error('Incomplete concern activity.');
+      renderConcernFacts(overview);
+      message('concernOverviewStatus', '');
+    } catch {
+      if (current()) {
+        message('concernOverviewStatus', 'Saved activity could not be loaded.');
+        $('retryConcernOverview').hidden = false;
+      }
+    } finally {
+      if (concernRequest === request) concernRequest = null;
+    }
+  }
+
+  function refreshConcernOnJourney(force = false) {
+    if (document.querySelector('.page-active')?.id === 'progress') void refreshConcernOverview(force);
+  }
+
+  function filterJourneyConcern(id) {
+    $('journeyEpisodeId').value = id;
+    window.EngagementUI.filterEpisode(id);
+    void refreshConcernOverview();
   }
   function dialog(title, content, save, label='Save correction', trigger) {
     const opener=trigger||document.activeElement,d=$('continuityDialog'),instance=++dialogVersion;window.DraftUX?.forget(d.firstChild);d.replaceChildren();const form=el('form');form.append(el('h2',title));
@@ -125,26 +218,138 @@
     const end=currentDate(),start=new Date(end+'T12:00:00');start.setDate(start.getDate()-30);
     $('briefEnd').value=end;$('briefStart').value=`${start.getFullYear()}-${String(start.getMonth()+1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
   }
-  function invalidateBrief(text='Preview selected records before downloading.') {
-    briefVersion++;briefSignature='';$('briefSelection')?.replaceChildren();
-    if($('downloadBrief'))$('downloadBrief').disabled=true;
-    if($('previewBrief')){$('previewBrief').disabled=false;$('previewBrief').removeAttribute('aria-busy');}
-    message('briefStatus',text);
+  function invalidateBrief(text = 'Preview the records for your chosen concern and dates.') {
+    briefVersion++;
+    briefSignature = '';
+    briefDownload?.abort();
+    briefDownload = null;
+    $('briefSelection')?.replaceChildren();
+    if ($('briefPreview')) $('briefPreview').hidden = true;
+    for (const id of ['briefScope', 'briefSelectionSummary', 'briefIncludes', 'briefLimits']) message(id, '');
+    if ($('downloadBrief')) $('downloadBrief').disabled = true;
+    if ($('previewBrief')) {
+      $('previewBrief').disabled = false;
+      $('previewBrief').removeAttribute('aria-busy');
+    }
+    message('briefStatus', text);
   }
+
+  function briefChoices() {
+    return [...$('briefSelection').querySelectorAll('input')];
+  }
+
+  function updateBriefCount() {
+    const choices = briefChoices();
+    message('briefSelectionSummary', `${choices.filter(input => input.checked).length} of ${choices.length} assessments selected`);
+  }
+
+  function prepareConcernBrief() {
+    const concern = chosenConcern();
+    if (!concern) return;
+    const picker = $('briefEpisode');
+    if (picker.value !== concern.episode_id) {
+      picker.value = concern.episode_id;
+      invalidateBrief('Concern changed. Review your dates and questions before previewing.');
+    }
+    $('visitBrief').open = true;
+    picker.focus();
+  }
+
   async function previewBrief() {
-    if(!$('visitBriefForm').reportValidity())return;
-    invalidateBrief('Loading the selected records…');
-    const generation=epoch,account=owner(),requestVersion=briefVersion,payload=briefInput(),signature=JSON.stringify(payload),control=$('previewBrief');
-    const current=()=>active(generation,account)&&briefVersion===requestVersion&&JSON.stringify(briefInput())===signature;
-    control.disabled=true;control.setAttribute('aria-busy','true');
-    try{
-      const {brief:data}=await write('/api/visit-brief',payload);if(!current())return;
-      briefSignature=signature;const box=$('briefSelection');box.replaceChildren();
-      for(const row of data.assessments){const label=el('label',`${row.area} assessment · ${new Date(row.created_at).toLocaleString()} (saved time)`),input=el('input');input.type='checkbox';input.checked=true;input.value=row.assessment_id;label.prepend(input);box.append(label);}
-      $('downloadBrief').disabled=false;
-      message('briefStatus',`Available: ${data.counts.assessments} assessments, ${data.counts.checkins} active self-reported check-ins, ${data.counts.routine_actions} routine actions. Uncheck any assessment to omit it. ${data.photo_notice}`);
-    }catch(error){if(current())message('briefStatus',`${error.message} No brief was generated. Preview again to retry.`);}
-    finally{if(active(generation,account)&&briefVersion===requestVersion){control.disabled=false;control.removeAttribute('aria-busy');}}
+    const control = $('previewBrief');
+    if (control.disabled || !$('visitBriefForm').reportValidity()) return;
+    invalidateBrief('Loading saved records…');
+    const generation = epoch, account = owner(), workspaceVersion = state.workspaceVersion;
+    const requestVersion = briefVersion, payload = briefInput(), signature = JSON.stringify(payload);
+    const samePreview = () => active(generation, account) && briefVersion === requestVersion;
+    const current = () => samePreview() && state.workspaceVersion === workspaceVersion && JSON.stringify(briefInput()) === signature;
+    control.disabled = true;
+    control.setAttribute('aria-busy', 'true');
+    try {
+      const { brief } = await write('/api/visit-brief', payload);
+      if (!current()) return;
+      const box = $('briefSelection');
+      brief.assessments.forEach((row, index) => {
+        const date = new Date(row.created_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' });
+        const title = row.unavailable ? 'Record unavailable'
+          : row.summary?.assessment_result?.consumer?.primary_result?.title || row.summary?.screening?.title || 'Saved assessment';
+        const input = el('input');
+        input.type = 'checkbox';
+        input.checked = true;
+        input.value = row.assessment_id;
+        const label = el('label');
+        const detail = el('span');
+        detail.append(el('strong', `${index + 1}. ${title}`), el('small', `${areaName(row.area)} · ${date} UTC`));
+        label.append(input, detail);
+        box.append(label);
+      });
+      const { checkins, routines, routine_actions: actions } = brief.counts;
+      const count = (total, singular, plural) => `${total} ${total === 1 ? singular : plural}`;
+      message('briefScope', `${brief.episode.label} · ${briefDate(brief.start)} – ${briefDate(brief.end)}`);
+      message('briefIncludes', `Also included: ${count(checkins, 'self-reported check-in', 'self-reported check-ins')}, ${count(routines, 'routine plan', 'routine plans')} and ${count(actions, 'routine action', 'routine actions')}. These sections use saved records at download time.`);
+      message('briefLimits', brief.photo_notice);
+      updateBriefCount();
+      briefSignature = signature;
+      $('briefPreview').hidden = false;
+      $('downloadBrief').disabled = false;
+      message('briefStatus', brief.assessments.length ? 'Uncheck any assessment you want to leave out.' : 'No assessments match this concern and date range.');
+    } catch (error) {
+      if (current()) message('briefStatus', `${error.message} Preview again to retry.`);
+    } finally {
+      if (samePreview()) {
+        control.disabled = false;
+        control.removeAttribute('aria-busy');
+        if (state.workspaceVersion !== workspaceVersion) message('briefStatus', 'Preview the records again after your session resumes.');
+      }
+    }
+  }
+
+  async function downloadVisitBrief(event) {
+    event.preventDefault();
+    const submit = $('downloadBrief'), payload = briefInput();
+    if (submit.disabled || briefDownload || briefSignature !== JSON.stringify(payload)) return;
+    const generation = epoch, account = owner(), workspaceVersion = state.workspaceVersion, requestVersion = briefVersion;
+    const controller = new AbortController();
+    const current = () => briefDownload === controller && active(generation, account)
+      && state.workspaceVersion === workspaceVersion && briefVersion === requestVersion;
+    briefDownload = controller;
+    submit.disabled = true;
+    const choices = briefChoices();
+    const assessment_ids = choices.filter(input => input.checked).map(input => input.value);
+    for (const input of choices) input.disabled = true;
+    message('briefStatus', 'Preparing your PDF…');
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetchForWorkspace('/api/visit-brief', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, assessment_ids, format: 'pdf' }),
+        credentials: 'same-origin', signal: controller.signal, ownerGuard: current
+      });
+      if (!response.ok) throw Error((await response.json().catch(() => ({}))).error || 'Brief generation failed.');
+      if (!response.headers.get('content-type')?.startsWith('application/pdf')) throw Error('The server did not return a PDF.');
+      const blob = await response.blob();
+      if (!current()) return;
+      const url = URL.createObjectURL(blob), link = el('a');
+      link.href = url;
+      link.download = 'dermamatrix-visit-brief.pdf';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      message('briefStatus', 'PDF download started.');
+    } catch (error) {
+      if (current()) message('briefStatus', controller.signal.aborted
+        ? 'The PDF request timed out. Retry the download.'
+        : `${error.message} Preview again or retry the download.`);
+    } finally {
+      clearTimeout(timeout);
+      if (briefDownload === controller) {
+        if (!current()) invalidateBrief();
+        else {
+          briefDownload = null;
+          submit.disabled = false;
+          for (const input of choices) input.disabled = false;
+        }
+      }
+    }
   }
   function linkAssessment(result) {
     const content=el('div');content.append(el('p','Choose explicitly. Matching labels never merge assessments automatically. Existing labels and original findings remain unchanged.'));
@@ -152,8 +357,15 @@
     dialog('Link saved result',content,()=>write('/api/episode-links/assessment/'+encodeURIComponent(result.assessment_id),{episode_id:choice.querySelector('select').value,version:result.episode_link?.version||0},'PUT'),'Save concern link');
   }
   function followup() {
-    const episode=episodes.find(e=>e.episode_id===$('journeyEpisodeId').value);if(!episode){message('continuityStatus','Choose a concern before starting its follow-up.');return;}
-    if(episode.area==='General'){state.areaSelected=false;showPage('home');}else startAreaAssessment(episode.area);$('assessmentEpisode').value=episode.episode_id;$('assessmentEpisode').focus();
+    const episode = chosenConcern();
+    if (!episode) return;
+    if (episode.area === 'General') {
+      if (state.assessmentInFlight) { toast('Wait for your current check to finish before starting a follow-up.'); return; }
+      state.areaSelected = false;
+      showPage('home');
+    } else if (!startAreaAssessment(episode.area)) return;
+    $('assessmentEpisode').value = episode.episode_id;
+    if (episode.area !== 'General') $('assessmentEpisode').focus();
     toast('Follow-up concern selected. Review it before submitting.');
   }
   function renderBookmarks() {
@@ -180,7 +392,7 @@
       for(const item of data.results){const row=el('article',undefined,'continuity-row');row.append(el('small',`${item.category}${item.bookmarked?' · Saved guide':''}`),el('h3',item.title),el('p',item.detail||''),button('Open '+item.category,async()=>{const d=$('unifiedSearchDialog');
         try{if(item.category==='guide'){d.close();showPage('learn');await window.EngagementUI.openGuide(item.id);}
         else if(item.category==='assessment'){d.close();await showSavedReport(item.id);}
-        else{let checkin;if(item.category==='checkin'){checkin=(await requestJSON('/api/checkins/'+encodeURIComponent(item.id))).checkin;if(!active(generation,account))return;}d.close();showPage('progress');if(item.category==='episode'){$('journeyEpisodeId').value=item.id;window.EngagementUI.filterEpisode(item.id);window.WorkspaceUI.reveal('results');}
+        else{let checkin;if(item.category==='checkin'){checkin=(await requestJSON('/api/checkins/'+encodeURIComponent(item.id))).checkin;if(!active(generation,account))return;}d.close();showPage('progress');if(item.category==='episode'){window.WorkspaceUI.reveal('results');filterJourneyConcern(item.id);}
         if(item.category==='routine'){window.WorkspaceUI.reveal('routines');await window.EngagementUI.configureRoutine(item.id);}
         if(item.category==='checkin'){window.WorkspaceUI.reveal('checkins');if(checkin)correctCheckin(checkin);}}}
         catch(error){message('unifiedStatus',`${error.message} The record could not be opened; start the search again.`);}
@@ -216,7 +428,13 @@
       const data=await write('/api/episodes',payload);if(!current())return;
       await load(true);if(!current())return;
       const unchanged=JSON.stringify(episodeInput())===signature;
-      if(unchanged){$('journeyEpisodeId').value=data.episode_id;$('assessmentEpisode').value=data.episode_id;form.reset();window.DraftUX?.clean(form);$('episodeWorkspace').querySelector('details').open=false;$('journeyEpisodeId').focus();window.EngagementUI.filterEpisode(data.episode_id);}
+      if (unchanged) {
+        filterJourneyConcern(data.episode_id);
+        form.reset();
+        window.DraftUX?.clean(form);
+        $('episodeWorkspace').querySelector('details').open = false;
+        $('journeyEpisodeId').focus();
+      }
       else window.DraftUX?.clean(form,draft);
       message('continuityStatus',unchanged?'Concern created. Choose it for a new check or link an existing result.':'Submitted concern created. Your newer input is still here and has not been saved.');
     }catch(error){if(current())message('continuityStatus',`${error.message} Creation was not confirmed. Your input remains here; retry the same details.`);}
@@ -226,21 +444,101 @@
     if($('continuityDialog'))return;
     const mobileSearch=button('Search',()=>openSearch(''));mobileSearch.id='mobileWorkspaceSearch';mobileSearch.setAttribute('aria-label','Search records and guides');$('themeToggle').before(mobileSearch);
     const d=el('dialog',undefined,'consumer-dialog');d.id='continuityDialog';document.body.append(d);
-    const assessment=pick('assessmentEpisode','Concern (optional)');assessment.id='assessmentEpisodeField';assessment.append(el('small','Only the selected concern is linked when an account saves this assessment.'));document.querySelector('#screen .area-choice').after(assessment);
-    const workspace=el('section',undefined,'consumer-panel');workspace.id='episodeWorkspace';workspace.innerHTML='<h3>Keep a concern together</h3><p>Link related checks explicitly. Older unassigned results and your existing labels stay available.</p><details><summary>Create a concern</summary><form id="episodeForm" class="continuity-form"><label>Concern label<input id="episodeLabel" required maxlength="120" placeholder="A label you recognise"></label><label>Category<select id="episodeArea"><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option><option>General</option></select></label><label>Body area<select id="episodeBody"></select></label><button class="button primary" type="submit">Create concern</button></form></details><p id="continuityStatus" role="status"></p>';
-    $('completeJourney').before(workspace);const picker=pick('journeyEpisodeId','Concern filter');const concernControls=el('div',undefined,'concern-controls');concernControls.append(picker);workspace.querySelector('details').before(concernControls);picker.querySelector('select').onchange=()=>window.EngagementUI.filterEpisode(picker.querySelector('select').value);concernControls.append(button('Start follow-up',followup));
+    const assessment = pick('assessmentEpisode', 'Saved concern (optional)');
+    assessment.id = 'assessmentEpisodeField';
+    assessment.append(el('small', 'Choose a matching saved concern to link this check.'));
+    document.querySelector('#screen .area-choice').after(assessment);
+    const workspace = el('section', undefined, 'consumer-panel');
+    workspace.id = 'episodeWorkspace';
+    workspace.setAttribute('aria-labelledby', 'episodeWorkspaceTitle');
+    workspace.innerHTML = `
+      <div class="concern-controls">
+        <div>
+          <h2 id="episodeWorkspaceTitle">Saved concerns</h2>
+          <p>Choose a concern to review its linked activity or start a follow-up.</p>
+        </div>
+      </div>
+      <section id="concernOverview" class="concern-overview" aria-labelledby="concernTitle" hidden>
+        <div class="concern-overview-head">
+          <div>
+            <h3 id="concernTitle" tabindex="-1"></h3>
+            <p id="concernMeta"></p>
+          </div>
+          <div class="concern-actions">
+            <button id="startConcernFollowup" class="button primary" type="button">Start follow-up</button>
+            <button id="prepareConcernBrief" class="button quiet" type="button">Prepare visit brief</button>
+          </div>
+        </div>
+        <dl id="concernFacts" hidden></dl>
+        <p id="concernOverviewStatus" role="status"></p>
+        <button id="retryConcernOverview" class="button quiet" type="button" hidden>Retry saved activity</button>
+      </section>
+      <details>
+        <summary>Create a concern</summary>
+        <form id="episodeForm" class="continuity-form">
+          <label>Concern label<input id="episodeLabel" required maxlength="120" placeholder="A label you recognise"></label>
+          <label>Category<select id="episodeArea"><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option><option>General</option></select></label>
+          <label>Body area<select id="episodeBody"></select></label>
+          <button class="button primary" type="submit">Create concern</button>
+        </form>
+      </details>
+      <p id="continuityStatus" role="status"></p>`;
+    $('completeJourney').before(workspace);
+    const picker = pick('journeyEpisodeId', 'Filter results by concern');
+    workspace.querySelector('.concern-controls').append(picker);
+    $('journeyEpisodeId').onchange = event => filterJourneyConcern(event.target.value);
+    $('startConcernFollowup').onclick = followup;
+    $('prepareConcernBrief').onclick = prepareConcernBrief;
+    $('retryConcernOverview').onclick = () => {
+      void refreshConcernOverview();
+      $('concernTitle').focus();
+    };
     $('episodeForm').onsubmit=createEpisode;window.DraftUX?.clean($('episodeForm'));
     $('scheduleEditor').prepend(pick('scheduleEpisode','Linked concern (optional)'));
     const preview=el('div');preview.append(button('Preview reminder schedule',previewReminder));const note=el('p');note.id='reminderPreview';note.setAttribute('role','status');preview.append(note);$('scheduleEditor').append(preview);$('scheduleEditor').addEventListener('input',()=>{reminderVersion++;message('reminderPreview','Schedule input changed. Preview again to calculate the next occurrence. No reminder was queued.');});
     $('checkinRoutine').closest('label').after(pick('checkinEpisode','Concern (confirm before saving)'));
     $('checkinRoutine').addEventListener('change',()=>{$('checkinEpisode').value=links['routine:'+$('checkinRoutine').value]?.episode_id||'';});
     const history=el('section');history.id='checkinCorrections';$('progressHistory')?.after(history);
-    const brief=el('details');brief.id='visitBrief';brief.innerHTML='<summary>Prepare a clinician-visit brief</summary><form id="visitBriefForm" class="continuity-form"><label>From<input id="briefStart" type="date" required></label><label>To<input id="briefEnd" type="date" required></label><label>Personal questions (optional)<textarea id="briefQuestions" maxlength="3000"></textarea></label><p>Assessment dates use UTC save times; check-ins and routine actions use recorded local dates. Original photos are unavailable. Full reports and account JSON remain available.</p><button type="button" class="button quiet" id="previewBrief">Preview selected records</button><div id="briefSelection"></div><button id="downloadBrief" class="button primary" type="submit" aria-describedby="briefStatus" disabled>Download visit brief PDF</button><p id="briefStatus" role="status"></p></form>';
-    brief.className='consumer-panel';$('completeJourney').after(brief);if($('historyExport'))$('historyExport').querySelector('summary').textContent='Download recent history (all concerns)';$('visitBriefForm').prepend(pick('briefEpisode','Concern'));resetBriefDates();
+    const brief = el('details', undefined, 'consumer-panel');
+    brief.id = 'visitBrief';
+    brief.innerHTML = `
+      <summary>Prepare a clinician-visit brief</summary>
+      <form id="visitBriefForm" class="continuity-form">
+        <div class="brief-fields">
+          <h3>Choose the scope</h3>
+          <div class="brief-dates">
+            <label>From<input id="briefStart" type="date" required></label>
+            <label>To<input id="briefEnd" type="date" required></label>
+          </div>
+          <label>Questions to discuss (optional)<textarea id="briefQuestions" maxlength="3000"></textarea></label>
+          <p class="brief-note">Assessment dates use UTC save times. Check-ins and routine actions use their recorded local dates.</p>
+          <button type="button" class="button quiet" id="previewBrief">Preview selected records</button>
+        </div>
+        <section class="brief-review" aria-labelledby="briefReviewTitle">
+          <h3 id="briefReviewTitle">Review the PDF contents</h3>
+          <p id="briefStatus" role="status"></p>
+          <div id="briefPreview" hidden>
+            <p id="briefScope"></p>
+            <p id="briefSelectionSummary" role="status"></p>
+            <div id="briefSelection"></div>
+            <p id="briefIncludes"></p>
+            <p id="briefLimits" class="brief-note"></p>
+          </div>
+          <button id="downloadBrief" class="button primary" type="submit" aria-describedby="briefStatus" disabled>Download visit brief PDF</button>
+        </section>
+      </form>`;
+    $('completeJourney').after(brief);
+    brief.querySelector('h3').after(pick('briefEpisode', 'Concern'));
+    $('briefEpisode').required = true;
+    if ($('historyExport')) $('historyExport').querySelector('summary').textContent = 'Download recent history (all concerns)';
+    resetBriefDates();
     invalidateBrief();
-    $('previewBrief').onclick=previewBrief;
-    $('visitBriefForm').addEventListener('input',event=>{if(!event.target.closest('#briefSelection'))invalidateBrief('Selection changed. Preview the records again before downloading.');});
-    $('visitBriefForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;const payload=briefInput();if(briefSignature!==JSON.stringify(payload)){message('briefStatus','Preview this concern and date range before downloading.');return;}submit.disabled=true;const generation=epoch,account=owner(),requestVersion=briefVersion,workspaceVersion=state.workspaceVersion,controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);try{if(!active(generation,account)||requestVersion!==briefVersion||workspaceVersion!==state.workspaceVersion)return;const response=await fetchForWorkspace('/api/visit-brief',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,assessment_ids:[...$('briefSelection').querySelectorAll('input:checked')].map(n=>n.value),format:'pdf'}),credentials:'same-origin',signal:controller.signal,ownerGuard:()=>active(generation,account)&&requestVersion===briefVersion&&workspaceVersion===state.workspaceVersion});if(!response.ok)throw Error((await response.json()).error||'Brief generation failed.');const blob=await response.blob();if(!active(generation,account)||requestVersion!==briefVersion||workspaceVersion!==state.workspaceVersion)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download='dermamatrix-visit-brief.pdf';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);message('briefStatus','Brief generated from the selected saved metadata. Original records are unchanged.');}catch(error){if(active(generation,account)&&requestVersion===briefVersion)message('briefStatus',`${error.message} No download was confirmed. Retry after previewing.`);}finally{clearTimeout(timeout);submit.disabled=briefSignature!==JSON.stringify(briefInput());}};
+    $('previewBrief').onclick = previewBrief;
+    $('visitBriefForm').addEventListener('input', event => {
+      if (event.target.closest('#briefSelection')) updateBriefCount();
+      else invalidateBrief('Scope or questions changed. Preview the records again before downloading.');
+    });
+    $('visitBriefForm').onsubmit = downloadVisitBrief;
     const saved=el('details');saved.id='savedGuides';saved.innerHTML='<summary>Saved guides</summary><div id="savedGuideList"></div>';$('learnList').before(saved);
     const searchDialog=el('dialog',undefined,'consumer-dialog');searchDialog.id='unifiedSearchDialog';searchDialog.setAttribute('aria-labelledby','unifiedTitle');searchDialog.innerHTML='<h2 id="unifiedTitle">Search your workspace</h2><form id="unifiedSearchForm" class="continuity-form"><label>Search<input id="unifiedQuery" type="search" maxlength="120"></label><label>Category<select id="unifiedCategory"><option value="">All categories</option><option value="assessment">Assessments</option><option value="episode">Concerns</option><option value="routine">Routines</option><option value="checkin">Check-ins</option><option value="guide">Educational guides</option></select></label><button class="button primary" type="submit">Search</button></form><p id="unifiedStatus" role="status"></p><div id="unifiedResults"></div><button id="unifiedMore" type="button" class="button quiet" hidden>Load more results</button>';searchDialog.append(button('Close search',()=>searchDialog.close()));document.body.append(searchDialog);$('unifiedSearchForm').onsubmit=e=>{e.preventDefault();search(true);};$('unifiedMore').onclick=()=>search(false);
     const feedback=el('details');feedback.id='productFeedback';feedback.innerHTML='<summary>Share product feedback</summary><p>Collected in this local account. No monitored support channel is configured. Do not include health notes, identifying details or photographs.</p><form id="feedbackForm" class="continuity-form"><label>Problem category<select id="feedbackCategory"><option>Confusing screen</option><option>Save or loading problem</option><option>Accessibility</option><option>Other</option></select></label><label>Page<select id="feedbackPage"><option>Today</option><option>Check</option><option>Journey</option><option>Learn</option><option>Profile</option></select></label><label>Explanation (optional)<textarea id="feedbackNote" maxlength="2000"></textarea></label><p>Application version: consumer-continuity-v1. No account records or photos are attached automatically.</p><button class="button quiet" type="submit">Save local feedback</button><p id="feedbackStatus" role="status"></p></form>';$('profile-privacy').append(feedback);
@@ -251,21 +549,28 @@
     const priorHelp=document.querySelector('.capture-help');if(priorHelp){const formats=priorHelp.querySelector('p');if(formats)capture.append(formats);priorHelp.remove();}
     page(document.querySelector('.page-active')?.id);
   }
-  function page() {
+  function page(target) {
     const enabled=Boolean(window.ConsumerClient?.enabled),account=signed();
     for(const id of ['episodeWorkspace','visitBrief','savedGuides','productFeedback','assessmentEpisodeField'])if($(id))$(id).hidden=!account;
     $('workspaceSearch').placeholder=enabled?'Search records and guides':'Search health guides';$('workspaceSearch').setAttribute('aria-label',$('workspaceSearch').placeholder);
     if($('checkinImage'))$('checkinImage').closest('label').hidden=enabled;
-    if(account&&loadedOwner!==owner())load();
+    if (account && loadedOwner !== owner()) {
+      const version = epoch, currentOwner = owner();
+      void load().then(() => {
+        if (target === 'progress' && active(version, currentOwner)) refreshConcernOnJourney();
+      });
+    } else if (account && target === 'progress') refreshConcernOnJourney();
   }
-  window.ContinuityUI={enabled:()=>Boolean(window.ConsumerClient?.enabled),retryKey(path,payload){const signature=JSON.stringify([path,payload]);if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());return retryKeys.get(signature);},assessmentEpisode:()=>signed()?$('assessmentEpisode')?.value||'':'',page,changed,correctEvent,linkAssessment,reviewCheckin,guide,explain,search:openSearch,
+  window.ContinuityUI={enabled:()=>Boolean(window.ConsumerClient?.enabled),retryKey(path,payload){const signature=JSON.stringify([path,payload]);if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());return retryKeys.get(signature);},assessmentEpisode:()=>signed()?$('assessmentEpisode')?.value||'':'',assessmentAreaChanged,page,changed,correctEvent,linkAssessment,reviewCheckin,guide,explain,search:openSearch,
     routineSelected(id){$('checkinEpisode').value=links['routine:'+id]?.episode_id||'';},
     scheduleLoaded(link){reminderVersion++;message('reminderPreview','');scheduleLink=link;$('scheduleEpisode').value=link.episode_id||'';},scheduleLink:()=>({episode_id:$('scheduleEpisode')?.value||'',link_version:scheduleLink.version||0}),
     progress(){page();renderCheckinHistory();},
     clear(){epoch++;dialogVersion++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();
-      for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();const episodeSubmit=$('episodeForm')?.querySelector('[type=submit]');if(episodeSubmit)episodeSubmit.disabled=false;resetBriefDates();invalidateBrief('');
-      for(const id of ['assessmentEpisode','checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id));
-      for(const id of ['unifiedResults','savedGuideList','checkinCorrections','briefSelection','briefStatus','continuityStatus','feedbackStatus','reminderPreview','unifiedStatus'])$(id)?.replaceChildren();$('continuityDialog')?.replaceChildren();}
+      clearConcernOverview();
+      if ($('visitBrief')) $('visitBrief').open = false;
+      for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();const episodeSubmit=$('episodeForm')?.querySelector('[type=submit]');if(episodeSubmit)episodeSubmit.disabled=false;resetBriefDates();invalidateBrief();
+      for(const id of ['assessmentEpisode','checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id),'',id==='journeyEpisodeId'?'All concerns':undefined);
+      for(const id of ['unifiedResults','savedGuideList','checkinCorrections','continuityStatus','feedbackStatus','reminderPreview','unifiedStatus'])$(id)?.replaceChildren();$('continuityDialog')?.replaceChildren();}
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();

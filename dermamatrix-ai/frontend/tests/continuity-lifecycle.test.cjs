@@ -31,7 +31,7 @@ function harness(){
   const get=id=>{if(!nodes.has(id)){const node=new Element();node.id=id;}return nodes.get(id);};
   const fallback=new Element('h1'),trigger=new Element('button');
   document={getElementById:get,createElement:tag=>new Element(tag),readyState:'loading',addEventListener(){},querySelector:()=>fallback,activeElement:trigger};
-  const context={window:{ConsumerClient:{enabled:true},EngagementUI:{refresh:async()=>{},filterEpisode(){}}},state:{profile:{patient_id:'owner-A'},checkins:[],routines:[]},document,Option:class{constructor(text,value){this.text=text;this.value=value;}},crypto:require('node:crypto').webcrypto,currentDate:()=> '2026-10-30',Date,URLSearchParams,requestAnimationFrame:fn=>frames.push(fn),toast(){},loadProgress:async()=>true,console,
+  const context={window:{ConsumerClient:{enabled:true},EngagementUI:{refresh:async()=>{},filterEpisode(){}}},state:{profile:{patient_id:'owner-A'},checkins:[],routines:[]},document,Option:class{constructor(text,value){this.text=text;this.value=value;}},crypto:require('node:crypto').webcrypto,currentDate:()=> '2026-10-30',Date,URLSearchParams,AbortController,setTimeout,clearTimeout,requestAnimationFrame:fn=>frames.push(fn),toast(){},loadProgress:async()=>true,console,
     requestJSON:(url,options)=>{
       if(url==='/api/episodes'&&!options)return Promise.resolve({episodes:[],body_areas:[]});
       if(url==='/api/episode-links')return Promise.resolve({links:{}});
@@ -39,14 +39,14 @@ function harness(){
       return new Promise((resolve,reject)=>pending.push({url,resolve,reject}));
     }};
   let source=fs.readFileSync(path.join(__dirname,'../continuity.js'),'utf8');
-  source=source.replace('  window.ContinuityUI={','  globalThis.api={dialog,previewBrief,invalidateBrief,resetBriefDates,createEpisode};\n  window.ContinuityUI={');
+  source=source.replace('  window.ContinuityUI={','  globalThis.api={dialog,previewBrief,downloadVisitBrief,invalidateBrief,resetBriefDates,createEpisode};\n  window.ContinuityUI={');
   vm.createContext(context);vm.runInContext(source,context);
   get('continuityDialog');const brief=get('visitBriefForm');for(const id of ['briefStart','briefEnd','briefQuestions'])brief.append(get(id));
   get('briefStart').value='2026-10-01';get('briefEnd').value='2026-10-30';
   return{context,api:context.api,ui:context.window.ContinuityUI,get,pending,frames,document,trigger,content:()=>new Element(),state:context.state};
 }
 const submit=h=>h.get('continuityDialog').firstChild.onsubmit({preventDefault(){}});
-const preview=(id,notice)=>({brief:{assessments:id?[{assessment_id:id,area:'Sweat',created_at:'2026-10-30T12:00:00Z'}]:[],counts:{assessments:id?1:0,checkins:0,routine_actions:0},photo_notice:notice}});
+const preview=(id,notice)=>({brief:{episode:{label:'Synthetic concern'},start:'2026-10-01',end:'2026-10-30',assessments:id?[{assessment_id:id,area:'Sweat',created_at:'2026-10-30T12:00:00Z'}]:[],counts:{assessments:id?1:0,checkins:0,routines:0,routine_actions:0},photo_notice:notice}});
 
 test('a delayed correction success refreshes records without closing a replacement dialog',async()=>{
   const h=harness();let release;
@@ -82,7 +82,7 @@ test('the latest clinician preview wins when responses arrive out of order',asyn
   const h=harness();const old=h.api.previewBrief();h.get('briefQuestions').value='Latest';h.api.invalidateBrief();const latest=h.api.previewBrief();
   h.pending[1].resolve(preview('new-result','Latest selection'));await latest;
   h.pending[0].resolve(preview('old-result','Old selection'));await old;
-  assert.match(h.get('briefStatus').textContent,/Latest selection/);assert.doesNotMatch(h.get('briefStatus').textContent,/Old selection/);assert.equal(h.get('briefSelection').firstChild.firstChild.value,'new-result');assert.equal(h.get('downloadBrief').disabled,false);
+  assert.match(h.get('briefLimits').textContent,/Latest selection/);assert.doesNotMatch(h.get('briefLimits').textContent,/Old selection/);assert.equal(h.get('briefSelection').firstChild.firstChild.value,'new-result');assert.equal(h.get('downloadBrief').disabled,false);
 });
 test('editing the brief invalidates its selection and discards an in-flight response',async()=>{
   const h=harness();const old=h.api.previewBrief();h.get('briefStart').value='2026-10-15';h.api.invalidateBrief('Selection changed.');
@@ -92,7 +92,7 @@ test('editing the brief invalidates its selection and discards an in-flight resp
 test('an older preview failure cannot overwrite a newer success or unlock its pending request',async()=>{
   const h=harness();const old=h.api.previewBrief();h.api.invalidateBrief();const latest=h.api.previewBrief();h.pending[0].reject(Error('Old failure'));await old;
   assert.equal(h.get('previewBrief').disabled,true);h.pending[1].resolve(preview(null,'Latest empty selection'));await latest;
-  assert.match(h.get('briefStatus').textContent,/Latest empty selection/);assert.equal(h.get('previewBrief').disabled,false);
+  assert.match(h.get('briefLimits').textContent,/Latest empty selection/);assert.equal(h.get('previewBrief').disabled,false);
 });
 test('account clear removes private brief input and restores a usable default date range',()=>{
   const h=harness();h.get('briefQuestions').value='Private question';h.get('briefSelection').append(h.content());h.ui.clear();
@@ -102,6 +102,32 @@ test('invalid brief fields are rejected before sending a request',async()=>{
   const h=harness();h.get('visitBriefForm').valid=false;await h.api.previewBrief();assert.equal(h.pending.length,0);
 });
 
+test('editing the brief during PDF generation aborts the download and preserves the new scope', async () => {
+  const h = harness();
+  const previewing = h.api.previewBrief();
+  h.pending[0].resolve(preview('selected-result','Current selection'));
+  await previewing;
+  let receiveBlob, signal, body, downloads = 0;
+  const blob = new Promise(resolve => { receiveBlob = resolve; });
+  h.context.fetchForWorkspace = async (_path, options) => {
+    signal = options.signal;
+    body = JSON.parse(options.body);
+    return {ok:true, headers:{get:()=> 'application/pdf'}, blob:()=>blob};
+  };
+  h.context.URL = {createObjectURL(){downloads++;return 'blob:synthetic';}};
+  const downloading = h.api.downloadVisitBrief({preventDefault(){}});
+  assert.deepEqual(body.assessment_ids,['selected-result']);
+  await Promise.resolve();
+  h.get('briefQuestions').value = 'New private input';
+  h.api.invalidateBrief('Preview the new scope.');
+  assert.equal(signal.aborted,true);
+  receiveBlob({});
+  await downloading;
+  assert.equal(downloads,0);
+  assert.equal(h.get('briefQuestions').value,'New private input');
+  assert.equal(h.get('briefStatus').textContent,'Preview the new scope.');
+  assert.equal(h.get('downloadBrief').disabled,true);
+});
 
 function episodeForm(h) {
   const form=h.get('episodeForm'),button=h.content();button.type='submit';form.append(button);
@@ -110,7 +136,11 @@ function episodeForm(h) {
   return {form,button,event:{preventDefault(){},currentTarget:form}};
 }
 test('a delayed concern creation keeps newer input and does not move the active selection',async()=>{
-  const h=harness(),{form,button,event}=episodeForm(h);h.get('journeyEpisodeId').value='current-concern';
+  const h=harness(),{button,event}=episodeForm(h);h.get('journeyEpisodeId').value='current-concern';
+  const request=h.context.requestJSON;
+  h.context.requestJSON=(url,options)=>url==='/api/episodes'&&!options
+    ? Promise.resolve({episodes:[{episode_id:'current-concern',label:'Current concern',area:'Skin',body_area:'Face'}],body_areas:[]})
+    : request(url,options);
   const pending=h.api.createEpisode(event);h.get('episodeLabel').value='Newer unsaved concern';
   h.pending[0].resolve({episode_id:'created-concern'});await pending;
   assert.equal(h.get('episodeLabel').value,'Newer unsaved concern');assert.equal(h.get('journeyEpisodeId').value,'current-concern');assert.equal(button.disabled,false);

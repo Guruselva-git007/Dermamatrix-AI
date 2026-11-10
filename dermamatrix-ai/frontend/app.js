@@ -228,6 +228,7 @@ function selectArea(area, { userSelected = false } = {}) {
   }
   state.area = area;
   state.areaSelected = state.areaSelected || userSelected;
+  if (areaChanged) window.ContinuityUI?.assessmentAreaChanged?.();
   state.reviewResultReady = false;
   if (areaChanged) state.questionnaireReviewed = false;
   updateAssessmentProgress();
@@ -971,10 +972,11 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
 }
 
 function startAreaAssessment(area) {
-  if (!selectArea(area, { userSelected: true })) return;
+  if (!selectArea(area, { userSelected: true })) return false;
   showPage('home', { scrollToTop: false });
   $('#screenTitle').focus({ preventScroll: true });
   $('#screen').scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
+  return true;
 }
 
 function setNavigationOpen(open) {

@@ -331,8 +331,8 @@ small { font-size: 13px; }
 .advanced-filter-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
 .advanced-filters summary { padding: 8px 0; font-size: 14px; color: var(--dm-blue); font-weight: 400; }
 .journey-search-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 6px 14px; padding: 18px 0; border-bottom: 1px solid var(--dm-line); }
-.journey-search-row h4, .journey-search-row p { grid-column: 1; margin: 0; }
-.journey-search-row h4 { font-size: 16px; }
+.journey-search-row h3, .journey-search-row p { grid-column: 1; margin: 0; }
+.journey-search-row h3 { font-size: 16px; }
 .journey-search-row p { color: var(--dm-muted); font-size: 13px; }
 .journey-search-row button { grid-row: 1 / 4; align-self: center; margin: 0; }
 .journey-search-row button:nth-of-type(1) { grid-column: 2; }
@@ -815,7 +815,7 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
   .consumer-filter button { width: 100%; }
   .consumer-filter .advanced-filters { grid-column: 1; }
   .journey-search-row { display: flex; flex-wrap: wrap; gap: 8px; }
-  .journey-search-row h4, .journey-search-row p { flex: 0 0 100%; }
+  .journey-search-row h3, .journey-search-row p { flex: 0 0 100%; }
   .journey-search-row button { width: auto; font-size: 13px; min-height: 44px; padding: 8px 10px; }
   .routine-item { display: block; }
   .routine-actions { margin-top: 12px; gap: 16px; }
@@ -891,7 +891,6 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
 }
 .continuity-form textarea, #continuityDialog textarea { min-height: 88px; resize: vertical; }
 .continuity-form input[type=checkbox], #continuityDialog input[type=checkbox] { width: 20px; height: 20px; margin: 10px 8px 10px 0; accent-color: var(--dm-ink); }
-#briefSelection label { display: flex; align-items: center; overflow-wrap: anywhere; min-height: 44px; }
 #continuityDialog form { display: grid; gap: 16px; }
 #continuityDialog h2 { margin: 0; scroll-margin-top: 16px; }
 #continuityDialog .review-summary { display: grid; grid-template-columns: minmax(100px, .4fr) minmax(0, 1fr); gap: 12px 20px; margin: 0 0 20px; }
@@ -912,8 +911,9 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
 #captureGuidance .button { margin: 8px 8px 0 0; }
 #visitBrief summary, #savedGuides summary, #productFeedback summary, #captureGuidance summary, #episodeWorkspace summary { cursor: pointer; min-height: 44px; padding: 10px 0; }
 #episodeWorkspace { margin-bottom: 16px; }
-#episodeWorkspace h3 { margin: 0 0 8px; }
-#episodeWorkspace > p { margin: 0 0 8px; }
+#episodeWorkspace h2, #episodeWorkspace h3 { margin: 0; }
+#continuityStatus { margin: 8px 0 0; }
+#continuityStatus:empty, #concernOverviewStatus:empty, #briefSelection:empty { display: none; }
 #unifiedSearchDialog { width: min(760px, calc(100vw - 32px)); }
 #unifiedSearchDialog .continuity-form { grid-template-columns: minmax(0, 1fr) minmax(150px, .65fr) auto; align-items: end; }
 .patient-result-content > .result-workflow-status { margin: 0; color: var(--dm-muted); font-size: 13px; }
@@ -922,28 +922,55 @@ body[data-theme="dark"] .consumer-guidance-group { background: var(--dm-bg-soft)
 .result-plain-explanation dl { margin: 0; }
 .result-plain-explanation dt { font-weight: 600; margin-top: 12px; }
 .result-plain-explanation dd { margin: 4px 0 0; line-height: 1.55; overflow-wrap: anywhere; }
-.concern-controls { display: flex; gap: 16px; align-items: end; margin: 16px 0; }
+.concern-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, .8fr); gap: 16px; align-items: end; }
+.concern-controls p { margin: 6px 0 0; color: var(--dm-muted); }
+.concern-controls > label { display: grid; gap: 6px; min-width: 0; }
+.concern-overview { margin-top: 16px; padding: 16px; border-radius: 8px; background: var(--dm-blue-wash); overflow-wrap: anywhere; }
+.concern-overview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
+.concern-overview-head > div:first-child { flex: 1 1 13rem; min-width: 0; }
+.concern-overview-head p { margin: 4px 0 0; color: var(--dm-muted); }
+.concern-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.concern-actions .button, #retryConcernOverview { min-height: 44px; max-width: 100%; }
+#concernFacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; margin: 16px 0 0; }
+#concernFacts > div { border-top: 1px solid var(--dm-line-strong); padding-top: 12px; }
+#concernFacts dt { color: var(--dm-muted); font-size: .875rem; }
+#concernFacts dd { margin: 4px 0 0; font-weight: 500; }
+#concernFacts .text-button { display: flex; min-height: 44px; }
+#concernOverviewStatus { margin: 12px 0 0; }
+#retryConcernOverview { margin-top: 8px; }
 #mobileWorkspaceSearch { display: none; }
-.concern-controls > label { display: grid; gap: 6px; flex: 1; min-width: 0; }
+#completeJourney h2 { margin: 0 0 12px; }
 .journey-search-row { grid-template-columns: minmax(0, 1fr) auto; }
-.journey-row-actions { grid-column: 2; grid-row: 1 / span 5; align-self: center; display: flex; flex-wrap: wrap; gap: 8px; max-width: 440px; }
+.journey-row-actions { grid-column: 2; grid-row: 1 / span 5; align-self: center; display: flex; flex-wrap: wrap; gap: 6px 12px; max-width: 440px; }
 .journey-search-row .journey-row-actions button { grid-area: auto; min-height: 44px; }
-#visitBriefForm { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#visitBriefForm > label:first-child, #visitBriefForm > label:has(textarea), #visitBriefForm > p, #visitBriefForm > div, #visitBriefForm > button { grid-column: 1 / -1; }
-#visitBriefForm > button { justify-self: start; }
-#visitBriefForm > button, #visitBriefForm > p { margin: 0; }
-#briefSelection:empty { display: none; }
 #visitBrief { padding: 16px 22px; margin: 20px 0; }
-#briefSelection { display: grid; gap: 8px; }
+#visitBriefForm { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 24px; margin: 8px 0 4px; }
+.brief-fields, .brief-review { display: grid; gap: 12px; min-width: 0; overflow-wrap: anywhere; }
+.brief-review { border-inline-start: 1px solid var(--dm-line); padding-inline-start: 24px; }
+.brief-fields h3, .brief-review h3, .brief-fields p, .brief-review p { margin: 0; }
+.brief-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+#visitBriefForm .button { justify-self: start; min-height: 44px; max-width: 100%; }
+#briefPreview { display: grid; gap: 8px; }
+#briefScope, #briefSelectionSummary { font-weight: 600; }
+#briefSelection label { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px; border-top: 1px solid var(--dm-line); }
+#briefSelection label:last-child { border-bottom: 1px solid var(--dm-line); }
+#briefSelection input { flex: 0 0 20px; margin-right: 0; }
+#briefSelection label > span { min-width: 0; }
+#briefSelection label small { display: block; font-size: .875em; color: var(--dm-muted); }
+.brief-note, #briefStatus { color: var(--dm-muted); }
 @media (min-width: 900px) { #episodeForm { grid-template-columns: 1.5fr 1fr 1fr; align-items: end; } #episodeForm button { grid-column: 1 / -1; justify-self: start; } }
 @media (max-width: 900px) { .journey-row-actions { max-width: 240px; } }
+@media (max-width: 880px) {
+  #visitBriefForm { grid-template-columns: 1fr; gap: 16px; }
+  .brief-review { border-inline-start: 0; padding: 16px 0 0; border-top: 1px solid var(--dm-line); }
+}
 @media (max-width: 640px) { #mobileWorkspaceSearch { display: inline-flex; min-width: 44px; padding: 8px; background: transparent; border-color: transparent; } }
 @media (max-width: 640px) {
-  #unifiedSearchDialog .continuity-form, #visitBriefForm { grid-template-columns: 1fr; }
+  #unifiedSearchDialog .continuity-form, .concern-controls, #concernFacts { grid-template-columns: 1fr; }
   .continuity-row .button { min-height: 44px; }
-  .concern-controls { flex-direction: column; align-items: stretch; }
   .journey-row-actions { grid-column: 1; grid-row: auto; max-width: none; margin-top: 8px; }
   #visitBrief { padding: 16px; }
   #continuityDialog .review-summary { grid-template-columns: 1fr; gap: 4px; }
   #continuityDialog .review-summary dd { margin-bottom: 12px; }
 }
+@media (max-width: 420px) { .brief-dates { grid-template-columns: 1fr; } }

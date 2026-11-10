@@ -44,17 +44,21 @@ async (page, options = {}) => {
   try {
     await page.setViewportSize({ width: 1440, height: 960 });
     await page.context().clearCookies();
-    let releaseStartup;
+    let releaseStartup, captureStartup;
     const startupGate = new Promise(resolve => { releaseStartup = resolve; });
+    const startupCaptured = new Promise(resolve => { captureStartup = resolve; });
     await page.route('**/api/auth/me', async route => {
-      const response = await route.fetch(); await startupGate; await route.fulfill({ response });
-    });
-    await page.goto('http://127.0.0.1:8001/');
+      const response = await route.fetch();
+      captureStartup();
+      await startupGate;
+      await route.fulfill({ response });
+    }, {times:1});
+    await page.goto('http://127.0.0.1:8001/',{waitUntil:'domcontentloaded'});
+    await startupCaptured;
     await page.evaluate(() => showAuthGate('register'));
     await page.locator('#registerForm [name=full_name]').fill('Synthetic chosen registration');
     const startupResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/auth/me');
     releaseStartup(); await (await startupResponse).finished(); await page.waitForTimeout(80);
-    await page.unroute('**/api/auth/me');
     assert(await page.locator('#registerForm').isVisible() && await page.locator('#registerForm [name=full_name]').inputValue() === 'Synthetic chosen registration', 'Startup replaced the chosen authentication form');
     checks.push('slow startup preserves the chosen account form and input');
     await authenticate(emailA, 'Synthetic quality account A');
@@ -242,17 +246,30 @@ async (page, options = {}) => {
     await page.setViewportSize({width:1440,height:960});await nav('progress');await page.locator('#journeyTabs-results').click();
     assert(await page.locator('#briefEnd').inputValue()===await page.evaluate(()=>currentDate())&&Boolean(await page.locator('#briefStart').inputValue()),'Account entry cleared the brief date defaults');
     assert(await page.locator('#downloadBrief').isDisabled(),'Brief download is enabled before preview');
+    const previewConcern = await page.evaluate(async () => {
+      const { episode_id } = await requestJSON('/api/episodes', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},
+        body: JSON.stringify({label:'Synthetic preview concern', area:'Sweat', body_area:'Unspecified'})
+      });
+      await ContinuityUI.changed();
+      return episode_id;
+    });
     await page.evaluate(()=>document.querySelector('#visitBrief').open=true);
+    await page.locator('#briefEpisode').selectOption(previewConcern);
     let releaseBrief,briefCaptured,briefRequests=0;const briefGate=new Promise(resolve=>releaseBrief=resolve),briefReady=new Promise(resolve=>briefCaptured=resolve);
-    const briefFixture=(id,notice)=>({brief:{assessments:id?[{assessment_id:id,area:'Sweat',created_at:'2026-10-30T12:00:00Z'}]:[],counts:{assessments:id?1:0,checkins:0,routine_actions:0},photo_notice:notice}});
-    await page.route('**/api/visit-brief',async route=>{briefRequests++;if(briefRequests===1){briefCaptured();await briefGate;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(briefFixture('synthetic-obsolete','Older preview'))});}else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(briefFixture(null,'Latest preview'))});});
+    const briefFixture=(route,id,notice)=>{
+      const {start,end}=route.request().postDataJSON();
+      return {brief:{episode:{label:'Synthetic preview concern'},start,end,assessments:id?[{assessment_id:id,area:'Sweat',created_at:'2026-10-30T12:00:00Z'}]:[],counts:{assessments:id?1:0,checkins:0,routines:0,routine_actions:0},photo_notice:notice}};
+    };
+    await page.route('**/api/visit-brief',async route=>{briefRequests++;if(briefRequests===1){briefCaptured();await briefGate;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(briefFixture(route,'synthetic-obsolete','Older preview'))});}else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(briefFixture(route,null,'Latest preview'))});});
     await page.locator('#briefQuestions').fill('Synthetic previous question');await page.locator('#previewBrief').click();await briefReady;
-    await page.locator('#briefQuestions').fill('Synthetic latest question');await page.locator('#previewBrief').click();await page.waitForFunction(()=>document.querySelector('#briefStatus').textContent.includes('Latest preview'));
+    await page.locator('#briefQuestions').fill('Synthetic latest question');await page.locator('#previewBrief').click();await page.waitForFunction(()=>document.querySelector('#briefLimits').textContent.includes('Latest preview'));
     const oldBriefResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/visit-brief');releaseBrief();await (await oldBriefResponse).finished();await page.waitForTimeout(40);await page.unroute('**/api/visit-brief');
-    assert((await page.locator('#briefStatus').textContent()).includes('Latest preview')&&await page.locator('#briefSelection input').count()===0,'Old clinician preview replaced the latest selection');
+    assert((await page.locator('#briefLimits').textContent()).includes('Latest preview')&&await page.locator('#briefSelection input').count()===0,'Old clinician preview replaced the latest selection');
     checks.push('default brief dates survive sign-in and out-of-order previews preserve the latest selection');
     await page.locator('#briefQuestions').fill('Synthetic changed question');assert(await page.locator('#downloadBrief').isDisabled()&&await page.locator('#briefSelection input').count()===0,'Edited brief can download an obsolete preview');
-    assert((await page.locator('#briefStatus').textContent()).includes('Selection changed'),'Brief editing has no recovery instruction');
+    assert((await page.locator('#briefStatus').textContent()).includes('Preview the records again'),'Brief editing has no recovery instruction');
     checks.push('brief editing invalidates download until its selected records are previewed again');
 
     await page.evaluate(async()=>{

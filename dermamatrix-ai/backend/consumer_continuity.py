@@ -289,6 +289,64 @@ def register_continuity(app, database, current_user, read_summary, score):
                 raise Conflict('This retry identifier was used for another concern.')
             return jsonify(episode_id=saved['record_id'], **data), 201
 
+    @bp.get('/api/episodes/<episode_id>/overview')
+    def episode_overview(episode_id):
+        from account_data_export import begin_account_data_snapshot
+
+        with owned() as (connection, user):
+            owner = user['id']
+            connection.commit()
+            begin_account_data_snapshot(connection)
+            require_episode(connection, owner, episode_id)
+
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT a.assessment_id, a.area, a.created_at, a.result_json
+                    FROM analysis_records a
+                    WHERE a.user_id=%s AND EXISTS (
+                        SELECT 1 FROM consumer_records l
+                        WHERE l.user_id=a.user_id AND l.kind='episode_link'
+                          AND l.subject_id=CONCAT('assessment:', a.assessment_id)
+                          AND JSON_UNQUOTE(JSON_EXTRACT(l.data_json, '$.episode_id'))=%s
+                    )
+                    ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+                """, (owner, episode_id))
+                assessment = cursor.fetchone()
+                cursor.execute("""
+                    SELECT c.id, c.checkin_id, c.checkin_date, c.reported_trend
+                    FROM progress_checkins c
+                    WHERE c.user_id=%s AND EXISTS (
+                        SELECT 1 FROM consumer_records l
+                        WHERE l.user_id=c.user_id AND l.kind='episode_link'
+                          AND l.subject_id=CONCAT('checkin:', c.checkin_id)
+                          AND JSON_UNQUOTE(JSON_EXTRACT(l.data_json, '$.episode_id'))=%s
+                    )
+                """, (owner, episode_id))
+                checkin_rows = cursor.fetchall()
+                cursor.execute("""
+                    SELECT COUNT(*) AS linked_routine_count
+                    FROM care_routines r
+                    WHERE r.user_id=%s AND EXISTS (
+                        SELECT 1 FROM consumer_records l
+                        WHERE l.user_id=r.user_id AND l.kind='episode_link'
+                          AND l.subject_id=CONCAT('routine:', r.routine_id)
+                          AND JSON_UNQUOTE(JSON_EXTRACT(l.data_json, '$.episode_id'))=%s
+                    )
+                """, (owner, episode_id))
+                routine_count = cursor.fetchone()['linked_routine_count']
+
+            if assessment:
+                assessment['unavailable'] = read_summary(assessment.pop('result_json')) is None
+                assessment['created_at'] = utc_iso(assessment['created_at'])
+            checkin = None
+            if checkin_rows:
+                latest = next((row for row in effective_checkins(connection, owner, checkin_rows) if not row.get('voided')), None)
+                if latest:
+                    checkin = dict(checkin_id=latest['checkin_id'], checkin_date=str(latest['checkin_date'])[:10],
+                                   reported_trend=latest['reported_trend'], revision=latest['revision'])
+            return jsonify(overview=dict(episode_id=episode_id, latest_assessment=assessment,
+                                         latest_checkin=checkin, linked_routine_count=routine_count))
+
     @bp.put('/api/episode-links/<entity>/<identifier>')
     def associate(entity, identifier):
         payload = json_object()

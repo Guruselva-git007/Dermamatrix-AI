@@ -110,13 +110,27 @@
       for(const result of data.analyses){
         const row=node('article',undefined,'journey-search-row');
         const title=result.summary.assessment_result?.condition?.name||result.summary.condition_intelligence?.finding?.name||`${result.area} assessment`;
-        row.append(node('h4',title),node('p',`${result.area} · ${new Date(result.created_at).toLocaleString()}${result.unavailable?' · Original record unavailable':''}`));
+        row.append(node('h3',title),node('p',`${result.area} · ${new Date(result.created_at).toLocaleString()}${result.unavailable?' · Original record unavailable':''}`));
         if(result.context?.episode||result.context?.body_area)row.append(node('p',`Your labels: ${result.context.episode||'No episode'} · ${result.context.body_area||'No body area'}`));
-        row.append(action('Edit labels',()=>editContext(result)));
-        row.append(action('Link concern',()=>window.ContinuityUI?.linkAssessment(result)));
         if(result.episode_link?.label)row.append(node('p',`Concern: ${result.episode_link.label} · ${result.episode_link.body_area}`));
-        if(!result.unavailable)row.append(action('Open result',()=>{const old=state.analyses.findIndex(r=>r.assessment_id===result.assessment_id);if(old<0)state.analyses.push(result);else state.analyses[old]=result;showSavedReport(result.assessment_id);}),action('Download PDF',()=>{if(!state.analyses.some(r=>r.assessment_id===result.assessment_id))state.analyses.push(result);downloadSavedReport(result.assessment_id);}));
-        const actions=node('div',undefined,'journey-row-actions');for(const control of [...row.querySelectorAll('button')])actions.append(control);row.append(actions);
+        const actions = node('div', undefined, 'journey-row-actions');
+        if (!result.unavailable) {
+          actions.append(action('Open result', () => {
+            const index = state.analyses.findIndex(item => item.assessment_id === result.assessment_id);
+            if (index < 0) state.analyses.push(result);
+            else state.analyses[index] = result;
+            showSavedReport(result.assessment_id);
+          }));
+          actions.append(action('Download PDF', () => {
+            if (!state.analyses.some(item => item.assessment_id === result.assessment_id)) state.analyses.push(result);
+            downloadSavedReport(result.assessment_id);
+          }, 'text-button'));
+        }
+        actions.append(
+          action('Edit labels', () => editContext(result), 'text-button'),
+          action('Link concern', () => window.ContinuityUI?.linkAssessment(result), 'text-button')
+        );
+        row.append(actions);
         $('journeySearchResults').append(row);
       }
       historyCursor=data.next_cursor;$('journeyMore').hidden=!historyCursor;status('journeySearchStatus',`${$('journeySearchResults').querySelectorAll('article').length} matching results shown. Newest saved first.`);
@@ -233,7 +247,7 @@
     $('scheduleRoutine').onchange=loadSchedule;
     $('scheduleEditor').onsubmit=saveSchedule;
     $('showReminders').onclick=async()=>{const v=generation;try{const d=await requestJSON('/api/reminders');if(!current(v))return;status('reminderStatus',`Transport: ${d.transport}. ${d.jobs.length} recent jobs. ${d.jobs.map(j=>j.state.replaceAll('_',' ')).join(', ')||'No jobs scheduled yet.'} Delivery is not confirmed by queueing.`);}catch(e){if(current(v))status('reminderStatus',e.message);}};
-    const history=node('section',undefined,'consumer-panel');history.id='completeJourney';history.hidden=true;history.innerHTML='<h3>Search all saved results</h3><form id="journeySearchForm" class="consumer-filter"><label>Search<input id="journeySearch" type="search" maxlength="120" placeholder="Concern or result text"></label><label>Area<select id="journeyArea"><option value="">All areas</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><label>Personal concern label<input id="journeyEpisode" maxlength="120" placeholder="Exact saved label"></label><label>Body area<input id="journeyBodyArea" maxlength="80" placeholder="Exact saved label"></label><button class="button quiet" type="submit">Search results</button></form><p id="journeySearchStatus" role="status" aria-live="polite"></p><div id="journeySearchResults"></div><button id="journeyMore" type="button" class="button quiet" hidden>Load next results</button>';
+    const history=node('section',undefined,'consumer-panel');history.id='completeJourney';history.hidden=true;history.innerHTML='<h2>Saved results</h2><form id="journeySearchForm" class="consumer-filter"><label>Search<input id="journeySearch" type="search" maxlength="120" placeholder="Concern or result text"></label><label>Area<select id="journeyArea"><option value="">All areas</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><label>Personal concern label<input id="journeyEpisode" maxlength="120" placeholder="Exact saved label"></label><label>Body area<input id="journeyBodyArea" maxlength="80" placeholder="Exact saved label"></label><button class="button quiet" type="submit">Search results</button></form><p id="journeySearchStatus" role="status" aria-live="polite"></p><div id="journeySearchResults"></div><button id="journeyMore" type="button" class="button quiet" hidden>Load next results</button>';
     schedulePanel.after(history);$('journeySearchForm').onsubmit=e=>{e.preventDefault();loadHistory(true);};$('journeyMore').onclick=()=>loadHistory();
     const contextDialog=node('dialog',undefined,'consumer-dialog');contextDialog.id='resultContextDialog';contextDialog.setAttribute('aria-labelledby','contextTitle');contextDialog.innerHTML='<form id="resultContextForm"><h2 id="contextTitle">Organise this result</h2><p id="contextStatus" role="status"></p><label>Personal concern label<input id="contextEpisode" maxlength="120"></label><label>Body area<input id="contextBodyArea" maxlength="80"></label><div class="consumer-actions"><button id="cancelResultContext" type="button" class="button quiet">Cancel</button><button type="submit" class="button primary">Save labels</button></div></form>';document.body.append(contextDialog);$('cancelResultContext').onclick=closeContext;
     const learn=node('section',undefined,'learn-section');learn.id='learn';learn.dataset.page='learn';learn.setAttribute('aria-labelledby','learnTitle');learn.innerHTML='<h1 id="learnTitle">Understand your concerns</h1><p>Source-linked education, separate from your assessment. These guides do not diagnose or prescribe.</p><form id="learnForm" class="consumer-filter"><label>Search guides<input id="learnSearch" type="search" maxlength="120" placeholder="Search a topic"></label><label>Category<select id="learnArea"><option value="">All categories</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><button class="button quiet" type="submit">Find guides</button></form><p id="learnStatus" role="status"></p><div id="learnList"></div><article id="learnDetail" class="consumer-panel" hidden></article>';
