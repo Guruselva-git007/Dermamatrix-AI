@@ -1,11 +1,53 @@
 # Consumer development execution status
 
-Updated: 7 November 2026. Canonical checkpoint. Sequential implementation;
+Updated: 10 November 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current batch — consumer editing reliability and project polish (7 November):
+**Current batch — saved concerns, follow-up and visit briefs (10 November).
+Complete within independently verifiable development scope.**
+Source `09d49f392c6d22b3b5a92800c0d424b4efca67ba` is pushed to
+`codex/consumer-evolution`. **Exact-source CI passed 262 backend tests,
+121 frontend tests and 321 browser checks (107 each in Chrome, Firefox and
+WebKit)**, including isolated migrations, tracked-source hygiene and the pinned
+dependency audit. [CI run 42763431244](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42763431244)
+
+Journey Results now shows a selected concern's latest explicitly linked result,
+effective self-reported check-in and linked routine count. The read-only
+overview uses one owner-scoped snapshot of existing records. It can reopen
+older results beyond the recent-history list. A cancelled follow-up preserves
+the open Check draft's photo, area and linked concern. Check offers concerns
+compatible with its area and Journey creation leaves the current draft alone.
+Saved result rows put Open result first. The existing clinician brief takes
+the selected concern directly, retains editable dates and questions, previews
+the scope and automatically included records, and tracks individual assessment
+choices. Changing the scope invalidates its preview and cancels an in-flight
+download.
+
+Local 121 frontend tests, 12 runner tests, three focused synthetic MySQL
+contracts and 46 focused WebKit browser checks pass. Light and dark layout
+samples at 320, 390, 768, 1280 and 1440 px preserve reflow, IBM Plex and 44 px
+key actions. Keyboard, enlarged text and reduced motion have separate browser
+evidence. Of 186 baseline file hashes, 175 match. Changes are limited to six
+runtime files and five test files. Existing schema, consent, original medical
+records, models, scoring, reports, exports and no-photo-retention contracts
+remain authoritative.
+
+Evidence and resumable state are in `local-artifacts/consumer-refinement-2026-11-10/`.
+The consumer validation report records reproduction steps and before/after checks.
+The isolated app, MySQL and test browsers are closed. Temporary SQL accounts
+were removed and synthetic evidence retained. Normal listener PIDs matched
+before and after cleanup. Private completion evidence records Git synchronization
+and release of the task sleep helper. The existing port 8000 server loads the
+new backend route on its next restart.
+
+Native picker/save/correction, spoken accessibility, physical devices and
+representative sessions remain deferred. Resume at the manual Mac Safari
+Upload step in `consumer-device-checks.md` when the owner resumes native
+verification. Development remains English-only with email and deployment deferred.
+
+**Previous batch — consumer editing reliability and project polish (7 November):
 complete within the independently verifiable development scope.**
 Reproduced and corrected three P1 editing losses: routine switching cleared
 unsaved steps, an earlier label save closed the replacement dialog, and concern

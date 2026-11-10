@@ -924,3 +924,94 @@ lifecycle, continuity.js concern submission, their existing lifecycle tests,
 browser-editing.js, the runner and these canonical development/report/checkpoint
 references. Preserve the verified state; continue owner-assisted acceptance when
 available instead of reopening completed work without a demonstrated defect.
+
+## Saved concerns, follow-up and visit briefs — 10 November 2026
+
+Baseline `4ba9952af0dfba3788dc638bee938392cbe4f980`. The isolated browser
+opened Today, Check, Journey, Learn, Profile, Products and Find a Doctor in
+guest and signed-in workspaces. A fresh account and a populated synthetic
+account covered empty and filled states. A second pass exercised review,
+validation, an interrupted questionnaire request and successful retry. The
+baseline recorded no uncaught browser errors. This pass selected four related
+changes in the Journey → follow-up → visit-brief path.
+
+| Finding and priority | Reproduction and observed impact | Implemented correction and acceptance evidence |
+| --- | --- | --- |
+| JR-01 / P1 — cancelling a follow-up changes the Check draft | Choose a Skin photo, open a Sweat concern in Journey and dismiss the discard confirmation. Before, Skin and its file remained but the linked concern became Sweat and a success toast appeared. A later submission would encounter an incompatible concern. | Apply the link only after the area accepts the transition. Check lists the matching area and General. Creating a Journey concern leaves the Check selection alone. Chrome and WebKit dismiss and then accept the actual confirmation with a synthetic file. Cancel preserves area, photo and existing concern. Accept switches to the intended concern. |
+| JR-02 / P2 — selecting a concern lacks a usable overview | In populated Journey Results, the concern filter narrowed records but gave no latest check-in, linked routine count or direct access to its latest saved result. A consumer had to check other views for this context. | Add a read-only, owner-scoped concern summary using explicit links and the existing check-in revision projection. Three isolated SQL contracts cover empty, guest/foreign, older than the 50-result window, unavailable history, independent links, archived routines, corrections and voiding. The browser opens the right saved result and sees the effective corrected check-in. |
+| JR-03 / P2 — competing actions in Results | The selected concern and general search presented separately without a clear next action, the Journey heading offered Health notes, and row editing/linking competed with Open result. The concern selector was already confined to Results. | Label the selector by what it filters. Give the selected concern a clear follow-up action and direct visit-brief action. Put Open result first and use quieter row actions for the original PDF, labels and linking. Keep Health notes accessible in Profile. Both themes and five widths confirm the visual hierarchy. |
+| JR-04 / P2 — brief selection is hard to verify | Preview two assessments and untick one. One remained selected, but the status still read “Available: 2 assessments”. The concern had to be chosen again. In an intermediate screenshot, two checks shared a timestamp and looked identical. | Open the existing brief for the selected concern, preserving dates and questions. Show scope, effective check-in/routine counts, numbered results with original saved titles/times and a live selected count. Revalidate the selected IDs on download. A scope edit aborts an in-flight PDF and suppresses late completion. The browser verifies 2 of 2 → 1 of 2 and downloads the actual PDF with the reviewed concern, dates and one selected ID. |
+
+### Design and visual evidence
+
+Label/value facts follow the NHS summary-list pattern. The brief separates
+scope from review in the GOV.UK Check answers pattern and stacks at narrower
+widths to preserve reflow. [NHS summary list](https://service-manual.nhs.uk/design-system/components/summary-list),
+[GOV.UK Check answers](https://design-system.service.gov.uk/patterns/check-answers/),
+[W3C reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html).
+
+| Dimension | Checked result |
+| --- | --- |
+| Typography | IBM Plex Sans remains the computed face. Saved titles and muted date lines stay readable in both themes. |
+| Layout | The concern selector aligns with the introduction on wide screens. Brief scope and review sit side by side on desktop and stack on tablet and mobile. |
+| Hierarchy | The selected concern leads with Start follow-up. Result opening and PDF download lead their respective tasks. |
+| Spacing | Activity facts share aligned dividers, controls remain reachable and hidden status text adds no empty block. |
+| Consistency | White/sky blue and deep navy/cyan tokens, existing form styles and disclosure controls are reused. |
+| Responsiveness | Ten layout samples at 320/390/768/1280/1440 px in light and dark had no horizontal page overflow. The four key action heights were 44 px. A 390 px enlarged-text sample with a 32 px concern heading retained all three checklist items without horizontal overflow. |
+| Accessibility | Keyboard Tab reaches Follow-up and Prepare visit brief in order. Enter moves visible, unobscured focus to the concern selector even on the narrow screen. Reduced motion was emulated. A held overview, injected 503, keyboard retry and empty concern were observed separately. |
+
+Private evidence is in `local-artifacts/consumer-refinement-2026-11-10/`.
+`audit-browser.json`, `audit-flow.json` and `before-*.png` record the baseline.
+`visual-final.json`, `visual-states.json` and `final-*.png` record the changed
+views. These are browser observations and design judgments. Representative
+participant success and native spoken behavior remain external checks.
+
+### Integration and scope
+
+The local results are 121 frontend tests, 12 runner tests, three isolated
+MySQL overview tests and 46 focused WebKit checks (15 continuity, 27 product
+quality and four offline). The prior Chrome focused pass also had 46 checks.
+Its PDF selection logic matches the final source. WebKit reverified the final
+row labels and startup fixture. The first local test compared an expired toast's
+stored text. It now asserts that no new toast is shown after Cancel. One
+WebKit quality run hit a startup request-routing race. The fixture now holds
+one captured startup response while preserving the same registration assertion.
+
+The continuity suite exercises assessment save/follow-up, Today and routine
+correction lineage, check-in correction, dropped response and idempotent retry,
+guide bookmark/search/reopen/remove, brief export and account switching. The
+two saved browser-test PDFs were read with macOS PDFKit. Each is one page with
+one assessment reference, the selected concern, the retained personal question,
+the effective “improving” check-in at revision 1 and the photo notice.
+The brief starts from existing linked records. Automatic sections use their
+saved state at download time. Original medical evidence and revisions are preserved.
+The GET reads through the established no-store and session-pin path. No polling
+or new persistence is required. Of 186 baseline hashes, 175 match, including the
+schema, model, canonical evidence, consent enforcement, upload handling, PDF
+generation, export and offline-cache sources. Six runtime files and five test
+files change. No timing or usability improvement percentage was measured.
+
+Important files are `backend/consumer_continuity.py`,
+`frontend/continuity.js`, `frontend/product.css`, `frontend/engagement.js`,
+`frontend/app.js` and `frontend/workspace.js`. Source
+`09d49f392c6d22b3b5a92800c0d424b4efca67ba` is pushed to
+`codex/consumer-evolution`. The exact-source run passed 262 backend tests,
+121 frontend tests and 321 browser checks (107 each in Chrome, Firefox and
+WebKit), plus explicit synthetic migrations and tracked-source hygiene. Its
+pinned audit reported no known vulnerabilities. The job logged an annotation
+about the existing workflow actions' Node runtime deprecation.
+[CI run 42763431244](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42763431244)
+
+The closing Git receipt changes these two Markdown files. Its branch
+synchronization and the task sleep helper's exit are recorded privately in
+`completion.json`. The synthetic app and MySQL listeners closed, the two host
+entries for the temporary SQL user were removed, and synthetic rows were
+retained. Normal ports 8000 and 3307 had identical listener PIDs before and
+after cleanup. Owned test browsers closed and CLI artifacts were archived
+privately. The existing port 8000 server loads the new endpoint on restart.
+
+The native Mac picker, save/correction interaction, physical phones,
+VoiceOver/TalkBack speech and representative consumer sessions remain deferred.
+The next owner-assisted step is the manual synthetic Safari Upload check in
+`consumer-device-checks.md`. Development and verification use English and
+isolated synthetic data. Email providers and deployment remain deferred.
