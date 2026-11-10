@@ -5,7 +5,47 @@ Updated: 10 November 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current batch — saved concerns, follow-up and visit briefs (10 November).
+**Current batch — Today, Check and saved-result handoffs (10 November).
+Complete within independently verifiable development scope.**
+Source `8f96c589f6e393cd67cf38df0f42bad7d572ab5e` is synchronized on
+`codex/consumer-evolution`. **Exact-source CI passed 261 backend tests, 121
+frontend tests and 345 browser checks (115 each in Chrome, Firefox and WebKit)**.
+One backend presentation case was skipped because its local fixture was
+unavailable. Isolated migrations, tracked-source hygiene and the pinned audit
+passed. [CI run 42820618506](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42820618506)
+
+Today shows area choices before secondary account tools. A real selected
+photo or edited questionnaire can resume in the same tab. Recent activity
+appears when saved records exist. The latest result opens directly and routine
+actions lead to Routines, with the editor focused for a first routine. Check-ins
+and saved-results links select their respective Journey tabs. A saved-result
+read cannot reopen after leaving its page, switching Journey tabs or starting
+another assessment. Historical questionnaires lead to saved results while a
+live questionnaire still lets the user edit their current answers.
+
+Local 121 frontend tests, 12 runner tests and eight focused checks each in Chrome
+and WebKit pass. The test lost a committed questionnaire response and confirmed
+the retry recovered exactly one saved record. Twenty browser layout samples
+covered Today and the saved-result dialog at 320, 390, 768, 1280 and 1440 px in
+both themes. Keyboard focus, enlarged text, reduced-motion media and routine
+loading/error/retry have separate receipts. Of 186 baseline hashes, 179 match.
+The batch changes five frontend runtime files and three test files. It reuses
+the existing owner-scoped API and authoritative records.
+
+Evidence is in `local-artifacts/check-handoff-2026-11-10/`. The validation report
+contains reproduction steps and before/after checks. The isolated app, database
+and browsers closed, and the two temporary SQL host entries were removed.
+Synthetic records and evidence were retained. Normal listener PIDs matched
+before and after cleanup. The private completion receipt records Git
+synchronization and the task sleep helper's verified exit.
+
+Native picker/save/correction, spoken accessibility, physical phones and participant
+sessions remain deferred.
+The next owner-assisted step is the manual synthetic Safari Upload in
+`consumer-device-checks.md`. Development and verification remain English-only,
+with providers disabled and deployment deferred.
+
+**Previous batch — saved concerns, follow-up and visit briefs (10 November).
 Complete within independently verifiable development scope.**
 Source `09d49f392c6d22b3b5a92800c0d424b4efca67ba` is pushed to
 `codex/consumer-evolution`. **Exact-source CI passed with 261 backend tests,

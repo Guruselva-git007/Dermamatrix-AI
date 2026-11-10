@@ -1017,3 +1017,66 @@ VoiceOver/TalkBack speech and representative consumer sessions remain deferred.
 The next owner-assisted step is the manual synthetic Safari Upload check in
 `consumer-device-checks.md`. Development and verification use English and
 isolated synthetic data. Email providers and deployment remain deferred.
+
+## Today, Check and saved-result handoffs — 10 November 2026
+
+Baseline `8658ee08d4e309c8136dbf23fc088598a15fc2a6` with runtime `09d49f3`.
+The isolated audit covered a first-time guest, a new account, a returning account
+and a same-tab photo draft. The real synthetic Hair upload returned HTTP 200
+with `MODEL_UNAVAILABLE` and the visible guest non-persistence status. A real
+Sweat questionnaire showed its local account save status. These results verify
+the workflow and stated limitations with synthetic inputs.
+
+| Priority | Observed baseline | Implemented change and proof |
+| --- | --- | --- |
+| CH-01 / P1 — late saved-result dialog | Start opening a saved result on Today, hold the valid detail response, then go to Check. Releasing it opened the old result over Check. | The existing saved-read version is invalidated by route changes, Journey tab changes and a new assessment. Existing workspace and session guards remain in the same path. The browser held a real response, left Today, selected another photo and returned. The response finished without reopening the result or replacing the draft. |
+| CH-02 / P1 — historical questionnaire offers the wrong edit | Reopen a saved Sweat questionnaire while a Hair photo is selected. “Edit your answers” routed to Hair with the questionnaire hidden. | Historical questionnaires offer View saved results and select the Results tab. A live questionnaire still opens its editable answers and focuses the first answer. Both behaviors were exercised and the unrelated photo remained selected. |
+| CH-03 / P2 — competing Today cards and imprecise destinations | The overview “View” button changed to Journey and opened no result. “Start a routine” landed on Results. Snapshot “Manage” retained the last Check-ins tab. The routines area already had a second result shortcut and a correct manage route. Guests saw an empty recent-activity panel and a redundant Start action above the area choices. | The overview opens its saved result directly through the existing detail endpoint. Results and Check-ins links select the named tab. The consolidated routine action opens Routines and focuses the editor for a first routine. Recent activity appears with saved records. The area choices lead first-use Today, with account tools secondary. A held routine load, a 503 and recovery were checked in the browser. |
+| Extension — same-tab continuation | A selected Hair photo survived Today → “Start a check”, but the button gave no indication it would resume input. | Continue your check appears for a selected photo or edited questionnaire. It keeps the area, inputs and consent choices, and focuses Check. Completed, empty and signed-out states hide it. A dropped questionnaire response and retry recovered the same assessment ID and one saved record. |
+
+The runtime changes are in `frontend/app.js`, `frontend/workspace.js`,
+`frontend/engagement.js`, `frontend/index.html` and `frontend/product.css`.
+The workflow reuses the existing owner-scoped detail read, canonical results,
+routine projection and idempotent assessment submission. The backend sources
+for guidance, evidence, consent, risk calculation, providers, schema, exports
+and photo handling matched the baseline hashes. Of 186 files
+tracked by the protection receipt, 179 match, seven existing frontend and test
+files changed, and one browser test was added. No timing gain was inferred.
+
+### Browser and accessibility evidence
+
+Private `local-artifacts/check-handoff-2026-11-10/` holds
+`baseline-browser.json`, `before-*.png`, `visual-check.json`, `after-*.png`
+and focused test results. The first audit attempt tried a Journey tab while
+Today was still selected. The recorded rerun selected the appropriate route and
+completed. The frontend VM harness was updated to exercise the newly focused
+Results handoff while retaining the original refresh-failure assertions.
+
+Ten Today samples and ten saved-result samples cover 320, 390, 768, 1280 and
+1440 px in both themes. The checked views reflowed within their viewport.
+The measured key actions were at least 44 px high. IBM Plex and existing color
+tokens were retained. The overview and routine actions have distinct headings
+and aligned card edges. The 320 px enlarged-text sample had a 32 px heading
+and retained four area choices without horizontal overflow. The narrow keyboard
+sample focused the unobscured Check heading with the selected photo and reduced
+motion emulated. Closing a reopened result restores its dashboard opener.
+The error sample shows routine loading, failure and successful retry.
+
+Local results are 121 frontend tests, 12 runner tests and eight focused
+workflows each on Chrome and WebKit. Exact-source CI passed
+`8f96c589f6e393cd67cf38df0f42bad7d572ab5e` with 261 backend passes out of 262
+cases, 121 frontend passes and 345 browser checks. Chrome, Firefox and WebKit
+each passed 115 checks. The skipped case required a local presentation fixture.
+Explicit synthetic migrations, source hygiene and the pinned audit passed.
+The run logged an annotation about the existing actions' Node runtime
+deprecation. [CI run 42820618506](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42820618506)
+
+The final Git receipt changes only these two Markdown documents relative to
+the tested source. The isolated listeners and owned browsers closed, the
+temporary SQL user was removed, and the test records and evidence were retained.
+Normal listener PIDs matched before and after. Private `completion.json` records
+remote equality, the refreshed scoped archive and release of the sleep helper.
+
+Native Safari picker/save/correction, spoken accessibility, physical phones
+and consumer sessions remain deferred. Resume the manual synthetic Safari Upload
+in `consumer-device-checks.md` when the owner resumes native verification.
