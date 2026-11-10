@@ -995,11 +995,13 @@ Important files are `backend/consumer_continuity.py`,
 `frontend/continuity.js`, `frontend/product.css`, `frontend/engagement.js`,
 `frontend/app.js` and `frontend/workspace.js`. Source
 `09d49f392c6d22b3b5a92800c0d424b4efca67ba` is pushed to
-`codex/consumer-evolution`. The exact-source run passed 262 backend tests,
+`codex/consumer-evolution`. The exact-source run passed 261 backend tests,
 121 frontend tests and 321 browser checks (107 each in Chrome, Firefox and
-WebKit), plus explicit synthetic migrations and tracked-source hygiene. Its
-pinned audit reported no known vulnerabilities. The job logged an annotation
-about the existing workflow actions' Node runtime deprecation.
+WebKit). One of the 262 backend cases was skipped because the local source
+for the presentation test was unavailable in CI. Explicit synthetic migrations
+and tracked-source hygiene passed. The pinned audit reported no known
+vulnerabilities. The job logged an annotation about the existing workflow
+actions' Node runtime deprecation.
 [CI run 42763431244](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42763431244)
 
 The closing Git receipt changes these two Markdown files. Its branch

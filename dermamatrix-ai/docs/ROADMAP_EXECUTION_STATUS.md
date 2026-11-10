@@ -8,10 +8,11 @@ Real email-provider setup is also deferred. No public release. Source branch is
 **Current batch — saved concerns, follow-up and visit briefs (10 November).
 Complete within independently verifiable development scope.**
 Source `09d49f392c6d22b3b5a92800c0d424b4efca67ba` is pushed to
-`codex/consumer-evolution`. **Exact-source CI passed 262 backend tests,
+`codex/consumer-evolution`. **Exact-source CI passed with 261 backend tests,
 121 frontend tests and 321 browser checks (107 each in Chrome, Firefox and
-WebKit)**, including isolated migrations, tracked-source hygiene and the pinned
-dependency audit. [CI run 42763431244](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42763431244)
+WebKit)**. One backend presentation test was skipped because its local source
+was unavailable in CI. Isolated migrations, tracked-source hygiene and the
+pinned audit passed. [CI run 42763431244](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42763431244)
 
 Journey Results now shows a selected concern's latest explicitly linked result,
 effective self-reported check-in and linked routine count. The read-only
