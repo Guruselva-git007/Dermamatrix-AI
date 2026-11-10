@@ -153,17 +153,23 @@ def reminder_preview(config, at=None):
     return dict(timezone=config['timezone'], status=config['status'], days=config['days'], times=config['times'], quiet_start=config['quiet_start'], quiet_end=config['quiet_end'], suppressed_times=[v for v in config['times'] if quiet_time(v, config['quiet_start'], config['quiet_end'])], next_occurrence_utc=next_due.isoformat() + 'Z' if next_due else None, opted_in=config['reminders'], meaning='Preview only. Quiet-hour occurrences and nonexistent DST times are skipped; repeated DST times occur once. No reminder is queued or delivered by this preview.')
 
 
-def continuity_data(connection, owner, read_summary):
+def continuity_data(connection, owner, read_summary, include=None):
     """Read one account snapshot; the caller owns transaction lifetime."""
+    include = set(include) if include is not None else {'assessment','routine','checkin','event','episode'}
+    assessments, routines, checkins, events = [], [], [], []
     with connection.cursor() as cursor:
-        cursor.execute('SELECT id,assessment_id,area,result_json,created_at FROM analysis_records WHERE user_id=%s ORDER BY id DESC', (owner,))
-        assessments = [dict(r, summary=read_summary(r['result_json'])) for r in cursor.fetchall()]
-        cursor.execute('SELECT id,routine_id,routine_name,condition_label,start_date,notes,created_at FROM care_routines WHERE user_id=%s ORDER BY id DESC', (owner,))
-        routines = cursor.fetchall()
-        cursor.execute('SELECT id,checkin_id,routine_id,checkin_date,reported_trend,discomfort_score,change_score,priority_score,note,created_at FROM progress_checkins WHERE user_id=%s ORDER BY id DESC', (owner,))
-        checkins = effective_checkins(connection, owner, cursor.fetchall())
-    events = effective_events(connection, owner, [dict(id=r['id'], routine_id=r['subject_id'], **r['data'], created_at=r['created_at']) for r in records(connection, owner, 'routine_event')])
-    return dict(assessments=assessments, routines=routines, checkins=checkins, events=events, links=episode_links(connection, owner), episodes=records(connection, owner, 'concern_episode'))
+        if 'assessment' in include:
+            cursor.execute('SELECT id,assessment_id,area,result_json,created_at FROM analysis_records WHERE user_id=%s ORDER BY id DESC', (owner,))
+            assessments = [dict(r, summary=read_summary(r['result_json'])) for r in cursor.fetchall()]
+        if 'routine' in include:
+            cursor.execute('SELECT id,routine_id,routine_name,condition_label,start_date,notes,created_at FROM care_routines WHERE user_id=%s ORDER BY id DESC', (owner,))
+            routines = cursor.fetchall()
+        if 'checkin' in include:
+            cursor.execute('SELECT id,checkin_id,routine_id,checkin_date,reported_trend,discomfort_score,change_score,priority_score,note,created_at FROM progress_checkins WHERE user_id=%s ORDER BY id DESC', (owner,))
+            checkins = effective_checkins(connection, owner, cursor.fetchall())
+    if 'event' in include:
+        events = effective_events(connection, owner, [dict(id=r['id'], routine_id=r['subject_id'], **r['data'], created_at=r['created_at']) for r in records(connection, owner, 'routine_event')])
+    return dict(assessments=assessments, routines=routines, checkins=checkins, events=events, links=episode_links(connection, owner), episodes=records(connection, owner, 'concern_episode') if 'episode' in include else [])
 
 
 def routine_counts(connection, owner, routines):
@@ -450,9 +456,12 @@ def register_continuity(app, database, current_user, read_summary, score):
     @bp.get('/api/search')
     def search():
         from condition_knowledge import educational_condition_catalog
+        from consumer_journey import assessment_title, date_scope
         query, category = request.args.get('q', '').strip(), request.args.get('category', '')
+        scope = {key: request.args.get(key, '') for key in ('area','episode_id','start','end')}
+        start, end = date_scope(scope)
         allowed = {'assessment', 'episode', 'routine', 'checkin', 'guide'}
-        if len(query) > 120 or category and category not in allowed:
+        if len(query) > 120 or category and category not in allowed or scope['area'] and scope['area'] not in AREAS or len(scope['episode_id']) > 100:
             raise ValueError('Use a search up to 120 characters and a supported category.')
         serializer = URLSafeTimedSerializer(current_app.secret_key, salt='consumer-search-v1')
         connection = database() if session.get('user_id') else None
@@ -462,21 +471,43 @@ def register_continuity(app, database, current_user, read_summary, score):
             items = []
             snapshot = 0
             if owner and category != 'guide':
+                connection.commit()
+                from account_data_export import begin_account_data_snapshot
+                begin_account_data_snapshot(connection)
+                if scope['episode_id'] and scope['episode_id'] != 'unassigned':
+                    require_episode(connection, owner, scope['episode_id'])
                 with connection.cursor() as cursor:
-                    cursor.execute('SELECT COALESCE(MAX(id),0) AS maximum FROM consumer_records WHERE user_id=%s', (owner,))
-                    snapshot = cursor.fetchone()['maximum']
-                data = continuity_data(connection, owner, read_summary)
-                for kind, rows, key, title in [('assessment', data['assessments'], 'assessment_id', lambda r: r['area'] + ' assessment'), ('routine', data['routines'], 'routine_id', lambda r: r['routine_name']), ('checkin', data['checkins'], 'checkin_id', lambda r: ('Removed from current tracking' if r.get('voided') else r['reported_trend']) + ' - self-reported check-in')]:
+                    cursor.execute("""SELECT
+                        (SELECT COALESCE(MAX(id),0) FROM consumer_records WHERE user_id=%s) AS revisions,
+                        (SELECT COALESCE(MAX(id),0) FROM analysis_records WHERE user_id=%s) AS assessments,
+                        (SELECT COALESCE(MAX(id),0) FROM progress_checkins WHERE user_id=%s) AS checkins""", (owner,owner,owner))
+                    snapshot = cursor.fetchone()
+                data = continuity_data(connection, owner, read_summary, include={category} if category else {'assessment','routine','checkin','episode'})
+                episodes = data['episodes'] or records(connection, owner, 'concern_episode')
+                episode_areas = {row['id']: row['data']['area'] for row in episodes}
+                schedule_areas = {row['subject_id']: row['data'].get('area', '') for row in records(connection, owner, 'routine_schedule')} if data['routines'] else {}
+                for kind, rows, key, title in [('assessment', data['assessments'], 'assessment_id', lambda r: assessment_title(r['summary'],r['area'])), ('routine', data['routines'], 'routine_id', lambda r: r['routine_name']), ('checkin', data['checkins'], 'checkin_id', lambda r: ('Removed from current tracking' if r.get('voided') else r['reported_trend']) + ' - self-reported check-in')]:
                     for row in rows:
                         link = data['links'].get(kind + ':' + row[key], {})
+                        area = row.get('area') or episode_areas.get(link.get('episode_id'), '') or (schedule_areas.get(row[key], '') if kind == 'routine' else '')
+                        recorded = str(row.get('checkin_date') or row['created_at'])[:10]
+                        if scope['area'] and scope['area'] != area or not start <= recorded <= end:
+                            continue
+                        if scope['episode_id'] == 'unassigned' and link.get('episode_id') or scope['episode_id'] and scope['episode_id'] != 'unassigned' and link.get('episode_id') != scope['episode_id']:
+                            continue
                         content = json.dumps({k:v for k,v in row.items() if k not in {'original', 'corrections'}}, default=str)
                         if query.casefold() in (content + json.dumps(link)).casefold():
-                            items.append(dict(category=kind, id=row[key], title=title(row), detail=link.get('label', ''), created_at=str(row['created_at']), revision=row.get('revision', 0), episode_id=link.get('episode_id', '')))
+                            detail = ' · '.join(filter(None,[link.get('label'),row.get('note'),row.get('condition_label')]))
+                            items.append(dict(category=kind, id=row[key], title=title(row), detail=detail[:240], created_at=utc_iso(row['created_at']), recorded_date=recorded, area=area, revision=row.get('revision', 0), episode_id=link.get('episode_id', '')))
                 for row in data['episodes']:
+                    if scope['area'] and row['data']['area'] != scope['area'] or scope['episode_id'] and scope['episode_id'] != row['id'] or not start <= str(row['created_at'])[:10] <= end:
+                        continue
                     if query.casefold() in json.dumps(row['data']).casefold():
-                        items.append(dict(category='episode', id=row['id'], title=row['data']['label'], detail=row['data']['body_area'], created_at=str(row['created_at'])))
+                        items.append(dict(category='episode', id=row['id'], title=row['data']['label'], detail=row['data']['body_area'], created_at=utc_iso(row['created_at']), area=row['data']['area']))
             saved = {r['subject_id']: r['data'] for r in records(connection, owner, 'guide_bookmark')} if owner else {}
             for guide in educational_condition_catalog():
+                if scope['episode_id'] or scope['start'] or scope['end'] or scope['area'] and guide['health_area'] != scope['area']:
+                    continue
                 if query.casefold() in (guide['name'] + ' '.join(guide.get('aliases', []))).casefold():
                     items.append(dict(category='guide', id=guide['id'], title=guide['name'], detail=guide['health_area'], created_at='', bookmarked=bool(saved.get(guide['id'], {}).get('saved'))))
             items = [r for r in items if not category or r['category'] == category]
@@ -485,7 +516,7 @@ def register_continuity(app, database, current_user, read_summary, score):
             if token:
                 try:
                     state = serializer.loads(token, max_age=3600)
-                    if state['owner'] != owner or state['q'] != query or state['category'] != category:
+                    if state['owner'] != owner or state['q'] != query or state['category'] != category or state.get('scope') != scope:
                         raise BadSignature('Changed scope')
                     if state['snapshot'] != snapshot:
                         raise Conflict('Your records changed. Start this search again to see the current information.')
@@ -493,7 +524,7 @@ def register_continuity(app, database, current_user, read_summary, score):
                 except (BadSignature, KeyError, TypeError):
                     raise ValueError('This search page expired or changed. Start your search again.') from None
             page = items[:20]
-            cursor = serializer.dumps(dict(owner=owner, q=query, category=category, snapshot=snapshot, before=[page[-1]['created_at'], page[-1]['category'], page[-1]['id']])) if len(items) > 20 else None
+            cursor = serializer.dumps(dict(owner=owner, q=query, category=category, scope=scope, snapshot=snapshot, before=[page[-1]['created_at'], page[-1]['category'], page[-1]['id']])) if len(items) > 20 else None
             return jsonify(results=page, next_cursor=cursor, private_results=bool(owner), meaning='Private records are scoped to the signed-in account; educational guides are public.')
         finally:
             if connection:
@@ -503,4 +534,6 @@ def register_continuity(app, database, current_user, read_summary, score):
     def invalid(error):
         return jsonify(error=str(error), code='INVALID_INPUT'), 400
 
+    from consumer_journey import register_journey
+    register_journey(bp, owned, read_summary)
     app.register_blueprint(bp)

@@ -59,6 +59,8 @@ jobs:
           node --check frontend/engagement.js
           node --check frontend/workspace.js
           node --check frontend/continuity.js
+          node --check frontend/product-upgrade.js
+          node --check frontend/assessment-review.js
           git diff --check
       - name: Dependency and tracked-secret checks
         run: |

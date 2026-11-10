@@ -39,7 +39,7 @@
       const [ep,associations,saved]=await Promise.all([requestJSON('/api/episodes'),requestJSON('/api/episode-links'),requestJSON('/api/bookmarks')]);
       if(!active(version,account)||requestVersion!==loadVersion)return;
       episodes=ep.episodes;links=associations.links;bookmarks=saved.bookmarks;loadedOwner=account;
-      for(const id of ['checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode'])if($(id))choices($(id),$(id).value,id==='journeyEpisodeId'?'All concerns':'No concern selected');
+      for(const id of ['checkinEpisode','journeyEpisodeId','scheduleEpisode','briefEpisode','searchConcern'])if($(id))choices($(id),$(id).value,['journeyEpisodeId','searchConcern'].includes(id)?'All concerns':'No concern selected');
       assessmentAreaChanged();
       if($('episodeBody')&&!$('episodeBody').options.length)for(const value of ep.body_areas)$('episodeBody').add(new Option(value,value));
       renderBookmarks();renderCheckinHistory();
@@ -54,6 +54,7 @@
     await window.EngagementUI?.refresh();
     if (!active(version, account)) return;
     refreshConcernOnJourney(true);
+    window.ProductUpgrade?.recordsChanged();
     if($('unifiedSearchDialog')?.open)await search(true);
   }
   const chosenConcern = () => episodes.find(episode => episode.episode_id === $('journeyEpisodeId')?.value);
@@ -168,10 +169,10 @@
     d.showModal();d.scrollTop=0;const initialFocus=document.activeElement;
     requestAnimationFrame(()=>{if(sameDialog()&&d.open&&document.activeElement===initialFocus)heading.focus({preventScroll:true});});
   }
-  function correctEvent(id, revision, title) {
+  function correctEvent(id, revision, title, currentAction = 'pending') {
     const content=el('div');content.append(el('p',title),el('p','The original action remains in history. Choose the effective status now.'));
     const label=el('label','Correct status'),select=el('select');select.id='correctionAction';
-    for(const [value,text] of [['pending','Not recorded (undo)'],['completed','Completed — self-reported'],['skipped','Skipped — self-reported']])select.add(new Option(text,value));label.append(select);content.append(label);
+    for(const [value,text] of [['pending','Not recorded (undo)'],['completed','Completed — self-reported'],['skipped','Skipped — self-reported']])select.add(new Option(text,value));select.value=currentAction;label.append(select);content.append(label);
     const reason=el('label','Reason (optional)'),note=el('textarea');note.maxLength=500;reason.append(note);content.append(reason);
     dialog('Correct routine action',content,()=>write('/api/corrections/event/'+encodeURIComponent(id),{revision,action:select.value,reason:note.value}));
   }
@@ -210,7 +211,7 @@
     for(const [name,value] of [['Routine',routine?.routine_name||'Choose a routine'],['Date',payload.checkin_date],['Trend',`${readableStatus(payload.reported_trend)} — self-reported`],['Discomfort',$('checkinDiscomfort').selectedOptions[0].textContent],['Recent change',$('checkinChange').selectedOptions[0].textContent],['Concern',episode?.label||'Unassigned'],...(payload.note?[['Note',payload.note]]:[])])summary.append(el('dt',name),el('dd',value));
     content.append(summary,el('p','Confirm this is the right concern. No image is used to measure healing or saved with this check-in.'));
     const version=epoch,account=owner();
-    dialog('Review your check-in',content,async()=>{await write('/api/progress-checkins',payload);if(!active(version,account))return;if(JSON.stringify(checkinInput())===signature){form.reset();$('checkinDate').value=currentDate();window.DraftUX?.clean(form);}else window.DraftUX?.clean(form,submittedDraft);},'Save check-in',form.querySelector('[type=submit]'));
+    dialog('Review your check-in',content,async()=>{await write('/api/progress-checkins',payload);if(!active(version,account))return;if(JSON.stringify(checkinInput())===signature){form.reset();$('checkinRoutine').dataset.confirmed='';$('checkinDate').value=currentDate();window.DraftUX?.clean(form);}else window.DraftUX?.clean(form,submittedDraft);},'Save check-in',form.querySelector('[type=submit]'));
   }
   function briefInput() {return{episode_id:$('briefEpisode').value,start:$('briefStart').value,end:$('briefEnd').value,questions:$('briefQuestions').value};}
   function resetBriefDates() {
@@ -383,24 +384,86 @@
     if(!signed())return;
     const control=button('Save guide',()=>{});control.id='guideBookmark';control.dataset.guide=topic.id;updateGuideBookmark(control,topic.id);($('learnDetail').querySelector('.guide-toolbar')||$('learnDetail')).append(control);
   }
-  async function search(reset=true) {
-    const generation=epoch,account=owner(),requestVersion=++searchVersion;
-    if(reset){searchCursor=null;searchQuery=$('unifiedQuery').value.trim();searchCategory=$('unifiedCategory').value;$('unifiedResults').replaceChildren();}
-    const params=new URLSearchParams({q:searchQuery,category:searchCategory});if(searchCursor)params.set('cursor',searchCursor);
-    $('unifiedMore').disabled=true;message('unifiedStatus','Searching…');
-    try{const data=await requestJSON('/api/search?'+params);if(!active(generation,account)||requestVersion!==searchVersion)return;
-      for(const item of data.results){const row=el('article',undefined,'continuity-row');row.append(el('small',`${item.category}${item.bookmarked?' · Saved guide':''}`),el('h3',item.title),el('p',item.detail||''),button('Open '+item.category,async()=>{const d=$('unifiedSearchDialog');
-        try{if(item.category==='guide'){d.close();showPage('learn');await window.EngagementUI.openGuide(item.id);}
-        else if(item.category==='assessment'){d.close();await showSavedReport(item.id);}
-        else{let checkin;if(item.category==='checkin'){checkin=(await requestJSON('/api/checkins/'+encodeURIComponent(item.id))).checkin;if(!active(generation,account))return;}d.close();showPage('progress');if(item.category==='episode'){window.WorkspaceUI.reveal('results');filterJourneyConcern(item.id);}
-        if(item.category==='routine'){window.WorkspaceUI.reveal('routines');await window.EngagementUI.configureRoutine(item.id);}
-        if(item.category==='checkin'){window.WorkspaceUI.reveal('checkins');if(checkin)correctCheckin(checkin);}}}
-        catch(error){message('unifiedStatus',`${error.message} The record could not be opened; start the search again.`);}
-      }));$('unifiedResults').append(row);}
-      searchCursor=data.next_cursor;$('unifiedMore').hidden=!searchCursor;message('unifiedStatus',data.results.length?`${$('unifiedResults').children.length} results shown. ${data.private_results?'Private results belong to this account.':'Sign in to search your private records.'}`:'No matches. Try another word or category.');
-    }catch(error){if(active(generation,account)&&requestVersion===searchVersion)message('unifiedStatus',`${error.message} Start this search again to refresh its results.`);}finally{if(active(generation,account)&&requestVersion===searchVersion)$('unifiedMore').disabled=false;}
+  function returnSearch() {
+    closeResult();
+    $('recordReadDialog').close();
+    $('unifiedSearchDialog').showModal();
+    $('unifiedQuery').focus();
   }
-  function openSearch(query) {$('unifiedQuery').value=query||'';$('unifiedSearchDialog').showModal();$('unifiedQuery').focus();search(true);}
+  async function viewCheckin(id,{fromSearch=false}={}) {
+    invalidateSavedReportOpen();
+    const requestVersion=state.savedReportRequestVersion;
+    const generation=epoch,account=owner(),workspace=state.workspaceVersion;
+    const current=()=>active(generation,account)&&workspace===state.workspaceVersion&&requestVersion===state.savedReportRequestVersion;
+    try {
+      const {checkin}=await requestJSON('/api/checkins/'+encodeURIComponent(id));
+      if(!current())return;
+      const reader=$('recordReadDialog'),body=$('recordReadContent');
+      body.replaceChildren(el('h2','Saved check-in'),el('p',checkin.checkin_date+' · '+readableStatus(checkin.reported_trend)+' — self-reported'),
+        el('p',checkin.note||'No note supplied.'),el('p','Correction revision '+(checkin.revision||0)));
+      if(checkin.voided)body.append(el('p','Removed from current tracking.'));
+      for(const revision of checkin.corrections||[])body.append(el('p','Corrected '+new Date(revision.created_at).toLocaleString()+' · '+Object.entries(revision.data.effective).map(([key,value])=>readableStatus(key)+': '+String(value)).join(' · ')));
+      body.append(button('Correct this check-in',()=>{reader.close();correctCheckin(checkin);}));
+      if(fromSearch)body.append(button('Back to search',returnSearch));
+      body.append(button('Close',()=>reader.close()));
+      reader.showModal();
+      body.querySelector('h2').tabIndex=-1;body.querySelector('h2').focus();
+    }catch(error){if(current())toast(error.message);}
+  }
+  function searchScope() {
+    const params=new URLSearchParams({q:$('unifiedQuery').value.trim(),category:$('unifiedCategory').value});
+    for(const [key,id]of [['area','searchArea'],['episode_id','searchConcern'],['start','searchStart'],['end','searchEnd']])if($(id)?.value)params.set(key,$(id).value);
+    return params.toString();
+  }
+  async function search(reset=true) {
+    const generation=epoch,account=owner(),workspace=state.workspaceVersion,requestVersion=++searchVersion,scope=searchScope();
+    const current=()=>active(generation,account)&&workspace===state.workspaceVersion&&requestVersion===searchVersion&&searchScope()===scope;
+    if(!$('unifiedSearchForm').reportValidity())return;
+    if(reset){searchCursor=null;searchQuery=scope;$('unifiedResults').replaceChildren();}
+    else if(scope!==searchQuery)return;
+    const params=new URLSearchParams(scope);if(searchCursor)params.set('cursor',searchCursor);
+    $('unifiedMore').disabled=true;message('unifiedStatus','Searching…');
+    try {
+      const data=await requestJSON('/api/search?'+params,{ownerGuard:current});
+      if(!current())return;
+      for(const item of data.results) {
+        const row=el('article',undefined,'continuity-row');
+        const categoryLabel=item.category==='checkin'?'check-in':item.category;
+        const saved=item.created_at?'Saved '+new Date(item.created_at).toLocaleString('en-GB',{timeZone:'UTC'})+' UTC · Record '+item.id.slice(-8):'';
+        const meta=[categoryLabel,item.bookmarked?'Saved guide':'',item.recorded_date||'',item.area||'',saved,item.revision?'Corrected '+item.revision+' times':''].filter(Boolean).join(' · ');
+        row.append(el('small',meta),el('h3',item.title),el('p',item.detail||''),button('Open '+categoryLabel,async()=>{
+          try {
+            if(item.category==='guide'){$('unifiedSearchDialog').close();showPage('learn');await window.EngagementUI.openGuide(item.id);return;}
+            if(item.category==='assessment') {
+              $('unifiedSearchDialog').close();await showSavedReport(item.id);
+              if(active(generation,account)&&workspace===state.workspaceVersion&&state.assessmentId===item.id&&$('resultModal').classList.contains('show'))$('returnWorkspaceSearch').hidden=false;
+              return;
+            }
+            if(item.category==='checkin'){$('unifiedSearchDialog').close();await viewCheckin(item.id,{fromSearch:true});return;}
+            if(item.category==='routine') {
+              const data=await requestJSON('/api/routine-schedules/'+encodeURIComponent(item.id));
+              if(!current()||!$('unifiedSearchDialog').open)return;
+              $('unifiedSearchDialog').close();
+              const body=$('recordReadContent'),reader=$('recordReadDialog');
+              body.replaceChildren(el('h2',item.title),el('p',readableStatus(data.schedule?.status||'active')+' · '+(data.schedule?.timezone||'No schedule yet')));
+              for(const step of data.schedule?.steps||[])body.append(el('p',step));
+              body.append(button('Edit this routine',async()=>{reader.close();showPage('progress');window.WorkspaceUI.reveal('routines');await window.EngagementUI.configureRoutine(item.id);}),button('Back to search',returnSearch),button('Close',()=>reader.close()));
+              reader.showModal();return;
+            }
+            $('unifiedSearchDialog').close();showPage('progress');window.WorkspaceUI.reveal('results');filterJourneyConcern(item.id);
+          } catch(error) {if(active(generation,account))message('unifiedStatus',error.message+' Reopen search to retry.');}
+        }));
+        $('unifiedResults').append(row);
+      }
+      searchCursor=data.next_cursor;$('unifiedMore').hidden=!searchCursor;
+      message('unifiedStatus',data.results.length?$('unifiedResults').children.length+' results shown. '+(data.private_results?'Private records belong to this account.':'Sign in to search private records.'):'No matches. Try different words or clear filters.');
+    }catch(error){if(current())message('unifiedStatus',error.message+' Search again to refresh.');}
+    finally{if(active(generation,account)&&requestVersion===searchVersion)$('unifiedMore').disabled=false;}
+  }
+  function openSearch(query) {
+    if(query!==undefined)$('unifiedQuery').value=query;
+    $('unifiedSearchDialog').showModal();$('unifiedQuery').focus();search(true);
+  }
   function schedulePayload(){return{steps:$('routineSteps').value.split('\n').map(s=>s.trim()).filter(Boolean),days:[...document.querySelectorAll('[name=routine_day]:checked')].map(i=>Number(i.value)),times:$('routineTimes').value.split(',').map(s=>s.trim()),timezone:$('routineTimezone').value,status:$('routineScheduleStatus').value,area:$('routineScheduleArea').value,reminders:$('routineReminderOptIn').checked,quiet_start:$('quietStart').value,quiet_end:$('quietEnd').value};}
   async function previewReminder(){const generation=epoch,account=owner(),requestVersion=++reminderVersion;try{const data=await write('/api/reminders/preview',schedulePayload());if(!active(generation,account)||requestVersion!==reminderVersion)return;const p=data.preview;message('reminderPreview',`${p.status==='active'?'Active schedule':'Paused or archived schedule'} · ${p.timezone}. Next eligible occurrence: ${p.next_occurrence_utc?new Date(p.next_occurrence_utc).toLocaleString(undefined,{timeZone:p.timezone})+' ('+p.timezone+')':'None in the next 15 days'}. Quiet hours: ${p.quiet_start}–${p.quiet_end}; suppressed times: ${p.suppressed_times.join(', ')||'none'}. Reminder preference ${p.opted_in?'on':'off'}. Preview only; no work queued. ${data.transport==='disabled'?'Delivery provider unavailable.':'Configured transport does not confirm delivery.'} ${p.meaning}`);}catch(error){if(active(generation,account)&&requestVersion===reminderVersion)message('reminderPreview',`${error.message} No reminder was queued or sent.`);}}
   async function explain(data) {
@@ -444,6 +507,11 @@
     if($('continuityDialog'))return;
     const mobileSearch=button('Search',()=>openSearch(''));mobileSearch.id='mobileWorkspaceSearch';mobileSearch.setAttribute('aria-label','Search records and guides');$('themeToggle').before(mobileSearch);
     const d=el('dialog',undefined,'consumer-dialog');d.id='continuityDialog';document.body.append(d);
+    const reader=el('dialog',undefined,'consumer-dialog');reader.id='recordReadDialog';reader.setAttribute('aria-label','Saved record details');
+    const readBody=el('div');readBody.id='recordReadContent';reader.append(readBody);document.body.append(reader);
+    const backSearch=button('Back to search results',returnSearch,'text-button');backSearch.id='returnWorkspaceSearch';backSearch.hidden=true;
+    document.querySelector('#resultModal .modal-card').prepend(backSearch);
+
     const assessment = pick('assessmentEpisode', 'Saved concern (optional)');
     assessment.id = 'assessmentEpisodeField';
     assessment.append(el('small', 'Choose a matching saved concern to link this check.'));
@@ -497,7 +565,7 @@
     $('scheduleEditor').prepend(pick('scheduleEpisode','Linked concern (optional)'));
     const preview=el('div');preview.append(button('Preview reminder schedule',previewReminder));const note=el('p');note.id='reminderPreview';note.setAttribute('role','status');preview.append(note);$('scheduleEditor').append(preview);$('scheduleEditor').addEventListener('input',()=>{reminderVersion++;message('reminderPreview','Schedule input changed. Preview again to calculate the next occurrence. No reminder was queued.');});
     $('checkinRoutine').closest('label').after(pick('checkinEpisode','Concern (confirm before saving)'));
-    $('checkinRoutine').addEventListener('change',()=>{$('checkinEpisode').value=links['routine:'+$('checkinRoutine').value]?.episode_id||'';});
+    $('checkinRoutine').addEventListener('change',()=>selectCheckinRoutine($('checkinRoutine').value));
     const history=el('section');history.id='checkinCorrections';$('progressHistory')?.after(history);
     const brief = el('details', undefined, 'consumer-panel');
     brief.id = 'visitBrief';
@@ -541,6 +609,13 @@
     $('visitBriefForm').onsubmit = downloadVisitBrief;
     const saved=el('details');saved.id='savedGuides';saved.innerHTML='<summary>Saved guides</summary><div id="savedGuideList"></div>';$('learnList').before(saved);
     const searchDialog=el('dialog',undefined,'consumer-dialog');searchDialog.id='unifiedSearchDialog';searchDialog.setAttribute('aria-labelledby','unifiedTitle');searchDialog.innerHTML='<h2 id="unifiedTitle">Search your workspace</h2><form id="unifiedSearchForm" class="continuity-form"><label>Search<input id="unifiedQuery" type="search" maxlength="120"></label><label>Category<select id="unifiedCategory"><option value="">All categories</option><option value="assessment">Assessments</option><option value="episode">Concerns</option><option value="routine">Routines</option><option value="checkin">Check-ins</option><option value="guide">Educational guides</option></select></label><button class="button primary" type="submit">Search</button></form><p id="unifiedStatus" role="status"></p><div id="unifiedResults"></div><button id="unifiedMore" type="button" class="button quiet" hidden>Load more results</button>';searchDialog.append(button('Close search',()=>searchDialog.close()));document.body.append(searchDialog);$('unifiedSearchForm').onsubmit=e=>{e.preventDefault();search(true);};$('unifiedMore').onclick=()=>search(false);
+
+    const filters=el('details');filters.className='search-refinements';
+    filters.innerHTML='<summary>Refine your search</summary><div class="consumer-filter"><label>Area<select id="searchArea"><option value="">All areas</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option><option>General</option></select></label><label>From<input id="searchStart" type="date"></label><label>To<input id="searchEnd" type="date"></label></div>';
+    filters.querySelector('div').prepend(pick('searchConcern','Concern'));
+    $('unifiedSearchForm').append(filters);
+    $('unifiedSearchForm').append(button('Clear filters',()=>{for(const id of ['searchArea','searchConcern','searchStart','searchEnd'])$(id).value='';search(true);},'text-button'));
+    $('unifiedSearchForm').addEventListener('input',()=>{searchVersion++;message('unifiedStatus','Search filters changed. Select Search to apply them.');});
     const feedback=el('details');feedback.id='productFeedback';feedback.innerHTML='<summary>Share product feedback</summary><p>Collected in this local account. No monitored support channel is configured. Do not include health notes, identifying details or photographs.</p><form id="feedbackForm" class="continuity-form"><label>Problem category<select id="feedbackCategory"><option>Confusing screen</option><option>Save or loading problem</option><option>Accessibility</option><option>Other</option></select></label><label>Page<select id="feedbackPage"><option>Today</option><option>Check</option><option>Journey</option><option>Learn</option><option>Profile</option></select></label><label>Explanation (optional)<textarea id="feedbackNote" maxlength="2000"></textarea></label><p>Application version: consumer-continuity-v1. No account records or photos are attached automatically.</p><button class="button quiet" type="submit">Save local feedback</button><p id="feedbackStatus" role="status"></p></form>';$('profile-privacy').append(feedback);
     $('feedbackForm').onsubmit=async event=>{event.preventDefault();const submit=event.currentTarget.querySelector('[type=submit]');if(submit.disabled)return;submit.disabled=true;const generation=epoch,account=owner();try{const data=await write('/api/feedback',{category:$('feedbackCategory').value,page:$('feedbackPage').value,note:$('feedbackNote').value});if(active(generation,account)){$('feedbackForm').reset();message('feedbackStatus',data.message);}}catch(error){if(active(generation,account))message('feedbackStatus',`${error.message} Feedback was not confirmed; retry the same details.`);}finally{submit.disabled=false;}};
     const capture=el('details');capture.id='captureGuidance';capture.innerHTML='<summary>Prepare a useful photo</summary><p>Use bright, even light; keep the camera steady and the area in focus. Include the full area of concern without digital zoom, filters or glare. Choose a distance that keeps detail sharp, and check the preview before continuing. Rotate the device if that gives a clearer frame.</p><p>An ordinary camera photo and a dermoscopic image are different capture types. Select the actual type in Add context; do not label an ordinary photo as dermoscopy. A clear photo alone cannot establish medical or anatomical suitability.</p><p>If the camera is unavailable, use Choose photo to select an existing supported image from your gallery. If a photo is blurred, too dark or rejected, use Take photo or Choose photo to replace it. The existing upload limits still apply; photos stay in this tab until submitted and source pixels are not retained by the assessment service.</p>';
@@ -561,11 +636,11 @@
       });
     } else if (account && target === 'progress') refreshConcernOnJourney();
   }
-  window.ContinuityUI={enabled:()=>Boolean(window.ConsumerClient?.enabled),retryKey(path,payload){const signature=JSON.stringify([path,payload]);if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());return retryKeys.get(signature);},assessmentEpisode:()=>signed()?$('assessmentEpisode')?.value||'':'',assessmentAreaChanged,page,changed,correctEvent,linkAssessment,reviewCheckin,guide,explain,search:openSearch,
+  window.ContinuityUI={enabled:()=>Boolean(window.ConsumerClient?.enabled),retryKey(path,payload){const signature=JSON.stringify([path,payload]);if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());return retryKeys.get(signature);},assessmentEpisode:()=>signed()?$('assessmentEpisode')?.value||'':'',assessmentAreaChanged,page,changed,correctEvent,linkAssessment,reviewCheckin,viewCheckin,guide,explain,search:openSearch,isBookmarked:id=>bookmarks.some(item=>item.guide_id===id&&item.saved),
     routineSelected(id){$('checkinEpisode').value=links['routine:'+id]?.episode_id||'';},
     scheduleLoaded(link){reminderVersion++;message('reminderPreview','');scheduleLink=link;$('scheduleEpisode').value=link.episode_id||'';},scheduleLink:()=>({episode_id:$('scheduleEpisode')?.value||'',link_version:scheduleLink.version||0}),
     progress(){page();renderCheckinHistory();},
-    clear(){epoch++;dialogVersion++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();
+    clear(){epoch++;dialogVersion++;loadVersion++;reminderVersion++;loadedOwner='';episodes=[];links={};bookmarks=[];loading=null;scheduleLink={};briefSignature='';searchVersion++;retryKeys.clear();searchCursor=null;$('continuityDialog')?.close();$('unifiedSearchDialog')?.close();$('recordReadDialog')?.close();$('recordReadContent')?.replaceChildren();if($('returnWorkspaceSearch'))$('returnWorkspaceSearch').hidden=true;
       clearConcernOverview();
       if ($('visitBrief')) $('visitBrief').open = false;
       for(const id of ['episodeForm','visitBriefForm','feedbackForm','unifiedSearchForm'])$(id)?.reset();const episodeSubmit=$('episodeForm')?.querySelector('[type=submit]');if(episodeSubmit)episodeSubmit.disabled=false;resetBriefDates();invalidateBrief();

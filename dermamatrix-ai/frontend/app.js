@@ -533,6 +533,7 @@ function clearWorkspaceEvidence() {
   window.AssessmentUX?.clear();
   window.WorkspaceUI?.clear();
   window.ContinuityUI?.clear();
+  window.ProductUpgrade?.clear();
   state.workspaceVersion += 1;
   if (state.assessmentInFlight) interruptAssessment();
   closeResult(); closeProfile({ force: true });
@@ -545,6 +546,7 @@ function clearWorkspaceEvidence() {
     else input.value = input.defaultValue || '';
   });
   $$('#screen select, #checkinForm select').forEach(input => { input.selectedIndex = 0; });
+  $('#checkinRoutine').dataset.confirmed = '';
   state.areaSelected = false;
   state.questionnaireReviewed = false;
   selectArea('Skin');
@@ -971,6 +973,7 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   window.EngagementUI?.page(target);
   window.ContinuityUI?.page(target);
   window.WorkspaceUI?.page(target);
+  window.ProductUpgrade?.page(target);
   if (syncHistory && window.location.hash !== `#${target}`) history.pushState({ page: target }, '', `#${target}`);
   if (scrollToTop) window.scrollTo({ top: 0, behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth' });
 }
@@ -2654,6 +2657,7 @@ function invalidateSavedReportOpen() {
 
 async function showSavedReport(assessmentId, opener = document.activeElement) {
   if (state.assessmentInFlight) return;
+  if ($('#returnWorkspaceSearch')) $('#returnWorkspaceSearch').hidden = true;
   invalidateSavedReportOpen();
   const workspaceVersion = state.workspaceVersion, requestVersion = state.savedReportRequestVersion;
   const current = () => workspaceVersion === state.workspaceVersion && requestVersion === state.savedReportRequestVersion;
@@ -2827,9 +2831,11 @@ function renderProgress() {
   $('#routineList').innerHTML = !hasProfile ? '<p class="empty-state">Set up a profile to save routines and progress.</p>' : !routines.length ? '<p class="empty-state">No routines yet. Add the first routine you want to follow.</p>' : routines.map(routine => {
     const routineCheckins = checkins.filter(item => String(item.routine_id) === String(routine.routine_id));
     const lastCheckin = routineCheckins[0];
-    const trend = lastCheckin ? readableStatus(lastCheckin.reported_trend) : 'Not checked in yet';
-    const lastUpdate = lastCheckin ? `Last check-in: ${lastCheckin.checkin_date}` : `Started ${routine.start_date}`;
-    return `<article class="routine-item"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}${routine.status ? ` · ${escapeHTML(readableStatus(routine.status))}` : ''}</p>${routine.episode_link?.label?`<small>Concern: ${escapeHTML(routine.episode_link.label)} · ${escapeHTML(routine.episode_link.body_area)}</small>`:''}${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">${window.ConsumerClient?.enabled ? 'Archive' : 'Delete'}</button></div></article>`;
+    const trend = lastCheckin ? readableStatus(lastCheckin.reported_trend)
+      : routine.checkin_count ? `${routine.checkin_count} saved check-ins` : 'Not checked in yet';
+    const lastDate = routine.latest_checkin_date || lastCheckin?.checkin_date;
+    const lastUpdate = lastDate ? `Last check-in: ${lastDate}` : `Started ${routine.start_date}`;
+    return `<article class="routine-item" data-routine-id="${escapeHTML(routine.routine_id)}" data-status="${escapeHTML(routine.status || 'active')}"><div class="routine-item-main"><span>${escapeHTML(routine.condition_label)}</span><h4>${escapeHTML(routine.routine_name)}</h4><p>${escapeHTML(lastUpdate)} · ${escapeHTML(trend)}${routine.status ? ` · ${escapeHTML(readableStatus(routine.status))}` : ''}</p>${routine.episode_link?.label?`<small>Concern: ${escapeHTML(routine.episode_link.label)} · ${escapeHTML(routine.episode_link.body_area)}</small>`:''}${routine.notes ? `<small>${escapeHTML(routine.notes)}</small>` : ''}</div><div class="routine-actions"><button class="button quiet routine-checkin-button" data-checkin-routine="${routine.routine_id}">Check in</button><button class="text-button" data-edit-routine="${routine.routine_id}">Edit</button><button class="text-button danger-button" data-delete-routine="${routine.routine_id}">${window.ConsumerClient?.enabled ? 'Archive' : 'Delete'}</button></div></article>`;
   }).join('');
   const selectedRoutine = $('#checkinRoutine').value;
   $('#checkinRoutine').innerHTML = `<option value="">Choose a saved routine</option>${routines.map(routine => `<option value="${routine.routine_id}">${escapeHTML(routine.condition_label)} · ${escapeHTML(routine.routine_name)}</option>`).join('')}`;
@@ -2847,6 +2853,7 @@ function renderProgress() {
   if (reportRegister) reportRegister.hidden = !hasProfile;
   renderDashboard();
   window.WorkspaceUI?.update();
+  window.ProductUpgrade?.refresh();
 }
 
 async function loadProgress({ force = false } = {}) {
@@ -2912,11 +2919,25 @@ function editRoutine(routineId) {
   $('#routineForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-function startRoutineCheckin(routineId) {
+function selectCheckinRoutine(routineId) {
   const select = $('#checkinRoutine');
-  if (!select) return;
+  if (!select) return false;
+  const previous = select.dataset.confirmed || '';
+  if (routineId === previous) return true;
+  select.value = previous;
+  if (!allowDraftDiscard($('#checkinForm'), 'Changing routine discards this unfinished check-in. Choose Cancel to keep it.')) return false;
+  $('#checkinForm').reset();
+  $('#checkinDate').value = currentDate();
+  select.value = routineId;
+  select.dataset.confirmed = routineId;
+  window.ContinuityUI?.routineSelected(routineId);
+  cleanDraft($('#checkinForm'));
+  return true;
+}
+
+function startRoutineCheckin(routineId) {
+  if (!selectCheckinRoutine(routineId)) return;
   window.WorkspaceUI?.reveal('checkins');
-  select.value = routineId;window.ContinuityUI?.routineSelected(routineId);
   $('.checkin-card')?.scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
   window.setTimeout(() => $('#checkinTrend')?.focus({ preventScroll: true }), 250);
 }

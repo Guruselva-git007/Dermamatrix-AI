@@ -1,7 +1,7 @@
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const vm=require('node:vm');
 function harness(file, marker, names){
   const nodes=new Map(),pending=[];
-  const node=()=>({value:'',checked:false,options:[],children:[],textContent:'',disabled:false,hidden:false,append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},add(){},setAttribute(){}});
+  const node=()=>({value:'',checked:false,options:[],children:[],textContent:'',disabled:false,hidden:false,append(...items){this.children.push(...items);},replaceChildren(...items){this.children=items;},add(){},setAttribute(){},reportValidity(){return true;}});
   const get=id=>{if(!nodes.has(id))nodes.set(id,node());return nodes.get(id);};
   const context=vm.createContext({window:{ConsumerClient:{enabled:true}},state:{profile:{patient_id:'synthetic-owner'},checkins:[]},document:{getElementById:get,createElement:node,readyState:'loading',addEventListener(){},querySelectorAll:()=>[]},crypto:require('node:crypto').webcrypto,requestJSON:(url)=>new Promise((resolve,reject)=>pending.push({url,resolve,reject})),URLSearchParams,Option:class{},console});
   let source=fs.readFileSync(path.join(__dirname,'..',file),'utf8');source=source.replace(marker,`globalThis.api={${names.join(',')}};\n${marker}`);vm.runInContext(source,context);

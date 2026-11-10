@@ -7,15 +7,61 @@
     review(){
       if(state.assessmentInFlight||!state.areaSelected||state.area!=='Sweat'&&!state.file||!el('imageConsent').checked||state.area!=='Sweat'&&el('imageContext').value==='dermoscopic_lesion'&&!el('dermoscopyConsent').checked)return analyze();
       const body=el('assessmentReviewFields');body.replaceChildren();
-      const add=(label,value)=>{const term=document.createElement('dt'),detail=document.createElement('dd');term.textContent=label;detail.textContent=value;body.append(term,detail);};
-      add('Concern area',state.area);
-      if(window.ContinuityUI?.enabled())add('Linked concern',el('assessmentEpisode')?.selectedOptions[0]?.textContent||'No concern selected');
+      const add = (label, value, targetId) => {
+        const term = document.createElement('dt'), detail = document.createElement('dd');
+        term.textContent = label;
+        const text = document.createElement('span');
+        text.textContent = value;
+        detail.append(text);
+        if (targetId) {
+          const change = document.createElement('button');
+          change.type = 'button';
+          change.className = 'text-button';
+          change.textContent = 'Change';
+          change.setAttribute('aria-label', 'Change ' + label.toLowerCase());
+          change.onclick = () => {
+            const target = el(targetId);
+            for (let parent = target?.parentElement; parent; parent = parent.parentElement) {
+              if (parent.tagName === 'DETAILS') parent.open = true;
+            }
+            reviewOpener = target;
+            el('assessmentReviewDialog').close();
+            target?.scrollIntoView({block:'center', behavior:'instant'});
+          };
+          detail.append(change);
+        }
+        body.append(term, detail);
+      };
+      const field = (id, label) => {
+        const input = el(id);
+        const value = input.type === 'checkbox' ? (input.checked ? 'Yes' : 'No')
+          : input.selectedOptions?.[0]?.textContent || input.value || 'Not provided';
+        add(label, value, id);
+      };
+      add('Concern area',state.area,'screenTitle');
+      if(window.ContinuityUI?.enabled())add('Linked concern',el('assessmentEpisode')?.selectedOptions[0]?.textContent||'No concern selected','assessmentEpisode');
       add('Input',state.area==='Sweat'?'Questionnaire; no photo is used':`${state.file.name} · ${(state.file.size/1024/1024).toFixed(2)} MB`);
-      if(state.area==='Sweat')for(const id of ['sweatPattern','sweatFrequency','sweatDuration','sweatLocation']){const input=el(id);add(input.closest('label')?.firstChild.textContent.trim()||id,input.selectedOptions?.[0]?.textContent||input.value);}
-      else {add('Capture type',el('imageContext').selectedOptions[0].textContent);for(const id of ['duration','discomfort','change']){const input=el(id);add(input.closest('label')?.textContent.split('\n')[0].trim().slice(0,90)||id,input.selectedOptions?.[0]?.textContent||input.value);}}
+      if (state.area === 'Sweat') {
+        for (const [id,label] of [['sweatPattern','Pattern'],['sweatFrequency','Frequency'],['sweatDuration','Duration'],
+          ['sweatLocation','Location'],['sweatStress','Stress trigger'],['sweatHeat','Heat trigger'],
+          ['sweatMedication','Recent medication change'],['sweatImpact','Daily impact']]) field(id,label);
+      } else {
+        for (const [id,label] of [['imageContext','Capture type'],['duration','Duration'],['discomfort','Discomfort'],
+          ['change','Recent change'],['previousTreatment','Previous care']]) field(id,label);
+        const symptoms = [...document.querySelectorAll('#symptomChips input:checked')].map(input=>input.parentElement.textContent.trim());
+        add('Reported symptoms',symptoms.join(', ') || 'None selected','symptomChips');
+        if (el('imageContext').value === 'dermoscopic_lesion') field('dermoscopyConsent','Dermoscopic capture confirmation');
+        if (el('presentationCaseEnabled').checked) field('presentationCaseEnabled','Teaching case matching');
+      }
+      field('urgentConcern','Urgent concern');
+      add('Processing consent',el('imageConsent').checked ? 'Confirmed for this check' : 'Required','imageConsent');
       add('Save status',state.profile?.patient_id?'Derived result saved to this account if storage succeeds. Source photo is not retained.':'Guest result remains in this tab; no account record is created.');
-      const opened=version;
-      el('confirmAssessmentReview').onclick=()=>{if(opened!==version)return;el('assessmentReviewDialog').close();analyze();};
+      const opened=++version, workspace=state.workspaceVersion, draft=window.DraftUX?.snapshot(el('screen'));
+      el('confirmAssessmentReview').onclick=()=>{
+        if(opened!==version || workspace!==state.workspaceVersion)return;
+        if(draft!==window.DraftUX?.snapshot(el('screen')))return window.AssessmentUX.review();
+        el('assessmentReviewDialog').close();analyze();
+      };
       reviewOpener=el('analyzeButton');
       el('assessmentReviewDialog').showModal();el('assessmentReviewTitle').focus();
     }
@@ -25,7 +71,10 @@
     document.body.append(dialog);el('backToAssessment').onclick=()=>dialog.close();
     dialog.addEventListener('close',()=>{
       const target=reviewOpener;reviewOpener=null;
-      if(target?.isConnected&&!target.disabled&&target.getClientRects().length&&!target.closest('[inert]'))target.focus({preventScroll:true});
+      if(target?.isConnected&&!target.disabled&&target.getClientRects().length&&!target.closest('[inert]')){
+        if (!target.matches('button,input,select,textarea,[tabindex]')) target.tabIndex=-1;
+        target.focus({preventScroll:true});
+      }
     });
     const help=document.createElement('details');help.className='capture-help';help.innerHTML='<summary>How to prepare your input</summary><ol><li>Choose the concern and answer relevant questions.</li><li>For a photo, use even light, a steady close-up and the appropriate capture type. Use an ordinary photo unless you actually have dermoscopy.</li><li>Review your input and the data-handling notice, then consent before checking.</li></ol><p>Photos: up to 10 MB and 16 megapixels. Export a smaller copy from your gallery if needed; the app does not silently resize a large original. HEIC/HEIF decoding stays in server memory. No source photos are retained.</p>';
     document.getElementById('moduleStatus')?.after(help);

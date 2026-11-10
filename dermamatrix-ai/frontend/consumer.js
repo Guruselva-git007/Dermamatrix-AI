@@ -4,7 +4,8 @@
   let csrf = '', availability = null, probe = null, generation = 0, owner = null;
   const params = new URLSearchParams(location.hash.slice(1));
   let incomingAction = params.has('account_action') ? { purpose: params.get('account_action'), token: params.get('token') || '' } : null;
-  let pendingAction = null, rightsKey = null, rightsSignature = null;
+  let pendingAction = null, rightsKey = null, rightsSignature = null, securityRequestVersion = 0;
+  const pendingForms = new WeakMap();
   if (incomingAction) history.replaceState(null, '', `${location.pathname}${location.search}#settings`);
   const el = id => document.getElementById(id);
   const text = (node, value) => { node.textContent = value; return node; };
@@ -122,10 +123,18 @@
     const submit = form.querySelector('[type=submit]');
     if (submit?.disabled) return;
     if (submit) submit.disabled = true;
-    const version = generation;
+    const version = generation, instance = {};
+    pendingForms.set(form,instance);
+    const passwords = [...form.querySelectorAll('input[type=password]')].map(input=>[input,input.value]);
     try { const data = await work(); if (version === generation) return data; }
     catch (error) { if (version === generation) message(error.message || 'This action could not be completed.', true); }
-    finally { if (submit) submit.disabled = false; form.querySelectorAll('input[type=password]').forEach(i => { i.value = ''; }); }
+    finally {
+      if (pendingForms.get(form) === instance) {
+        pendingForms.delete(form);
+        if (submit) submit.disabled = false;
+        if (version === generation) for (const [input,value] of passwords) if (input.value === value) input.value = '';
+      }
+    }
   }
   function showAction(action = null) {
     const dialog = el('accountActionDialog');
@@ -153,7 +162,8 @@
 
   async function refreshSecurity() {
     if (!owner || !el('consumerAccount')) return;
-    const version = generation;
+    const version = generation, requestVersion = ++securityRequestVersion, workspace = state.workspaceVersion;
+    const current = () => version === generation && requestVersion === securityRequestVersion && workspace === state.workspaceVersion && owner;
     el('consumerAccount').hidden = false;
     el('consumerAccount').querySelectorAll('[data-consumer-feature]').forEach(panel => { panel.hidden = !window.ConsumerClient.enabled; });
     if (!window.ConsumerClient.enabled) return;
@@ -161,7 +171,7 @@
     el('consumerDeliveryState').textContent = 'Checking email availability…';
     try {
       const [account, privacy] = await Promise.all([requestJSON('/api/security/account'), requestJSON('/api/privacy')]);
-      if (version !== generation || !owner) return;
+      if (!current()) return;
       el('emailVerificationState').textContent = account.email_verified ? 'Email verified' : 'Email not verified';
       el('processingState').textContent = privacy.processing_paused ? 'New health processing is paused.' : 'New health processing is enabled; consent is still required for each assessment.';
       el('processingPaused').value = String(!privacy.processing_paused);
@@ -181,11 +191,11 @@
       if (!privacy.requests.length) requests.append(item('li', 'No requests recorded.'));
       const consents = el('consentHistory'); consents.replaceChildren();
       for (const entry of privacy.consents) consents.append(item('li', `${entry.purpose} · ${entry.consent_version} · ${new Date(entry.accepted_at).toLocaleDateString()}`));
-    } catch (error) { if (version === generation) message(error.message, true); }
+    } catch (error) { if (current()) message(error.message, true); }
   }
 
   window.ConsumerUI = {
-    clear() { generation++; owner = null; rightsKey = null; rightsSignature = null; el('consumerAccount')?.setAttribute('hidden', ''); el('consumerSessions')?.replaceChildren(); el('privacyRequests')?.replaceChildren(); el('consentHistory')?.replaceChildren(); document.querySelectorAll('#consumerAccount form').forEach(form => form.reset()); for(const id of ['consumerStatus','consumerDeliveryState','emailVerificationState','processingState'])if(el(id))el(id).textContent=''; if(el('resendVerification'))el('resendVerification').disabled=true; if (el('accountActionDialog')?.open) el('accountActionDialog').close(); pendingAction = null; },
+    clear() { generation++; owner = null; rightsKey = null; rightsSignature = null; el('consumerAccount')?.setAttribute('hidden', ''); el('consumerSessions')?.replaceChildren(); el('privacyRequests')?.replaceChildren(); el('consentHistory')?.replaceChildren(); document.querySelectorAll('#consumerAccount form').forEach(form => { form.reset(); pendingForms.delete(form); const submit=form.querySelector('[type=submit]'); if(submit)submit.disabled=false; }); for(const id of ['consumerStatus','consumerDeliveryState','emailVerificationState','processingState'])if(el(id))el(id).textContent=''; if(el('resendVerification'))el('resendVerification').disabled=true; if (el('accountActionDialog')?.open) el('accountActionDialog').close(); pendingAction = null; },
     session(profile) { generation++; owner = profile?.patient_id || null; },
     ready() { if (incomingAction) { const action = incomingAction; incomingAction = null; showAction(action); } },
     refresh: refreshSecurity,
@@ -231,11 +241,21 @@
     for (const [id, path] of [['changePasswordForm', '/api/security/password'], ['changeEmailForm', '/api/security/email'], ['revokeSessionForm', '/api/security/sessions/revoke'], ['processingControlForm', '/api/privacy/processing'], ['rightsRequestForm', '/api/privacy/requests']]) {
       el(id).onsubmit = async event => {
         event.preventDefault(); const form = event.currentTarget;
+        const submittedDraft = window.DraftUX?.snapshot(form);
         const data = Object.fromEntries(new FormData(form));
         if (id === 'processingControlForm') data.paused = data.paused === 'true';
         if (id === 'rightsRequestForm') { const signature = JSON.stringify({kind: data.kind, note: data.note}); if (rightsSignature !== signature) { rightsSignature = signature; rightsKey = crypto.randomUUID(); } }
         const result = await run(form, () => call(path, data, id === 'processingControlForm' ? 'PUT' : 'POST', id === 'rightsRequestForm' ? { 'Idempotency-Key': rightsKey } : {}));
-        if (result) { message(result.message || 'Request recorded locally, awaiting an operator.'); if (result.delivery) message(deliveryCopy(result.delivery)); if (id === 'rightsRequestForm') { form.reset(); rightsKey = null; rightsSignature = null; } await refreshSecurity(); }
+        if (result) {
+          message(result.message || 'Request recorded locally, awaiting an operator.');
+          if (result.delivery) message(deliveryCopy(result.delivery));
+          if (id === 'rightsRequestForm') {
+            if (window.DraftUX?.snapshot(form) === submittedDraft) form.reset();
+            else message('Request recorded. Your newer details remain here and have not been submitted.');
+            rightsKey = null; rightsSignature = null;
+          }
+          await refreshSecurity();
+        }
       };
     }
 

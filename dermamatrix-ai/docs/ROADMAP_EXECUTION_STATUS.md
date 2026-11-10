@@ -5,7 +5,20 @@ Updated: 10 November 2026. Canonical checkpoint. Sequential implementation;
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current batch — Today, Check and saved-result handoffs (10 November).
+**Current batch — Complete consumer product upgrade (10 November).**
+Implementation and local acceptance are finished; exact-source remote CI and
+final synchronization/cleanup remain in progress. Delivered: complete check
+review with Change actions, protected routine/check-in drafts, concern activity,
+original-record comparison, routine status/plan review/journal/selected-day
+history, scoped discovery, read-only record details, All/Saved guides, account
+response ordering and shared responsive/resource polish. No schema/model/provider
+or deployment change. Local full backend: 269 passed; frontend: 121; runner: 12;
+new Chrome workflows: 12; affected existing Chrome workflows: 67. Visual matrix:
+130 states plus 22 focused refinements, five widths/both themes and enlarged text.
+See the final section of `consumer-validation-results.md` for evidence and limits.
+Native/physical/spoken/participant checks remain deferred by the owner.
+
+**Previous batch — Today, Check and saved-result handoffs (10 November).
 Complete within independently verifiable development scope.**
 Source `8f96c589f6e393cd67cf38df0f42bad7d572ab5e` is synchronized on
 `codex/consumer-evolution`. **Exact-source CI passed 261 backend tests, 121

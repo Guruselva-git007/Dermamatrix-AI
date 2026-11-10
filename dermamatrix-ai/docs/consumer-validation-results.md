@@ -1080,3 +1080,102 @@ remote equality, the refreshed scoped archive and release of the sleep helper.
 Native Safari picker/save/correction, spoken accessibility, physical phones
 and consumer sessions remain deferred. Resume the manual synthetic Safari Upload
 in `consumer-device-checks.md` when the owner resumes native verification.
+
+
+## Complete consumer product upgrade — 10 November 2026
+
+Implementation extends the existing consumer records and white/sky-blue IBM Plex
+interface. Development only; email transport and deployment remain disabled.
+The starting checkpoint was `3e5b502`, runtime `8f96c58`.
+
+**Observed defects and corrections.** In the isolated browser baseline, selecting
+a second routine carried the first routine’s unfinished check-in note and trend
+into the new association (P1). Both row actions and the selector now use the
+existing discard guard: Cancel retains the original selection/input; accepting
+starts a clean check-in. A genuinely committed privacy request with a delayed
+response erased newer note input (P1). The completion now resets only the submitted
+draft, preserving newer edits. An overlapping security refresh was a source-supported
+ordering risk: a response sequence test now proves the latest refresh wins.
+Account cleanup also clears the added picker labels and cancels pending views.
+
+**Delivered upgrades.** Check review includes all submitted questionnaire triggers,
+impact, relevant image context, symptoms, prior care, urgent concern, association
+and consent. Field-specific Change actions preserve input and focus the field;
+confirmation rechecks the reviewed draft. Results retain the existing finding,
+evidence/limitations, save-state, navigation and retry contracts.
+
+Journey adds a bounded, owner-scoped concern activity view with date/type filters,
+unassigned history, effective check-ins, immutable routine action associations and
+correction lineage. Two explicitly selected original records from one concern
+and area can be read side by side. Existing comparison rules determine numerical
+compatibility; original inputs and model/methodology versions remain available
+in disclosure. Full original reports remain accessible. No photos are available,
+no records are created by comparison, and differences never establish healing.
+
+Routines add status filtering, a schedule review and a paginated journal. A selected
+day reads immutable schedule revision intervals and effective completion actions:
+completed/skipped are self-reports; scheduled is future; unrecorded does not prove
+nonadherence. The view respects creation/start, pauses/archive, saved timezones,
+quiet hours and DST gaps/folds, retaining retroactive actions outside the plan
+interval with an explicit label. Legacy missing plan history is disclosed. Daily
+reads stop with a recoverable message above 500 revisions/400 daily actions;
+the paginated journal remains available. Existing full-history check-in counts
+and dates support routine summaries beyond the latest 100 detail records.
+
+Search adds recognizable saved titles, timestamps/record suffixes, category,
+concern, area and date scope, read-only check-in/routine details, explicit edit
+controls and return to the existing search result list. Cursor validation includes
+owner, scope and assessment/check-in/revision snapshots. Learn’s All/Saved library
+uses existing bookmarks; removing a bookmark updates the returned Saved library.
+A 25-assessment synthetic fixture demonstrated 25 unrelated summary parses in the
+previous broad reader versus zero for the new routine-only query. Category reads
+skip unrelated record tables; general text search still scans account JSON. No
+unmeasured latency or large-scale performance improvement is claimed.
+
+The shared shell adds reachable mobile navigation with active/Back behavior.
+The routine editor pairs related fields, comparison prioritizes findings and
+original-report actions, Profile summarizes current processing/delivery state,
+Products aligns purpose/search, and clinician discovery explicitly labels its
+external Maps handoff. Existing restriction, location privacy and availability
+behavior is preserved. Official interaction references were the W3C APG
+[tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/) and
+[modal dialogs](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
+
+**Evidence and verification.** Private evidence is retained in
+`local-artifacts/whole-product-upgrade-2026-11-10/`: original reproduction JSON,
+before captures, source hashes, isolated test logs, workflow results and visual
+samples. Seven new backend cases cover activity pagination/scope, effective dates,
+original associations, comparison compatibility/integrity, discovery parsing,
+owner boundaries, archived day history, plan intervals and DST/quiet-hour rules.
+The complete backend run passed 269 tests locally with the CI configuration;
+121 frontend tests and 12 runner tests passed. Twelve new browser workflows and
+67 affected existing Chrome checks passed. The accessibility traversal test now
+counts actual review controls because precise Change buttons legitimately add
+keyboard stops; its Back, confirmation, Escape and focus assertions remain.
+
+The visual matrix captured 130 states across 320/390/768/1280/1440 px and both
+themes, with zero page/visible-control horizontal-overflow findings or page errors.
+After the comparison/plan refinements, 20 affected size/theme captures were
+repeated, plus two 200% computed-text samples at 390 px, also without overflow.
+Representative narrow/wide images were inspected. Long element captures can
+include fixed-header/footer compositing seams; these are not native device tests.
+An exploratory CSS zoom at 390 px produced a 195 CSS-pixel layout below the
+supported reflow width and overflowed; it is retained as a method limitation,
+not reported as a physical-device or text-enlargement pass. Enlarged-text evidence
+uses explicit computed-text doubling, not OS settings or spoken output.
+
+No schema migration was needed. Existing source hashes verify medical scoring,
+models, canonical evidence, consent/upload and photo-retention code stayed intact.
+Existing regression coverage exercises briefs/exports, >50 assessments,
+>100 check-ins, corrections, voiding, concurrent updates and account isolation.
+An initial whole-suite launch used consumer-enabled browser configuration;
+legacy nonconsumer tests rejected CSRF as designed. Repeating with the existing
+CI consumer-disabled test configuration passed; consumer account tests enable
+their own isolated configuration. No application policy was relaxed.
+
+**Completion gate:** source is locally verified; exact-source remote CI and final
+Git/cleanup receipts are pending below. Native Safari picker/save/correction,
+physical Samsung/iPhone, spoken VoiceOver/TalkBack and participant usability
+sessions remain deferred. Resume existing `consumer-device-checks.md` when the
+owner explicitly resumes them; do not substitute emulation or retry the Samsung
+connection during this development task.

@@ -63,8 +63,9 @@ async (page, options = {}) => {
     if (options.artifactRoot) await page.screenshot({ path: options.artifactRoot + 'review-' + size.width + '.png' });
     // Safari's all-controls traversal can use Option-Tab under Mac preferences.
     let traversal;
+    const reviewStops = await page.locator('#assessmentReviewDialog button').count() + 2;
     for (const key of ['Tab', 'Alt+Tab']) {
-      for (let press = 0; press < 4; press++) {
+      for (let press = 0; press < reviewStops; press++) {
         await page.keyboard.press(key);
         if (await page.evaluate(() => document.activeElement.id) === 'backToAssessment') { traversal = key; break; }
       }

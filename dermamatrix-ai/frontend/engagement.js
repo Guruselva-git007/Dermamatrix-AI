@@ -32,7 +32,7 @@
           const row=node('article',undefined,'today-task');
           if(task.episode?.label)row.append(node('p','Concern: '+task.episode.label));
           row.append(node('strong',task.label),node('p',`${task.routine_name} · ${task.time} · ${task.timezone}`),node('span',task.state==='pending'?'Not recorded':task.state==='completed'?'Completed — self-reported':'Skipped — self-reported'));
-          if(task.event_id)row.append(action('Correct',()=>window.ContinuityUI?.correctEvent(task.event_id,task.revision,task.label)));
+          if(task.event_id)row.append(action('Correct',()=>window.ContinuityUI?.correctEvent(task.event_id,task.revision,task.label,task.state)));
           if(task.state==='pending'&&!task.event_id) for(const [label,value] of [['Done','completed'],['Skip','skipped']]) {
             const requestKey=crypto.randomUUID();
             row.append(action(label,async()=>{
@@ -79,7 +79,7 @@
       scheduleLoadedId=id;window.DraftUX?.clean(form);
       status('scheduleStatus',schedule?'Schedule loaded. Edits preserve past completion records.':'Add your own steps and schedule. This does not create a medical treatment plan.');
       }else status('scheduleStatus','Completion history refreshed. Your current schedule input is preserved. Save explicitly to apply changes.');
-      for(const event of data.events){const row=node('li',`${event.date} ${event.time} · ${event.step_text} · ${event.action} · schedule version ${event.schedule_version}`);row.append(action('Correct',()=>window.ContinuityUI?.correctEvent(event.id,event.revision,event.step_text)));if(event.corrections?.length){const details=node('details'),title=node('summary','Correction history');details.append(title,node('p',`Original action: ${event.original.action}`));for(const c of event.corrections)details.append(node('p',`${new Date(c.created_at).toLocaleString()} · ${c.data.effective.action} · account actor ${c.data.actor_id}${c.data.reason?' · '+c.data.reason:''}`));row.append(details);}$('routineEventHistory').append(row);}
+      for(const event of data.events){const row=node('li',`${event.date} ${event.time} · ${event.step_text} · ${event.action} · schedule version ${event.schedule_version}`);row.append(action('Correct',()=>window.ContinuityUI?.correctEvent(event.id,event.revision,event.step_text,event.action)));if(event.corrections?.length){const details=node('details'),title=node('summary','Correction history');details.append(title,node('p',`Original action: ${event.original.action}`));for(const c of event.corrections)details.append(node('p',`${new Date(c.created_at).toLocaleString()} · ${c.data.effective.action} · account actor ${c.data.actor_id}${c.data.reason?' · '+c.data.reason:''}`));row.append(details);}$('routineEventHistory').append(row);}
       if(!data.events.length)$('routineEventHistory').append(node('li','No completion events recorded.'));
     }catch(e){if(current(version)&&load===scheduleLoadVersion){
       if(!preserveInput)form.hidden=true;
@@ -110,6 +110,7 @@
       if(!data.analyses.length&&reset)$('journeySearchResults').append(node('p','No saved results match these filters.'));
       for(const result of data.analyses){
         const row=node('article',undefined,'journey-search-row');
+        row.dataset.assessmentId = result.assessment_id;
         const title=result.summary.assessment_result?.condition?.name||result.summary.condition_intelligence?.finding?.name||`${result.area} assessment`;
         row.append(node('h3',title),node('p',`${result.area} · ${new Date(result.created_at).toLocaleString()}${result.unavailable?' · Original record unavailable':''}`));
         if(result.context?.episode||result.context?.body_area)row.append(node('p',`Your labels: ${result.context.episode||'No episode'} · ${result.context.body_area||'No body area'}`));
@@ -135,6 +136,7 @@
         $('journeySearchResults').append(row);
       }
       historyCursor=data.next_cursor;$('journeyMore').hidden=!historyCursor;status('journeySearchStatus',`${$('journeySearchResults').querySelectorAll('article').length} matching results shown. Newest saved first.`);
+      window.ProductUpgrade?.historyRendered();
     }catch(e){if(current(version)&&requestVersion===historyRequestVersion)status('journeySearchStatus',e.message);}
     finally{if(version===generation&&requestVersion===historyRequestVersion){historyLoading=false;$('journeyMore').disabled=false;}}
   }
@@ -179,6 +181,7 @@
     const target=guideOpener?.isConnected&&guideOpener.getClientRects().length?guideOpener:$('learnSearch');
     guideOpener=null;
     if(restoreFocus&&target){target.focus({preventScroll:true});target.scrollIntoView({block:'center',behavior:'instant'});}
+    if(restoreFocus&&$('learnSaved')?.value==='saved')void guides();
   }
   async function guides(){
     closeGuide({restoreFocus:false});
@@ -187,7 +190,7 @@
     try{
       const data=await requestJSON('/api/knowledge/conditions'+(area?'?area='+encodeURIComponent(area):''));if(version!==guideListVersion)return;
       list.replaceChildren();
-      const items=data.items.filter(r=>`${r.name} ${(r.aliases||[]).join(' ')}`.toLowerCase().includes(query));
+      const items=data.items.filter(r=>`${r.name} ${(r.aliases||[]).join(' ')}`.toLowerCase().includes(query) && ($('learnSaved')?.value!=='saved'||window.ContinuityUI?.isBookmarked(r.id)));
       for(const entry of items){const row=node('article',undefined,'learn-row'),read=action('Read guide',()=>openGuide(entry.id,read));read.setAttribute('aria-label','Read guide: '+entry.name);row.append(node('h3',entry.name),node('p',entry.health_area),read);list.append(row);}
       if(!$('learn').classList.contains('is-reading'))status('learnStatus',items.length?`${items.length} ${items.length===1?'guide':'guides'} found${area?' · '+area:''}.`:'No guides match. Try a different word or category.');
     }catch(e){if(version===guideListVersion){status('learnStatus',`Guides could not be refreshed. ${e.message} Try again; any previous matches remain below.`);guideRetry=guides;$('learnRetry').hidden=false;}}
@@ -252,6 +255,9 @@
     const contextDialog=node('dialog',undefined,'consumer-dialog');contextDialog.id='resultContextDialog';contextDialog.setAttribute('aria-labelledby','contextTitle');contextDialog.innerHTML='<form id="resultContextForm"><h2 id="contextTitle">Organise this result</h2><p id="contextStatus" role="status"></p><label>Personal concern label<input id="contextEpisode" maxlength="120"></label><label>Body area<input id="contextBodyArea" maxlength="80"></label><div class="consumer-actions"><button id="cancelResultContext" type="button" class="button quiet">Cancel</button><button type="submit" class="button primary">Save labels</button></div></form>';document.body.append(contextDialog);$('cancelResultContext').onclick=closeContext;
     const learn=node('section',undefined,'learn-section');learn.id='learn';learn.dataset.page='learn';learn.setAttribute('aria-labelledby','learnTitle');learn.innerHTML='<h1 id="learnTitle">Understand your concerns</h1><p>Source-linked education, separate from your assessment. These guides do not diagnose or prescribe.</p><form id="learnForm" class="consumer-filter"><label>Search guides<input id="learnSearch" type="search" maxlength="120" placeholder="Search a topic"></label><label>Category<select id="learnArea"><option value="">All categories</option><option>Skin</option><option>Hair</option><option>Nails</option><option>Sweat</option></select></label><button class="button quiet" type="submit">Find guides</button></form><p id="learnStatus" role="status"></p><div id="learnList"></div><article id="learnDetail" class="consumer-panel" hidden></article>';
     $('products').after(learn);$('learnForm').onsubmit=e=>{e.preventDefault();guides();};
+    const library=node('label','Library'), savedFilter=node('select');
+    savedFilter.id='learnSaved';savedFilter.add(new Option('All guides','all'));savedFilter.add(new Option('Saved guides','saved'));
+    library.append(savedFilter);$('learnForm').querySelector('[type=submit]').before(library);savedFilter.onchange=guides;
     const retry=action('Try again',()=>guideRetry?.());retry.id='learnRetry';retry.hidden=true;$('learnStatus').after(retry);
     const link=node('a','Learn');link.prepend(node('span','▤'),document.createTextNode(' '));link.href='#learn';link.dataset.pageNav='learn';link.onclick=e=>{e.preventDefault();showPage('learn');};document.querySelector('[data-page-nav=progress]').after(link);
     const intro=node('dialog',undefined,'consumer-dialog');intro.id='welcomeDialog';intro.setAttribute('aria-labelledby','welcomeTitle');intro.innerHTML='<h2 id="welcomeTitle">A clearer way to keep track</h2><ol><li>Choose a concern and provide the appropriate photo or questionnaire.</li><li>Read the supported evidence, uncertainty and next steps. Research rankings are not diagnoses.</li><li>Save with an account, track your own routine and prepare a clinician discussion.</li></ol><p>Guest results remain in the current tab. Creating an account does not silently transfer a guest assessment. Source photos are not retained by the assessment service.</p><button id="closeWelcome" type="button" class="button primary">Continue</button>';
