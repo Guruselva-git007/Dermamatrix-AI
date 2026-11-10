@@ -20,10 +20,10 @@ async function flush() {
 }
 
 function harness() {
-  const requests = [], toasts = [], pages = [];
+  const requests = [], toasts = [], pages = [], journeyViews = [];
   const elements = new Map();
   const get = selector => {
-    if (!elements.has(selector)) elements.set(selector, { textContent: 'Before refresh' });
+    if (!elements.has(selector)) elements.set(selector, { textContent: 'Before refresh', getClientRects: () => [] });
     return elements.get(selector);
   };
   const bridge = {
@@ -41,7 +41,7 @@ function harness() {
   };
   const context = vm.createContext({
     document: { querySelector: get, querySelectorAll: () => [] },
-    window: {}, console, __bridge: bridge,
+    window: { WorkspaceUI: { reveal: view => journeyViews.push(view) } }, console, __bridge: bridge,
   });
   vm.runInContext(definitions + `
     requestJSON = __bridge.request;
@@ -63,7 +63,7 @@ function harness() {
       else assert.fail(`unexpected endpoint ${request.url}`);
     }
   }
-  return { api: context.api, state, context, requests, toasts, pages, bridge, get, finishBatch };
+  return { api: context.api, state, context, requests, toasts, pages, journeyViews, bridge, get, finishBatch };
 }
 
 test('ordinary concurrent history loads share one batch and cache successful data', async () => {
@@ -153,11 +153,13 @@ test('saveProgress never claims refresh success or navigates when loading fails'
   await h.api.saveProgress();
   assert.equal(h.bridge.closed, 0);
   assert.deepEqual(h.pages, []);
+  assert.deepEqual(h.journeyViews, []);
   assert.equal(h.get('#clinicalStatus').textContent, 'Before refresh');
   assert.equal(h.toasts.some(message => /Saved assessment metadata is available/.test(message)), false);
   h.bridge.refreshResult = true;
   await h.api.saveProgress();
   assert.equal(h.bridge.closed, 1);
   assert.deepEqual(h.pages, ['progress']);
+  assert.deepEqual(h.journeyViews, ['results']);
   assert.match(h.get('#clinicalStatus').textContent, /Saved/);
 });

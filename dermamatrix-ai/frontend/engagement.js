@@ -15,14 +15,19 @@
   const localDate = zone => new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 
   async function loadToday() {
-    if(!signed()) { if($('todayTasks'))$('todayTasks').replaceChildren(node('p','Create an account to schedule routines and save check-ins. Guest assessments stay in this tab.'));return; }
+    if (!signed()) {
+      status('engagementStatus', '');
+      $('todayTasks')?.replaceChildren(node('p', 'An account lets you keep results, routines and check-ins. Guest checks stay in this tab.'));
+      return;
+    }
     if(todayFlight)return todayFlight;
+    status('engagementStatus', 'Loading today’s routine steps…');
     const version=generation,requestVersion=++todayRequestVersion;
     const flight=(async()=>{
       try {
         const data=await requestJSON('/api/today');if(!current(version)||requestVersion!==todayRequestVersion)return;status('engagementStatus','');
         const list=$('todayTasks');list.replaceChildren();
-        if(!data.tasks.length)list.append(node('p','No scheduled steps today. Add a routine in Journey, then choose its steps and schedule.'));
+        if(!data.tasks.length)list.append(node('p','No routine steps are scheduled for today.'));
         for(const task of data.tasks) {
           const row=node('article',undefined,'today-task');
           if(task.episode?.label)row.append(node('p','Concern: '+task.episode.label));
@@ -38,11 +43,7 @@
           }
           list.append(row);
         }
-        if(data.recent_result)list.append(action('Open your latest saved result',async()=>{
-          const id=data.recent_result.assessment_id;
-          if(current(version))await showSavedReport(id);
-        }));
-      }catch(e){if(current(version)&&requestVersion===todayRequestVersion)status('engagementStatus',e.message);}
+      }catch(e){if(current(version)&&requestVersion===todayRequestVersion)status('engagementStatus','Today’s routine steps could not be loaded. Select Today to retry.');}
       finally{if(todayFlight===flight)todayFlight=null;}
     })();todayFlight=flight;return flight;
   }
@@ -237,10 +238,9 @@
     welcome(){if(!sessionStorage.getItem('dermamatrix_intro_seen'))$('welcomeDialog')?.showModal();}
   };
   function install(){
-    const today=node('section',undefined,'consumer-panel today-panel');today.id='consumerToday';today.innerHTML='<h2>Your next step</h2><p>Record the routine you chose to follow and meaningful changes over time.</p><p id="engagementStatus" role="status" aria-live="polite"></p><div id="todayTasks"></div><div class="consumer-actions"><button class="button quiet" id="todayNewCheck" type="button">Start a check</button><button class="button quiet" id="todayJourney" type="button">Manage routines</button><button class="text-button" id="openWelcome" type="button">How this works</button></div>';
-    document.getElementById('dashboardCareGrid')?.prepend(today);
+    const today=node('section',undefined,'consumer-panel today-panel');today.id='consumerToday';today.innerHTML='<h2 id="todayRoutineTitle">Routines and check-ins</h2><p id="engagementStatus" role="status" aria-live="polite"></p><div id="todayTasks"></div><div class="consumer-actions"><button class="button quiet" id="todayJourney" type="button">Manage routines</button><button class="text-button" id="openWelcome" type="button">How this works</button></div>';
+    document.getElementById('dashboardCareGrid')?.append(today);
     if(!today.isConnected)$('dashboard').prepend(today);
-    $('todayNewCheck').remove();$('todayJourney').onclick=()=>{showPage('progress');window.WorkspaceUI?.reveal('routines');};
     const schedulePanel=node('section',undefined,'consumer-panel');schedulePanel.id='scheduleWorkspace';schedulePanel.hidden=true;
     schedulePanel.innerHTML=`<h3>Routine steps & schedule</h3><p>Your own tracking plan. This app does not prescribe treatment.</p><label>Saved routine<select id="scheduleRoutine"><option value="">Choose a saved routine</option></select></label><p id="scheduleStatus" role="status" aria-live="polite"></p><form id="scheduleEditor" hidden><label>Steps (one per line)<textarea id="routineSteps" required maxlength="3620" aria-describedby="routineStepsHelp"></textarea></label><small id="routineStepsHelp">1–20 steps, up to 180 characters each.</small><fieldset><legend>Days</legend><div class="routine-day-options">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d,i)=>`<label><input name="routine_day" type="checkbox" value="${i}" checked>${d}</label>`).join('')}</div></fieldset><label>Times (comma separated)<input id="routineTimes" required placeholder="09:00, 18:00" aria-describedby="routineTimesHelp"></label><small id="routineTimesHelp">Up to four times, using 24-hour HH:MM.</small><label>Timezone<input id="routineTimezone" required list="routineZones" aria-describedby="timezoneHelp"></label><datalist id="routineZones"><option value="Asia/Kolkata"><option value="UTC"><option value="America/New_York"><option value="Europe/London"></datalist><small id="timezoneHelp">Use an IANA name such as Asia/Kolkata. Scheduling follows local daylight-saving rules.</small><label>Area<select id="routineScheduleArea">${['General','Skin','Hair','Nails','Sweat'].map(x=>`<option>${x}</option>`).join('')}</select></label><label>Personal concern label (optional)<input id="routineEpisode" maxlength="120"></label><label>Body-area note (optional)<input id="routineBodyArea" maxlength="80"></label><label>Status<select id="routineScheduleStatus"><option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option></select></label><label class="consumer-checkbox"><input id="routineReminderOptIn" type="checkbox">I want generic email reminders for this routine</label><label>Quiet hours start<input id="quietStart" type="time" value="21:00" required></label><label>Quiet hours end<input id="quietEnd" type="time" value="08:00" required></label><p>Quiet-hour occurrences are skipped; identical start/end means no quiet window. Email must be verified. Delivery needs a configured transport and an explicitly run worker. This local app does not install a scheduler.</p><button class="button primary" type="submit">Save steps & schedule</button></form><details><summary>Recorded completion history</summary><ul id="routineEventHistory" class="consumer-list"></ul></details><button class="text-button" id="showReminders" type="button">Check reminder status</button><p id="reminderStatus" role="status"></p>`;
     document.querySelector('#progress .progress-layout')?.after(schedulePanel);

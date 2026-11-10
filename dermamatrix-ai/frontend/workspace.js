@@ -45,6 +45,7 @@
     for(const button of $(id)?.querySelectorAll('button')||[]){const selected=button.dataset.view===view;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;}
   }
   function journey(value=journeyView) {
+    if (journeyView !== value) invalidateSavedReportOpen();
     journeyView=value;selectTabs('journeyTabs',value);
     for(const name of ['results','routines','checkins'])if($('journey-'+name))$('journey-'+name).hidden=!signed()||name!==value;
   }
@@ -103,7 +104,17 @@
     if($('dashboardInsight')&&(state.analyses?.length||0)<2)$('dashboardInsight').hidden=true;
     const careNote=document.querySelector('.dashboard-care-note');if(careNote)careNote.hidden=snapshot?.hidden;
     const routineAction=$('todayJourney');
-    if(routineAction){routineAction.textContent=signed()?'Manage routines':'Create an account';routineAction.onclick=()=>{if(signed()){showPage('progress');journey('routines');}else showAuthGate('register');};}
+    if (routineAction) {
+      const isSignedIn = signed();
+      const addRoutine = isSignedIn && state.progressLoadedFor === state.profile.patient_id && !state.routines.length;
+      $('todayRoutineTitle').textContent = isSignedIn ? 'Routines and check-ins' : 'Account tools';
+      const routineLabel = addRoutine ? 'Add a routine' : 'Manage routines';
+      routineAction.textContent = isSignedIn ? routineLabel : 'Create an account';
+      routineAction.onclick = () => {
+        if (isSignedIn) openJourneyView('routines', {openEditor:addRoutine});
+        else showAuthGate('register');
+      };
+    }
     journey();profile();assessment();
     const empty=$('journeyEmptyState');
     if(empty&&!empty.querySelector('[data-create-account]')){
@@ -173,7 +184,11 @@
   window.WorkspaceUI={
     update,assessment,theme,result,
     page(page){if(!installed)return;if(page==='progress')journey();if(page==='settings')profile();},
-    reveal(view){if(!installed)return;journey(view);if(view==='routines')$('routineEditorDisclosure').open=true;},
+    reveal(view, {openEditor = true} = {}) {
+      if (!installed) return;
+      journey(view);
+      if (view === 'routines' && openEditor) $('routineEditorDisclosure').open = true;
+    },
     async routineSaved(id){
       if(!installed||!window.ConsumerClient?.enabled||!signed())return;
       const owner=state.profile?.patient_id;

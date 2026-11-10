@@ -77,7 +77,10 @@
         <section id="dashboard" class="dashboard-section page-active" data-page="dashboard" aria-labelledby="dashboardTitle">
           <header class="dashboard-heading">
             <div><p class="dashboard-greeting"><span id="dashboardGreeting">Welcome</span><span id="dashboardUserGreeting">, <span id="dashboardUser"></span></span></p><h1 id="dashboardTitle">Your health, at a glance</h1><p>Understand a concern. Keep track of what matters.</p></div>
-            <div class="dashboard-heading-actions"><button class="button primary" data-dashboard-nav="home">Start a check <span aria-hidden="true">→</span></button></div>
+            <div class="dashboard-heading-actions" id="dashboardResume" hidden>
+              <button class="button primary" id="continueDashboardCheck" type="button" aria-describedby="dashboardResumeNote">Continue your check <span aria-hidden="true">→</span></button>
+              <p id="dashboardResumeNote">Your input is still in this tab.</p>
+            </div>
           </header>
           <section class="dashboard-actions-section" aria-labelledby="concernChoicesTitle">
             <div class="section-heading"><div><h2 id="concernChoicesTitle">What would you like to check?</h2><p>Choose a concern to see the right input and available support.</p></div></div>
@@ -90,10 +93,16 @@
             <p class="scope-note">Screening support, not a diagnosis. Uploaded photos are not retained.</p>
           </section>
           <div class="dashboard-care-grid" id="dashboardCareGrid">
-            <section class="health-snapshot" aria-labelledby="snapshotTitle"><div class="section-heading"><h2 id="snapshotTitle">Your latest overview</h2><button class="text-button" data-dashboard-nav="progress">View journey <span aria-hidden="true">→</span></button></div><div id="dashboardSnapshot" class="snapshot-grid"></div></section>
+            <section class="health-snapshot" aria-labelledby="snapshotTitle" hidden><div class="section-heading"><h2 id="snapshotTitle">Your latest overview</h2></div><div id="dashboardSnapshot" class="snapshot-grid"></div></section>
           </div>
           <p class="dashboard-care-note" hidden>Saved observations and self-reported updates; not measured healing.</p>
-          <div class="dashboard-lower-grid"><section class="dashboard-recent"><div class="section-heading"><h2>Recent activity</h2><button class="text-button" data-dashboard-nav="progress">View all <span aria-hidden="true">→</span></button></div><div id="dashboardActivity" class="dashboard-activity"><p class="empty-state">Your saved checks will appear here.</p></div></section><aside class="next-step-card" id="nextStepCard" hidden></aside></div>
+          <div class="dashboard-lower-grid" id="dashboardLowerGrid" hidden>
+            <section class="dashboard-recent" id="dashboardRecent" aria-labelledby="dashboardRecentTitle">
+              <div class="section-heading"><h2 id="dashboardRecentTitle">Recent activity</h2><button class="text-button" type="button" data-dashboard-journey="results">View saved results <span aria-hidden="true">→</span></button></div>
+              <div id="dashboardActivity" class="dashboard-activity"></div>
+            </section>
+            <aside class="next-step-card" id="nextStepCard" hidden></aside>
+          </div>
         </section>
         <section id="home" class="intro" data-page="home"><div><p class="eyebrow">CHECK MY HEALTH</p><h1>Start a check</h1><p>Choose an area, then add an image or complete a short questionnaire.</p></div></section>
 

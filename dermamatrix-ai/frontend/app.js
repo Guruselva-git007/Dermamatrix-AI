@@ -545,6 +545,9 @@ function clearWorkspaceEvidence() {
     else input.value = input.defaultValue || '';
   });
   $$('#screen select, #checkinForm select').forEach(input => { input.selectedIndex = 0; });
+  state.areaSelected = false;
+  state.questionnaireReviewed = false;
+  selectArea('Skin');
   $('#profileForm [type="submit"]').disabled = false;
   resetRoutineForm(); $('#checkinDate').value = currentDate();
   const pipeline = $('#analysisPipeline');
@@ -861,7 +864,6 @@ async function continueAsGuest() {
   updateAssessmentStorageCopy();
   updateAccountExportControls();
   showPage('dashboard');
-  toast('Guest workspace opened. Create an account to save reports and routines.');
   window.EngagementUI?.welcome();
 }
 
@@ -951,8 +953,10 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
   const allowed = ['dashboard', 'home', 'products', 'progress', 'support', 'settings', 'learn'];
   const route = ({today:'dashboard',check:'home',journey:'progress',profile:'settings'})[page] || page;
   const target = allowed.includes(route) ? route : 'dashboard';
+  if ($('.page-active')?.dataset.page !== target) invalidateSavedReportOpen();
   $$('[data-page]').forEach(section => section.classList.toggle('page-active', section.dataset.page === target));
   if (target === 'home') updateAssessmentProgress();
+  if (target === 'dashboard') updateDashboardResume();
   $$('[data-page-nav]').forEach(link => {
     const selected = link.dataset.pageNav === target;
     link.classList.toggle('active', selected);
@@ -973,10 +977,24 @@ function showPage(page, { syncHistory = true, scrollToTop = true } = {}) {
 
 function startAreaAssessment(area) {
   if (!selectArea(area, { userSelected: true })) return false;
+  openCheckInput();
+  return true;
+}
+
+function openCheckInput() {
   showPage('home', { scrollToTop: false });
   $('#screenTitle').focus({ preventScroll: true });
   $('#screen').scrollIntoView({ behavior: document.body.classList.contains('reduce-motion') ? 'auto' : 'smooth', block: 'start' });
-  return true;
+}
+
+function openJourneyView(view, { openEditor = false } = {}) {
+  showPage('progress', { scrollToTop: false });
+  window.WorkspaceUI?.reveal(view, { openEditor });
+  const target = openEditor ? $('#conditionLabel') : $(`#journeyTabs-${view}`);
+  if (target?.getClientRects().length) {
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  }
 }
 
 function setNavigationOpen(open) {
@@ -1608,7 +1626,7 @@ function renderUnifiedConsumerResult(data) {
       if (action === 'products') { closeResult(); showPage('products'); }
       if (action === 'progress') {
         if (!state.profile?.patient_id) { closeResult(); showAuthGate('register'); toast('Create an account to save assessments and check-ins.'); return; }
-        closeResult(); showPage('progress');
+        closeResult(); openJourneyView('results');
       }
       if (action === 'reassess') { closeResult(); resetImage(); selectArea(state.resultArea || state.area); showPage('home'); $('#imageInput')?.focus(); }
     };
@@ -1617,7 +1635,7 @@ function renderUnifiedConsumerResult(data) {
   return true;
 }
 
-function renderPatientResult(data) {
+function renderPatientResult(data, { savedRecord = false } = {}) {
   queueMicrotask(() => window.ContinuityUI?.explain(data));
   // All image states use the persisted consumer contract. Research and
   // presentation metadata belong in AI & Technical Details, not a smaller UI.
@@ -1713,13 +1731,14 @@ function renderPatientResult(data) {
     const stateProducts = isHealthy && products
       ? `<section class="assessment-state-products"><p class="eyebrow">OPTIONAL EVERYDAY CARE</p><div class="patient-products">${products}</div><p>${escapeHTML(recommendation.product_notice || 'These are optional maintenance categories, not treatment products.')}</p></section>`
       : '';
-    const action = isHealthy
-      ? `<button type="button" class="button quiet" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Save future check-ins'} <span>→</span></button>`
-      : isQuestionnaire
-        ? '<button type="button" class="button primary" data-result-action="edit-questionnaire">Edit your answers <span>→</span></button>'
-        : presentation.modelLimitedReview
-          ? '<button type="button" class="button primary" data-result-action="reassess">Start another check <span>→</span></button>'
-        : '<button type="button" class="button primary" data-result-action="reassess">Use another photo <span>→</span></button>';
+    let action;
+    if (isQuestionnaire && savedRecord) {
+      action = '<button type="button" class="button primary" data-result-action="progress">View saved results <span aria-hidden="true">→</span></button>';
+    } else if (isHealthy) {
+      action = `<button type="button" class="button quiet" data-result-action="progress">${state.profile?.patient_id ? 'Open My Journey' : 'Save future check-ins'} <span>→</span></button>`;
+    } else {
+      action = '<button type="button" class="button primary" data-result-action="edit-questionnaire">Edit your answers <span>→</span></button>';
+    }
     const safetyNote = isHealthy
       ? recommendation.medicine_policy || 'No treatment or medicine is needed based on this assessment.'
       : isQuestionnaire
@@ -1739,12 +1758,13 @@ function renderPatientResult(data) {
         if (button.dataset.resultAction === 'doctor') { closeResult(); showPage('support'); return; }
         if (button.dataset.resultAction === 'progress') {
           if (!state.profile?.patient_id) { closeResult(); showAuthGate('register'); return toast('Create an account to save assessments and future check-ins.'); }
-          closeResult(); showPage('progress'); return;
+          closeResult(); openJourneyView('results'); return;
         }
         if (button.dataset.resultAction === 'edit-questionnaire') {
           closeResult(); showPage('home');
+          state.reviewResultReady = false;
           transitionAssessment(AssessmentState.INPUT_REQUIRED, 'QUESTIONNAIRE READY TO EDIT');
-          updateAssessmentProgress(3);
+          updateAssessmentProgress();
           window.requestAnimationFrame(() => {
             const firstQuestion = $('#sweatPattern');
             firstQuestion?.focus({ preventScroll: true });
@@ -1817,7 +1837,7 @@ function renderPatientResult(data) {
       }
       if (button.dataset.resultAction === 'progress') {
         if (!state.profile?.patient_id) { showAuthGate('register'); return toast('Create an account to save assessments, routines, and check-ins.'); }
-        closeResult(); showPage('progress');
+        closeResult(); openJourneyView('results');
       }
     };
   });
@@ -1832,6 +1852,7 @@ async function analyze() {
   if (!sweat && $('#imageContext').value === 'dermoscopic_lesion' && !$('#dermoscopyConsent').checked) return requireAssessmentConsent($('#dermoscopyConsent'), 'Please confirm this is a dermatoscopic single-lesion photo.');
   clearAssessmentConsentError();
   const button = $('#analyzeButton');
+  invalidateSavedReportOpen();
   const requestId = ++state.assessmentRequestId;
   const workspaceVersion = state.workspaceVersion;
   const signature = JSON.stringify([state.area, state.file?.name, state.file?.size, state.file?.lastModified, ...$$('#screen input:not([type=file]), #screen select, #screen textarea').map(input => [input.id || input.name, input.type === 'checkbox' ? input.checked : input.value])]);
@@ -1981,7 +2002,7 @@ async function saveProgress() {
   try {
     const refreshed = await loadProgress({ force: true });
     if (!refreshed) return;
-    closeResult(); showPage('progress');
+    closeResult(); openJourneyView('results');
     $('#clinicalStatus').textContent = 'Saved to your local account · no image retained';
     toast('Saved assessment metadata is available in My Journey. Uploaded images are not kept.');
   } catch (error) {
@@ -2495,7 +2516,7 @@ function renderDashboardInsight(analyses, routines) {
     const delta = latestScore - previousScore;
     const direction = delta === 0 ? 'unchanged' : delta < 0 ? `${Math.abs(delta)} points lower` : `${delta} points higher`;
     insight.hidden = false;
-    insight.innerHTML = `<div><p class="eyebrow">RECORDED CONCERN</p><h2>${escapeHTML(String(latest.area))} concern indicator is ${escapeHTML(direction)}.</h2><p>Compared using the same recorded scoring and model versions. This is not measured healing or a clinical trend.</p></div><div class="dashboard-insight-metric"><small>LATEST / PREVIOUS</small><strong>${latestScore}<span>/100</span> <b>·</b> ${previousScore}<span>/100</span></strong><button class="text-button" data-dashboard-nav="progress">View journey →</button></div>`;
+    insight.innerHTML = `<div><p class="eyebrow">RECORDED CONCERN</p><h2>${escapeHTML(String(latest.area))} concern indicator is ${escapeHTML(direction)}.</h2><p>Compared using the same recorded scoring and model versions. This is not measured healing or a clinical trend.</p></div><div class="dashboard-insight-metric"><small>LATEST / PREVIOUS</small><strong>${latestScore}<span>/100</span> <b>·</b> ${previousScore}<span>/100</span></strong><button class="text-button" data-dashboard-journey="results">View saved results →</button></div>`;
     return;
   }
   if (latest) {
@@ -2512,6 +2533,26 @@ function renderDashboardInsight(analyses, routines) {
   insight.innerHTML = '';
 }
 
+function updateDashboardResume() {
+  const hasInput = state.area === 'Sweat'
+    ? state.questionnaireReviewed && hasDraft($('#screen'))
+    : Boolean(state.file);
+  $('#dashboardResume').hidden = !state.areaSelected || !hasInput || state.reviewResultReady || state.assessmentInFlight;
+}
+
+async function openDashboardResult(event) {
+  const button = event.currentTarget;
+  if (button.getAttribute('aria-busy') === 'true') return;
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = 'Opening result…';
+  try {
+    await showSavedReport(button.dataset.dashboardResult, button);
+  } finally {
+    button.removeAttribute('aria-busy');
+    button.textContent = 'Open latest result';
+  }
+}
+
 function renderDashboard() {
   const analyses = state.analyses || [];
   const routines = (state.routines || []).filter(routine => !routine.status || routine.status === 'active');
@@ -2520,50 +2561,37 @@ function renderDashboard() {
   const latestCheckin = checkins[0];
   const latestEvidence = latestAnalysis?.summary?.assessment_result?.canonical_evidence || latestAnalysis?.summary?.canonical_evidence || {};
   const latestRisk = latestEvidence.assessment_risk || latestAnalysis?.summary?.assessment_result?.assessment_risk || latestAnalysis?.summary?.assessment_risk || latestAnalysis?.summary?.risk;
+  updateDashboardResume();
   const snapshot = $('#dashboardSnapshot');
   if (snapshot) {
     const cards = [];
     if (latestAnalysis) {
-      const savedResult = latestAnalysis.summary?.assessment_result || {};
-      const result = savedResult.consumer?.primary_result?.title || legacyConsumerResult(latestAnalysis.summary)?.primary_result?.title || 'Health check saved';
-      cards.push(`<article class="snapshot-card"><span>◌</span><div><small>Latest assessment</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div><button class="text-button" data-dashboard-nav="progress">View →</button></article>`);
+      const result = latestAnalysis.unavailable ? 'Record unavailable' : reportClassification(latestAnalysis.summary);
+      const open = latestAnalysis.unavailable ? '' : `<button class="text-button" type="button" data-dashboard-result="${escapeHTML(latestAnalysis.assessment_id)}">Open latest result</button>`;
+      cards.push(`<article class="snapshot-card"><span>◌</span><div><small>Latest assessment</small><strong>${escapeHTML(result)}</strong><p>${escapeHTML(String(latestAnalysis.created_at).slice(0, 10))} · ${escapeHTML(latestAnalysis.area)} assessment</p></div>${open}</article>`);
       cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>Assessment concern</small><strong>${latestRisk?.score === undefined || latestRisk?.score === null ? 'No score yet' : `${escapeHTML(latestRisk.score)}/100 · ${escapeHTML(readableStatus(latestRisk.level || 'recorded'))}`}</strong><p>From your latest assessment; not a disease probability.</p></div></article>`);
     }
     if (routines.length) {
-      cards.push(`<article class="snapshot-card"><span>◔</span><div><small>Active routines</small><strong>${routines.length} ${routines.length === 1 ? 'routine' : 'routines'} in progress</strong><p>${escapeHTML(routines[0].routine_name)}${routines.length > 1 ? ` + ${routines.length - 1} more` : ''}</p></div><button class="text-button" data-dashboard-nav="progress">Manage →</button></article>`);
+      cards.push(`<article class="snapshot-card"><span>◔</span><div><small>Active routines</small><strong>${routines.length} ${routines.length === 1 ? 'routine' : 'routines'} in progress</strong><p>${escapeHTML(routines[0].routine_name)}${routines.length > 1 ? ` + ${routines.length - 1} more` : ''}</p></div></article>`);
     }
     if (latestCheckin) {
-      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>Latest check-in</small><strong>${escapeHTML(latestCheckin.reported_trend)}</strong><p>Recorded on ${escapeHTML(latestCheckin.checkin_date)}.</p></div></article>`);
+      cards.push(`<article class="snapshot-card"><span>⌁</span><div><small>Latest check-in</small><strong>${escapeHTML(readableStatus(latestCheckin.reported_trend))}</strong><p>Recorded on ${escapeHTML(latestCheckin.checkin_date)}.</p></div><button class="text-button" type="button" data-dashboard-journey="checkins">View check-ins</button></article>`);
     }
-    snapshot.innerHTML = cards.length
-      ? cards.slice(0, 4).join('')
-      : '<article class="snapshot-card snapshot-empty"><span>◌</span><div><small>FIRST STEP</small><strong>Your journey starts here</strong><p>Complete an assessment to begin.</p></div><button class="text-button" data-dashboard-nav="home">Check My Health →</button></article>';
+    snapshot.innerHTML = cards.join('');
   }
   renderDashboardInsight(analyses, routines);
-  $('#dashboardActivity').innerHTML = !analyses.length
-    ? '<p class="empty-state">No assessments yet. Complete your first assessment to begin your timeline.</p>'
-    : analyses.slice(0, 4).map(item => {
-      const title = reportClassification(item.summary);
-      const meta = 'Assessment saved';
-      return `<article class="dashboard-record"><span>◌</span><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.area)} · ${escapeHTML(meta)}</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`;
-    }).join('');
+  $('#dashboardRecent').hidden = !analyses.length;
+  $('#dashboardActivity').innerHTML = analyses.slice(0, 4).map(item => {
+    const title = item.unavailable ? 'Record unavailable' : reportClassification(item.summary);
+    return `<article class="dashboard-record"><span>◌</span><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(item.area)} · Assessment saved</small></div><time>${escapeHTML(String(item.created_at).slice(0, 10))}</time></article>`;
+  }).join('');
   const nextStep = $('#nextStepCard');
-  if (nextStep) {
-    const highPriority = ['HIGH', 'VERY_HIGH'].includes(latestRisk?.level) || ['PROMPT_MEDICAL_EVALUATION', 'URGENT_EVALUATION'].includes(latestRisk?.urgency);
-    if (highPriority) {
-      nextStep.hidden = false;
-      nextStep.innerHTML = '<p class="eyebrow">NEXT STEP</p><h2>Professional review is recommended</h2><p>Find current specialist listings near you.</p><button class="button primary" data-dashboard-nav="support">Find a Doctor <span>→</span></button>';
-    } else if (latestAnalysis && routines.length === 0) {
-      nextStep.hidden = false;
-      nextStep.innerHTML = '<p class="eyebrow">NEXT STEP</p><h2>Start a routine</h2><p>Track a clinician-recorded care plan over time.</p><button class="button primary" data-dashboard-nav="progress">Open My Journey <span>→</span></button>';
-    } else if (latestCheckin) {
-      nextStep.hidden = false;
-      nextStep.innerHTML = '<p class="eyebrow">NEXT STEP</p><h2>Review your journey</h2><p>Your latest self-reported check-in is saved.</p><button class="button primary" data-dashboard-nav="progress">View My Journey <span>→</span></button>';
-    } else {
-      nextStep.hidden = true;
-      nextStep.innerHTML = '';
-    }
-  }
+  const highPriority = ['HIGH', 'VERY_HIGH'].includes(latestRisk?.level) || ['PROMPT_MEDICAL_EVALUATION', 'URGENT_EVALUATION'].includes(latestRisk?.urgency);
+  nextStep.hidden = !highPriority;
+  nextStep.innerHTML = highPriority ? '<p class="eyebrow">NEXT STEP</p><h2>Professional review is recommended</h2><p>Find current specialist listings near you.</p><button class="button primary" data-dashboard-nav="support">Find a Doctor <span>→</span></button>' : '';
+  $('#dashboardLowerGrid').hidden = !analyses.length && !highPriority;
+  $$('#dashboard [data-dashboard-journey]').forEach(button => { button.onclick = () => openJourneyView(button.dataset.dashboardJourney); });
+  $$('#dashboard [data-dashboard-result]').forEach(button => { button.onclick = openDashboardResult; });
   $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(button.dataset.dashboardNav); });
 }
 
@@ -2620,14 +2648,28 @@ function renderReportRegister() {
   $$('[data-download-report]').forEach(button => { button.onclick = () => downloadSavedReport(button.dataset.downloadReport); });
 }
 
-async function showSavedReport(assessmentId) {
+function invalidateSavedReportOpen() {
+  state.savedReportRequestVersion = (state.savedReportRequestVersion || 0) + 1;
+}
+
+async function showSavedReport(assessmentId, opener = document.activeElement) {
+  if (state.assessmentInFlight) return;
+  invalidateSavedReportOpen();
+  const workspaceVersion = state.workspaceVersion, requestVersion = state.savedReportRequestVersion;
+  const current = () => workspaceVersion === state.workspaceVersion && requestVersion === state.savedReportRequestVersion;
   let item = state.analyses.find(analysis => analysis.assessment_id === assessmentId);
-  const workspaceVersion=state.workspaceVersion,requestVersion=(state.savedReportRequestVersion||0)+1;state.savedReportRequestVersion=requestVersion;
-  if(window.ConsumerClient?.enabled && state.profile?.patient_id){
-    try{const detail=await requestJSON('/api/assessments/'+encodeURIComponent(assessmentId));if(workspaceVersion!==state.workspaceVersion||requestVersion!==state.savedReportRequestVersion)return;
-      item={assessment_id:assessmentId,area:detail.area,created_at:detail.created_at,summary:detail.summary,episode_link:detail.episode_link||{},unavailable:false};
-      const index=state.analyses.findIndex(r=>r.assessment_id===assessmentId);if(index<0)state.analyses.push(item);else state.analyses[index]=item;
-    }catch(error){if(workspaceVersion===state.workspaceVersion&&requestVersion===state.savedReportRequestVersion)toast(error.message||'This saved record could not be opened.');return;}
+  if (window.ConsumerClient?.enabled && state.profile?.patient_id) {
+    try {
+      const detail = await requestJSON('/api/assessments/'+encodeURIComponent(assessmentId), { ownerGuard: current });
+      if (!current()) return;
+      item = {assessment_id:assessmentId, area:detail.area, created_at:detail.created_at, summary:detail.summary, episode_link:detail.episode_link||{}, unavailable:false};
+      const index = state.analyses.findIndex(record => record.assessment_id === assessmentId);
+      if (index < 0) state.analyses.push(item);
+      else state.analyses[index] = item;
+    } catch (error) {
+      if (current()) toast(error.message || 'This saved record could not be opened.');
+      return;
+    }
   }
   if (!item) return toast('This saved report is no longer available.');
   if (item.unavailable) return toast('This saved record is unreadable. Its original data has not been changed.');
@@ -2649,11 +2691,11 @@ async function showSavedReport(assessmentId) {
   $('#qualityScore').textContent = data.quality?.score === null || data.quality?.score === undefined ? data.quality?.label || 'Not applicable' : `${data.quality.score}% · ${data.quality.label}`;
   $('#modelStatus').textContent = presentation.scope;
   $('#clinicalStatus').textContent = 'Saved metadata · no image retained';
-  setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.assessment_risk || data.assessment_result?.assessment_risk || data.risk || {}, data.condition_intelligence?.doctor); renderPatientResult(data);
+  setSegmentation(data.candidate_region, data.segmentation); setResearchAttention(data.research_classifier); renderAnalysisDashboard(data); showCarePlan(data.care_plan || {}); updateDoctorSupport(data.assessment_risk || data.assessment_result?.assessment_risk || data.risk || {}, data.condition_intelligence?.doctor); renderPatientResult(data, { savedRecord:true });
   $('#progressText').textContent = `Saved ${String(item.created_at).slice(0, 10)}. This report can support a clinician discussion; it does not confirm a diagnosis or treatment response.`;
   $('.result-footnote').textContent = 'This is a saved metadata report. The original image, visual candidate overlay, and Grad-CAM image were intentionally not retained.';
   updateResultContinuation({ ...data, persistence: 'mysql' });
-  showResultTab('summary'); openDialog($('#resultModal'), '.modal-close');
+  showResultTab('summary'); openDialog($('#resultModal'), '.modal-close', opener);
 }
 
 async function downloadSavedReport(assessmentId) {
@@ -2951,6 +2993,7 @@ $$('.area-choice button').forEach(button => { button.onclick = () => selectArea(
 $$('[data-page-nav]').forEach(link => { link.onclick = event => { event.preventDefault(); showPage(link.dataset.pageNav); }; });
 $$('[data-dashboard-nav]').forEach(button => { button.onclick = () => showPage(button.dataset.dashboardNav); });
 $$('[data-dashboard-area]').forEach(button => { button.onclick = () => startAreaAssessment(button.dataset.dashboardArea); });
+$('#continueDashboardCheck').onclick = openCheckInput;
 $('#imageInput').onchange = event => setImage(event.target.files[0]);
 $('#imageContext').onchange = updateImageContext;
 $('#screenDetails').addEventListener('toggle', updateAssessmentProgress);
