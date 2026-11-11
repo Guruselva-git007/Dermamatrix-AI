@@ -393,11 +393,20 @@
   function returnSearch() {
     closeResult();
     $('recordReadDialog').close();
-    $('unifiedSearchDialog').showModal();
-    if(searchReturn&&searchReturn.scope===searchQuery&&searchReturn.scope===searchScope()){
-      searchReturn.opener?.focus({preventScroll:true});
-      $('unifiedSearchDialog').scrollTop=searchReturn.scroll;
-    }else $('unifiedQuery').focus();
+    const dialog=$('unifiedSearchDialog'),previous=searchReturn;
+    dialog.showModal();
+    if(!previous||previous.scope!==searchQuery||previous.scope!==searchScope()){$('unifiedQuery').focus();return;}
+    const opener=dialog.contains(previous.opener)?previous.opener:$('unifiedQuery');
+    const restore=()=>{
+      if(!dialog.open||searchReturn!==previous||previous.scope!==searchScope())return;
+      opener.focus({preventScroll:true});
+      dialog.scrollTo({top:previous.scroll,behavior:'instant'});
+    };
+    restore();
+    // Reopening a native dialog can schedule a later focus scroll in some engines.
+    requestAnimationFrame(()=>{
+      if(document.activeElement===opener||document.activeElement===$('unifiedQuery'))restore();
+    });
   }
   async function viewCheckin(id,{fromSearch=false}={}) {
     invalidateSavedReportOpen();

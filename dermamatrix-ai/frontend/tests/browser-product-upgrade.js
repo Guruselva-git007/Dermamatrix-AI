@@ -80,11 +80,21 @@ async (page,options={})=>{
 
     await page.evaluate(()=>ContinuityUI.search(''));await page.waitForFunction(()=>document.querySelectorAll('#unifiedResults article').length===20);
     const originalResult=page.locator('#unifiedResults').getByRole('button',{name:'Open assessment',exact:true}).last();
-    await originalResult.evaluate(button=>button.scrollIntoView({block:'start'}));
-    const originalScroll=await page.locator('#unifiedSearchDialog').evaluate(dialog=>dialog.scrollTop);
-    assert(originalScroll>0,'Search fixture did not exercise a scrolled result');await originalResult.click();await page.locator('#returnWorkspaceSearch').waitFor();await page.locator('#returnWorkspaceSearch').click();
-    const returnedScroll=await page.locator('#unifiedSearchDialog').evaluate(dialog=>dialog.scrollTop);
-    assert(Math.abs(originalScroll-returnedScroll)<=2,'Search return lost the actual result position: '+originalScroll+' -> '+returnedScroll);
+    await originalResult.evaluate(button=>{
+      const dialog=button.closest('dialog');
+      button.scrollIntoView({block:'start',behavior:'instant'});
+      // Measure the visible position at activation, after pointer actionability scrolling.
+      button.addEventListener('click',()=>{dialog.dataset.testOpenScroll=String(dialog.scrollTop);},{capture:true,once:true});
+    });
+    await originalResult.click();await page.locator('#returnWorkspaceSearch').waitFor();
+    const originalScroll=Number(await page.locator('#unifiedSearchDialog').getAttribute('data-test-open-scroll'));
+    assert(originalScroll>0,'Search fixture did not open a scrolled result');
+    await page.locator('#returnWorkspaceSearch').click();
+    const restored=await originalResult.evaluate(async button=>{
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      return {scroll:button.closest('dialog').scrollTop,focused:document.activeElement===button};
+    });
+    assert(Math.abs(originalScroll-restored.scroll)<=2&&restored.focused,'Search return lost position or focus: '+originalScroll+' -> '+JSON.stringify(restored));
     await page.locator('#unifiedCategory').selectOption('checkin');await page.locator('.search-refinements summary').click();
     await page.locator('#searchArea').selectOption('Sweat');await page.locator('#searchConcern').selectOption(ids.episode);await page.locator('#unifiedSearchForm [type=submit]').click();
     await page.waitForFunction(()=>document.querySelector('#unifiedResults h3'));
