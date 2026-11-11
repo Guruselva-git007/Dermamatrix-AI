@@ -8,7 +8,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Browser setup can consume several minutes before the three-engine suite starts.
+    timeout-minutes: 25
     services:
       mysql:
         image: mysql:8.0
