@@ -1,22 +1,33 @@
 # Consumer development execution status
 
-Updated: 10 November 2026. Canonical checkpoint. Sequential implementation;
+Updated: 11 November 2026. Canonical checkpoint. Sequential implementation;
 **Development remains the scope until the owner explicitly requests deployment.**
 Real email-provider setup is also deferred. No public release. Source branch is
 `codex/consumer-evolution`; the remote receipts below identify checked implementations.
 
-**Current batch — Complete consumer product upgrade (10 November).**
-Implementation and local acceptance are finished; exact-source remote CI and
-final synchronization/cleanup remain in progress. Delivered: complete check
-review with Change actions, protected routine/check-in drafts, concern activity,
-original-record comparison, routine status/plan review/journal/selected-day
-history, scoped discovery, read-only record details, All/Saved guides, account
-response ordering and shared responsive/resource polish. No schema/model/provider
-or deployment change. Local full backend: 269 passed; frontend: 121; runner: 12;
-new Chrome workflows: 13; affected existing Chrome workflows: 67. Visual matrix:
-130 states plus 22 focused refinements, five widths/both themes and enlarged text.
-See the final section of `consumer-validation-results.md` for evidence and limits.
-Native/physical/spoken/participant checks remain deferred by the owner.
+**Current batch — Complete consumer product upgrade (10–11 November).**
+Complete within the authorized development scope. Verified source `44810aeff2e69e6b0d85024b77c80370eea3b9bd`
+is synchronized on `codex/consumer-evolution`. Exact-source CI passed 268
+backend tests, 121 frontend tests and 384 browser checks (128 each in Chrome,
+Firefox and WebKit). One optional local presentation fixture was unavailable
+in CI. Migrations in the synthetic fixture, the pinned dependency audit and
+tracked-source hygiene passed. [CI run 42992713154](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42992713154)
+
+Delivered complete check review and Change actions, protected check-in drafts,
+concern activity and original-record comparison, routine plan review and
+selected-day history, scoped discovery with restored focus and scroll, All/Saved
+guides, account response ordering and responsive/resource polish. Local evidence
+covers the two baseline draft defects, the Firefox search return, five widths
+in both themes and enlarged text. See `consumer-validation-results.md` for the
+before/after checks, important files and limitations.
+
+The normal loopback app loaded the verified source through a graceful worker
+reload. Health returned 200 and the new private route returned the expected
+401 without a session. The normal master, database and configuration were
+preserved; schema initialization was disabled. The isolated app and database
+processes stopped, and the temporary test credentials were removed. Native Safari, physical devices, spoken
+accessibility and consumer sessions remain deferred. Development only; no
+provider activation, model change or deployment.
 
 **Previous batch — Today, Check and saved-result handoffs (10 November).
 Complete within independently verifiable development scope.**

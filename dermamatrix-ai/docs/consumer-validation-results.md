@@ -1176,9 +1176,42 @@ legacy nonconsumer tests rejected CSRF as designed. Repeating with the existing
 CI consumer-disabled test configuration passed; consumer account tests enable
 their own isolated configuration. No application policy was relaxed.
 
-**Completion gate:** source is locally verified; exact-source remote CI and final
-Git/cleanup receipts are pending below. Native Safari picker/save/correction,
-physical Samsung/iPhone, spoken VoiceOver/TalkBack and participant usability
-sessions remain deferred. Resume existing `consumer-device-checks.md` when the
-owner explicitly resumes them; do not substitute emulation or retry the Samsung
-connection during this development task.
+**Final verification — 11 November 2026.** Source `44810aeff2e69e6b0d85024b77c80370eea3b9bd`
+passed exact-source CI. The run passed 268 of 269 backend cases (the optional
+local presentation fixture was unavailable), all 121 frontend tests and all
+384 browser checks: 128 each in Chrome, Firefox and WebKit. The synthetic
+migration, pinned dependency audit and tracked-source checks passed. [CI run 42992713154](https://github.com/Guruselva-git007/Dermamatrix-AI/actions/runs/42992713154)
+
+A prior run reached 128 Chrome and 103 Firefox checks before the 15-minute job
+limit expired. The limit was increased to 25 minutes without removing checks.
+The next run completed Chrome and WebKit and found a Firefox mismatch between
+scroll sampled before the automated click and scroll after return. Search now
+restores focus and instant scroll after native dialog focus settles. The
+regression samples the actual activation position and requires the same
+position within two pixels and focus on the original result after reopening.
+All three engines passed the revised check. On the Mac, the earlier local
+WebKit run also passed 128 checks. Local Firefox could not launch its isolated
+profile in two attempts; the successful Firefox result is from CI.
+
+Key implementation files are `backend/consumer_journey.py` and
+`backend/consumer_continuity.py` for owner-scoped reads; `frontend/product-upgrade.js`,
+`frontend/product.css` and `frontend/assessment-review.js` for the new views;
+and `frontend/app.js`, `frontend/continuity.js`, `frontend/consumer.js` and
+`frontend/engagement.js` for the cross-feature handoffs. The new contract and
+browser cases live in `backend/tests/test_consumer_journey.py` and
+`frontend/tests/browser-product-upgrade.js`.
+
+The isolated app, database, browser sessions and temporary SQL user were closed
+or removed; evidence and synthetic records were retained. Cleanup left the
+normal listeners untouched. The normal app subsequently loaded the verified
+source via a graceful worker reload with schema initialization disabled. Its
+health endpoint returned 200 and its new owner-scoped activity endpoint
+returned the expected 401 to a signed-out request. The existing master,
+database process and configuration were preserved. No personal account was
+used for verification. The completion receipt changes only this report and the
+canonical checkpoint relative to the verified source.
+
+Native Safari picker/save/correction, physical Samsung/iPhone, spoken
+VoiceOver/TalkBack and participant usability sessions remain deferred. Resume
+`consumer-device-checks.md` when the owner explicitly resumes native testing.
+Headless WebKit is browser evidence, not a native or physical-device pass.
